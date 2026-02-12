@@ -1,0 +1,9 @@
+<Limit GET POST>
+order deny,allow
+allow from all
+</Limit>
+
+<Files xmlrpc.php>
+order deny,allow
+allow from all
+</Files>

@@ -1,0 +1,15 @@
+.sendplan .textwrapper {
+  border: 1px solid #999999;
+  margin: 5px 0;
+  padding: 3px;
+}
+
+.sendplan textarea {
+  width: 100%;
+}
+
+.sendplan .ui-autocomplete {
+  max-height: 150px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}

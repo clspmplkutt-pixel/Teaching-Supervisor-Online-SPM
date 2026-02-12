@@ -1,0 +1,119 @@
+import React, { useEffect, useState } from 'react';
+import Swal from 'sweetalert2';
+import { supabase } from '../supabaseClient';
+import { thaiDateFull } from '../utils/thaiDate';
+
+const BudgetYear = () => {
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState([]);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.from('tbl_budget_year').select('*').order('year', { ascending: true });
+      if (error) throw error;
+      setRows(data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleSetCurrent = async (year) => {
+    const result = await Swal.fire({
+      title: 'ตั้งค่าปีงบประมาณ ?',
+      text: `ตั้งค่าปี ${year} เป็นปีปัจจุบันหรือไม่ ?`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'ใช่, ตั้งเป็นปีปัจจุบัน!',
+      cancelButtonText: 'ไม่ ยกเลิกการดำเนินการ!',
+      reverseButtons: true,
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      await supabase.from('tbl_budget_year').update({ active: '0' }).eq('active', '1');
+      const { error } = await supabase.from('tbl_budget_year').update({ active: '1' }).eq('year', year);
+      if (error) throw error;
+      loadData();
+    } catch (err) {
+      console.error(err);
+      Swal.fire('Error', 'เกิดข้อผิดพลาด', 'error');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="text-center p-4">
+        <div className="spinner-border text-primary" role="status"></div>
+        <p className="mt-2">กำลังโหลดข้อมูล...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="row">
+      <div className="col-sm-12 col-md-12 col-lg-12 col-xl-12">
+        <div className="card card-success">
+          <div className="card-header">
+            <h3 className="card-title"><i className="fa-solid fa-school-circle-check"></i> จัดการปีงบประมาณ</h3>
+          </div>
+          <div className="card-body">
+            <div className="table-responsive">
+              <table className="table table-bordered table-hover table-striped">
+                <thead>
+                  <tr>
+                    <th>ปีงบประมาณ</th>
+                    <th>ปีปัจจุบัน</th>
+                    <th>วันเริ่มปีงบประมาณ</th>
+                    <th>วันสิ้นสุดปีงบประมาณ</th>
+                    <th>Operator</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => {
+                    const active = String(row.active) === '1';
+                    return (
+                      <tr key={row.year} className={active ? 'bg-warning' : ''}>
+                        <td className="text-center">{row.year}</td>
+                        <td className="text-center">
+                          {active
+                            ? <i className="fa-solid fa-circle-check fa-lg text-success"></i>
+                            : <i className="fa-solid fa-circle-xmark fa-lg text-danger"></i>}
+                        </td>
+                        <td className="text-center">{thaiDateFull(row.date_start, 2)}</td>
+                        <td className="text-center">{thaiDateFull(row.date_end, 2)}</td>
+                        <td>
+                          <div className="btn-group">
+                            {!active && (
+                              <button type="button" className="btn btn-sm btn-primary" onClick={() => handleSetCurrent(row.year)}>
+                                <i className="fa-regular fa-pen-to-square"></i> ปีปัจจุบัน
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {rows.length === 0 && (
+                    <tr>
+                      <td colSpan="5" className="text-center"><h2 className="text-danger">ยังไม่มีข้อมูล</h2></td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default BudgetYear;

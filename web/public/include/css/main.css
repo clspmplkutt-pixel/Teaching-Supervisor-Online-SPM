@@ -1,0 +1,41 @@
+/* Apply Sarabun font but exclude Font Awesome icons */
+*:not(.fa):not(.fas):not(.far):not(.fab):not(.fal):not(.fad):not([class*="fa-"]) {
+    font-family: 'Sarabun', sans-serif;
+    font-size: 14px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+span:not([class*="fa-"]):not(.fa):not(.fas):not(.far):not(.fab),
+div,
+a,
+li,
+td,
+th,
+input,
+textarea,
+select,
+button,
+label {
+    font-family: 'Sarabun', sans-serif !important;
+}
+
+/* Explicitly preserve Font Awesome font */
+.fa,
+.fas,
+.far,
+.fab,
+.fal,
+.fad,
+[class*="fa-"] {
+    font-family: "Font Awesome 6 Free", "Font Awesome 6 Brands", "Font Awesome 5 Free", "Font Awesome 5 Brands" !important;
+}
+
+thead {
+    text-align: center;
+}

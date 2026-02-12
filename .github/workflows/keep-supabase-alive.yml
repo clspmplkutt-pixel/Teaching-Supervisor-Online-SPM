@@ -1,0 +1,39 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    # Run at 00:00 UTC every day (07:00 AM Thailand)
+    - cron: '0 0 * * *'
+  # Allow manual trigger from GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  wake-up:
+    name: Wake Up Supabase
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Supabase Status
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
+            echo "Error: Secrets not found. Please add SUPABASE_URL and SUPABASE_KEY to Repository Secrets."
+            exit 1
+          fi
+
+          echo "Sending request to Supabase to keep project active..."
+          
+          # Query a small table (tbl_config) just to create read activity
+          # We use -f to fail on HTTP errors
+          response=$(curl -s -f -X GET \
+            "$SUPABASE_URL/rest/v1/tbl_config?select=config_name&limit=1" \
+            -H "apikey: $SUPABASE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_KEY")
+
+          if [ $? -eq 0 ]; then
+            echo "✅ Success! Supabase is awake."
+          else
+            echo "❌ Failed to reach Supabase. Check your URL/Key or Project status."
+            exit 1
+          fi
