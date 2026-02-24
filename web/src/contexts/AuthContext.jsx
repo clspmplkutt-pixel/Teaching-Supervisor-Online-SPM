@@ -149,6 +149,12 @@ export const AuthProvider = ({ children }) => {
             }
 
             if (data) {
+                // Security Check: Verify that the user's database level matches the selected role
+                if (table === 'tbl_Users' && data.level && data.level !== level) {
+                    console.error('❌ Role mismatch. User is', data.level, 'but tried to login as', level);
+                    throw new Error('Invalid role selected for this user');
+                }
+
                 // Success!
                 console.log('✅ Login successful!');
                 // Map legacy user data to session-like object
@@ -157,11 +163,11 @@ export const AuthProvider = ({ children }) => {
                     email: email, // or data.email
                     user_metadata: {
                         name: data.name + ' ' + (data.lastname || ''),
-                        role: level,
+                        role: data.level || level,
                         people_id: data.people_id || email,
                         school: data.school || null
                     },
-                    level_id: level // Add level_id for sidebar
+                    level_id: data.level || level
                 };
                 setUser(userData);
 

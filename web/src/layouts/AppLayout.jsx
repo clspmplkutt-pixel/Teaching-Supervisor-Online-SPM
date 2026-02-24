@@ -44,6 +44,23 @@ const AppLayout = () => {
   const moduleName = pathParts[0] || 'info';
   const pageTitle = humanizeModule(moduleName);
 
+  // Security: Protect admin-only routes from other roles
+  const roleId = user?.level_id || user?.user_metadata?.role || user?.role || 'teacher';
+  const isAdminOrRoot = roleId === 'admin' || roleId === 'root';
+
+  const adminOnlyModules = [
+    'userteacher', 'userdirectorschool', 'userheadDepartment', 'userchairman',
+    'usersupervisor', 'usersupervision', 'userDistricDirector', 'confirmUser',
+    'checkupUser', 'checkupUserduplicate', 'ManageUserAdmin', 'UserAdmin_Add',
+    'UserAdmin_Edit', 'UserAdmin_Chgpwd', 'change_position', 'khet', 'school',
+    'teacher_edit', 'directorschool_edit', 'supervisor_edit', 'dd_edit', 'user_remove',
+    'resetPwd', 'updatepwd', 'importDMC'
+  ];
+
+  if (adminOnlyModules.includes(moduleName) && !isAdminOrRoot) {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <div className="wrapper">
       <Header />
