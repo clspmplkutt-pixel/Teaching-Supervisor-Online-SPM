@@ -768,7 +768,7 @@ const SendPlan = () => {
                 <button type="submit" className="btn btn-success" id="btn_submit" disabled={saving}>
                   <i className="fa-regular fa-paper-plane"></i> ส่งแผนการสอน
                 </button>
-                <Link to="/userteacher" className="btn btn-danger ml-2">
+                <Link to="/" className="btn btn-danger ml-2">
                   <i className="fa-solid fa-ban"></i> ยกเลิก
                 </Link>
               </div>
