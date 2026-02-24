@@ -54,7 +54,17 @@ const AppLayout = () => {
     'checkupUser', 'checkupUserduplicate', 'ManageUserAdmin', 'UserAdmin_Add',
     'UserAdmin_Edit', 'UserAdmin_Chgpwd', 'change_position', 'khet', 'school',
     'teacher_edit', 'directorschool_edit', 'supervisor_edit', 'dd_edit', 'user_remove',
-    'resetPwd', 'updatepwd', 'importDMC'
+    'resetPwd', 'updatepwd', 'importDMC', 'khet_add', 'khet_edit', 'khet_remove',
+    'school_add', 'school_edit', 'school_remove', 'budget_year', 'budget_year_set',
+    'education_year', 'education_year_set', 'school_size', 'schoolsize_edit', 'prefix',
+    'prefix_set', 'gender', 'person_position_type', 'person_position_type_set',
+    'person_type', 'person_type_set', 'academic_standing', 'academic_standing_set',
+    'education_level', 'education_level_set', 'teach_subject', 'teach_subject_set',
+    'subject_type', 'subject_type_set', 'grade_level', 'grade_level_set', 'tbl_config',
+    'ability21', 'competency', 'desirable', 'learningModel', 'learningModel_add',
+    'learningModel_edit', 'strands', 'strands_add', 'strands_edit', 'content_standards',
+    'content_standards_add', 'content_standards_edit', 'indicators', 'indicators_add',
+    'indicators_edit', 'type_benchmarks', 'policy_side', 'policy_number', 'policy_items', 'log'
   ];
 
   if (adminOnlyModules.includes(moduleName) && !isAdminOrRoot) {
