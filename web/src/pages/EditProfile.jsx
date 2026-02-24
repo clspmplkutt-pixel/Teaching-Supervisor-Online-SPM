@@ -361,7 +361,7 @@ const EditProfile = () => {
               <button type="submit" className="btn btn-success" id="btn_submit" disabled={saving}>
                 <i className="fa-solid fa-user-pen"></i> แก้ไขข้อมูล
               </button>
-              <Link to="/userteacher" className="btn btn-danger ml-2">
+              <Link to="/" className="btn btn-danger ml-2">
                 <i className="fa-solid fa-ban"></i> ยกเลิก
               </Link>
             </div>
