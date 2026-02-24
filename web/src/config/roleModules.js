@@ -197,7 +197,6 @@ export const roleModules = {
     "editSignature",
     "editprofile",
     "info",
-    "send_clip",
     "sendplan",
     "statusplan",
     "statusplan_clip",
