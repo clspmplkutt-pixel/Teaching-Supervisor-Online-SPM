@@ -78,7 +78,6 @@ export const allModules = [
   "teach_subject",
   "teach_subject_set",
   "teacher_edit",
-  "updatepwd",
   "type_benchmarks",
   "updatepwd",
   "userDistricDirector",
@@ -117,8 +116,6 @@ export const roleModules = {
     "userheadDepartment",
     "userteacher",
     "change_position",
-    "user_remove",
-    "resetPwd",
 
     // Assessment Configuration
     "policy_side",
@@ -151,7 +148,6 @@ export const roleModules = {
     "tbl_config",
     "profile",
     "chgpasswd",
-    "updatepwd",
     "log",
     "importDMC"
   ],
@@ -159,7 +155,6 @@ export const roleModules = {
     "chgpasswd",
     "editprofile",
     "info",
-    "plan_clip",
     "Plan_Check",
     "Plan_scoring",
     "statusplan",
@@ -175,11 +170,7 @@ export const roleModules = {
   ],
   root: [
     "ManageUserAdmin",
-    "UserAdmin_Add",
-    "UserAdmin_Chgpwd",
-    "UserAdmin_Edit",
-    "info",
-    "user_remove"
+    "info"
   ],
   supervision: [
     "Plan_Check",
