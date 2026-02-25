@@ -475,7 +475,7 @@ const UserEdit = ({ variant }) => {
                   {showChairman && (
                     <div className="col-lg-4">
                       <div className="mb-3 mt-3">
-                        <label htmlFor="chairman">หัวหน้ากลุ่มสาระ</label>
+                        <label htmlFor="chairman">ประธานสหวิทยาเขต</label>
                         <select name="chairman" id="chairman" className="custom-select select2bs4" value={form.chairman || '0'} onChange={handleChange} required>
                           <option value="0">ไม่ได้เป็นประธานสหวิทยาเขต</option>
                           <option value="1">เป็นประธานสหวิทยาเขต</option>

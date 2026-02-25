@@ -11,8 +11,29 @@ const useSelect2 = (deps = []) => {
       width: '100%',
     });
 
+    $selects.on('change', function (e) {
+      // Prevent infinite loop if it's already a native event
+      if (e.originalEvent) return;
+
+      const element = this;
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLSelectElement.prototype,
+        'value'
+      ).set;
+
+      if (nativeInputValueSetter) {
+        nativeInputValueSetter.call(element, element.value);
+      }
+
+      const event = new Event('change', { bubbles: true });
+      element.dispatchEvent(event);
+    });
+
     return () => {
-      try { $selects.select2('destroy'); } catch { /* noop */ }
+      try {
+        $selects.off('change');
+        $selects.select2('destroy');
+      } catch { /* noop */ }
     };
   }, [...deps]);
 };
