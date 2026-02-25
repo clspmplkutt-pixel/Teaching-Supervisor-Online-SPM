@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
 import { useUserProfile } from '../hooks/useUserProfile';
+import useSelect2 from '../hooks/useSelect2';
 import { uploadToDrive } from '../utils/driveUpload';
 import './SendPlan.css';
 
@@ -170,40 +171,21 @@ const SendPlan = () => {
       autoclose: true,
       language: 'th-th',
       thaiyear: true,
+    }).on('changeDate', function () {
+      if (this.value) {
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        if (nativeInputValueSetter) {
+          nativeInputValueSetter.call(this, this.value);
+        }
+        this.dispatchEvent(new Event('input', { bubbles: true }));
+      }
     });
     return () => {
       try { picker.datepicker('destroy'); } catch { /* noop */ }
     };
   }, []);
 
-  useEffect(() => {
-    const $ = window.$;
-    if (!$ || !$.fn || !$.fn.select2) return;
-    const $selects = $('.select2bs4');
-    $selects.select2({
-      theme: 'bootstrap4',
-      width: '100%',
-    });
-
-    // Ensure state updates when select2 changes (including recreated instances)
-    const handleChange = (e) => {
-      const { id, value } = e.target;
-      if (id === 'teach_subject_id') {
-        setForm((prev) => ({ ...prev, teach_subject_id: value }));
-      }
-      if (id === 'grade_level_id') {
-        setForm((prev) => ({ ...prev, grade_level_id: value }));
-      }
-    };
-    $('#teach_subject_id').on('change select2:select', handleChange);
-    $('#grade_level_id').on('change select2:select', handleChange);
-
-    return () => {
-      $('#teach_subject_id').off('change select2:select', handleChange);
-      $('#grade_level_id').off('change select2:select', handleChange);
-      try { $selects.select2('destroy'); } catch { /* noop */ }
-    };
-  }, [
+  useSelect2([
     loading,
     options.teachSubject.length,
     options.gradeLevel.length,

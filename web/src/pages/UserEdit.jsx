@@ -99,6 +99,14 @@ const UserEdit = ({ variant }) => {
       autoclose: true,
       language: 'th-th',
       thaiyear: true,
+    }).on('changeDate', function () {
+      if (this.value) {
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        if (nativeInputValueSetter) {
+          nativeInputValueSetter.call(this, this.value);
+        }
+        this.dispatchEvent(new Event('input', { bubbles: true }));
+      }
     });
     return () => {
       try { picker.datepicker('destroy'); } catch { /* noop */ }
