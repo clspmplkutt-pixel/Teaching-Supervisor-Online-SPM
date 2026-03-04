@@ -113,7 +113,27 @@ const Login = () => {
                         </form>
                     </div>
                 </div>
-                <div className="mt-5 text-center text-secondary" style={{ fontSize: '0.9rem', lineHeight: '1.6', opacity: 0.9 }}>
+
+                {/* Banner Download */}
+                <div className="row mt-3 text-center">
+                    <div className="col-4 px-1">
+                        <a href="https://drive.google.com/file/d/1sXUxzEqs4aFMq0Ca2rmlAOoo3Dd-s08N/view?usp=sharing" target="_blank" rel="noopener noreferrer">
+                            <img src="https://img5.pic.in.th/file/secure-sv1/26fbc408351b05058.jpg" alt="คู่มือครู" className="img-fluid rounded shadow-sm border hover-zoom" style={{ transition: 'transform 0.2s' }} onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'} onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'} />
+                        </a>
+                    </div>
+                    <div className="col-4 px-1">
+                        <a href="https://drive.google.com/file/d/1BYrvVIMwNmPkDWg22X05PDd1Wy77hjCD/view?usp=sharing" target="_blank" rel="noopener noreferrer">
+                            <img src="https://img5.pic.in.th/file/secure-sv1/448f891ead28ce35d.jpg" alt="คู่มือผู้นิเทศ" className="img-fluid rounded shadow-sm border hover-zoom" style={{ transition: 'transform 0.2s' }} onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'} onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'} />
+                        </a>
+                    </div>
+                    <div className="col-4 px-1">
+                        <a href="https://drive.google.com/file/d/1Q2x2mGiqbTy_O5J8sQGohyvBODhfzPG-/view?usp=sharing" target="_blank" rel="noopener noreferrer">
+                            <img src="https://img2.pic.in.th/683ef849b5b649b4a.jpg" alt="คู่มือผู้บริหารสถานศึกษา" className="img-fluid rounded shadow-sm border hover-zoom" style={{ transition: 'transform 0.2s' }} onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'} onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'} />
+                        </a>
+                    </div>
+                </div>
+
+                <div className="mt-4 text-center text-secondary" style={{ fontSize: '0.9rem', lineHeight: '1.6', opacity: 0.9 }}>
                     <div className="mb-3">
                         <h6 className="font-weight-bold mb-1" style={{ color: '#555' }}>ระบบนิเทศการศึกษาแบบออนไลน์</h6>
                         <div className="small text-muted" style={{ letterSpacing: '0.5px' }}>Online Educational Supervision System</div>
