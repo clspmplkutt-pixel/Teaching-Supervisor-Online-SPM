@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import CryptoJS from 'crypto-js';
+import { encryptLegacyPassword, encryptLegacyPasswordPHP } from '../utils/legacyCrypto';
 import { useNavigate } from 'react-router-dom';
 
 const AuthContext = createContext({});
@@ -124,21 +125,29 @@ export const AuthProvider = ({ children }) => {
                 userCol = 'user';
             }
 
-            // 3. Query Supabase
-            // Note: This requires RLS to allow reading 'passwd' or to be disabled.
-            console.log('🔍 Login Debug Info:');
-            console.log('  - Table:', table);
-            console.log('  - User Column:', userCol);
-            console.log('  - Username/Email:', email);
-            console.log('  - Encrypted Password:', encryptedPass);
-            console.log('  - Level:', level);
+            // 3. Query Supabase — ลองทั้ง JS format (single base64) และ PHP format (double base64)
+            const encryptedJS = encryptLegacyPassword(password);   // JS: single base64
+            const encryptedPHP = encryptLegacyPasswordPHP(password); // PHP: double base64
 
-            const { data, error } = await supabase
-                .from(table)
-                .select('*')
-                .eq(userCol, email)
-                .eq('passwd', encryptedPass)
-                .maybeSingle(); // Use maybeSingle to avoid 406 if multiple (shouldn't be) or 0
+            console.log('🔍 Login Debug Info:');
+            console.log('  - Table:', table, '| Column:', userCol, '| User:', email);
+            console.log('  - JS  format:', encryptedJS);
+            console.log('  - PHP format:', encryptedPHP);
+
+            // ลองด้วย JS format ก่อน
+            let { data, error } = await supabase
+                .from(table).select('*')
+                .eq(userCol, email).eq('passwd', encryptedJS).maybeSingle();
+
+            // ถ้าไม่เจอ ลองด้วย PHP format (user เก่าที่ migrate มา)
+            if (!data && !error) {
+                ({ data, error } = await supabase
+                    .from(table).select('*')
+                    .eq(userCol, email).eq('passwd', encryptedPHP).maybeSingle());
+                if (data) console.log('✅ Matched PHP format (double base64)');
+            } else if (data) {
+                console.log('✅ Matched JS format (single base64)');
+            }
 
             console.log('📊 Query Result:', { data, error });
 
