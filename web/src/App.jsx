@@ -38,6 +38,7 @@ import UserRemove from './pages/UserRemove';
 import ResetPwd from './pages/ResetPwd';
 import UpdatePwd from './pages/UpdatePwd';
 import ChangePosition from './pages/ChangePosition';
+import ResetUserPassword from './pages/ResetUserPassword';
 import Khet from './pages/Khet';
 import KhetAdd from './pages/KhetAdd';
 import KhetEdit from './pages/KhetEdit';
@@ -133,6 +134,7 @@ function App() {
             <Route path="UserAdmin_Add" element={<UserAdminAdd />} />
             <Route path="UserAdmin_Edit" element={<UserAdminEdit />} />
             <Route path="UserAdmin_Chgpwd" element={<UserAdminChgpwd />} />
+            <Route path="reset_user_password" element={<ResetUserPassword />} />
             <Route path="profile" element={<AdminProfile />} />
             <Route path="teacher_edit" element={<UserEdit variant="teacher" />} />
             <Route path="directorschool_edit" element={<UserEdit variant="directorschool" />} />

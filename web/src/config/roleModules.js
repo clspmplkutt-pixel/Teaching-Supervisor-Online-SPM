@@ -1,5 +1,6 @@
 export const allModules = [
   "ManageUserAdmin",
+  "reset_user_password",
   "Plan_Check",
   "Plan_scoring",
   "UserAdmin_Add",
@@ -149,7 +150,8 @@ export const roleModules = {
     "profile",
     "chgpasswd",
     "log",
-    "importDMC"
+    "importDMC",
+    "reset_user_password"
   ],
   directorschool: [
     "chgpasswd",
@@ -279,6 +281,7 @@ export const moduleLabels = {
   supervisor_edit: "แก้ไขข้อมูลศึกษานิเทศ",
   dd_edit: "แก้ไขข้อมูลผอ.เขต",
   resetPwd: "Reset รหัสผ่าน",
+  reset_user_password: "Reset รหัสผ่านบุคลากร",
   updatepwd: "อัปเดตรหัสผ่าน",
   send_clip: "ส่งคลิป (เก่า)",
   view_scoring: "ดูคะแนนการประเมิน"
@@ -321,6 +324,7 @@ export const moduleIcons = {
   change_position: "nav-icon fa-solid fa-person-booth text-blue",
   user_remove: "nav-icon fa-solid fa-user-slash text-danger",
   resetPwd: "nav-icon fa-solid fa-unlock-keyhole text-warning",
+  reset_user_password: "nav-icon fa-solid fa-key text-danger",
 
   // Assessment Configuration
   policy_side: "nav-icon fa-solid fa-list-check text-primary",
