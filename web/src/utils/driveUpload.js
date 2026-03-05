@@ -10,7 +10,7 @@ const fileToBase64 = (file) => new Promise((resolve, reject) => {
 });
 
 export const uploadToDrive = async (file, options = {}) => {
-  const uploadUrl = import.meta.env.VITE_GDRIVE_UPLOAD_URL || '/gdrive-upload';
+  const uploadUrl = import.meta.env.VITE_GDRIVE_UPLOAD_URL;
   if (!uploadUrl) throw new Error('ยังไม่ได้ตั้งค่า VITE_GDRIVE_UPLOAD_URL');
 
   const base64Data = await fileToBase64(file);
@@ -30,28 +30,47 @@ export const uploadToDrive = async (file, options = {}) => {
     payload.makePublic = String(envMakePublic) !== 'false';
   }
 
-  const response = await fetch(uploadUrl, {
-    method: 'POST',
-    // We send 'text/plain' to prevent preflight OPTIONS requests (simple request)
-    // The Google Apps Script receives the raw string in e.postData.contents
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(payload),
-  });
+  let response;
+  try {
+    response = await fetch(uploadUrl, {
+      method: 'POST',
+      // text/plain avoids CORS preflight (simple request) — required for GAS web apps
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+    });
+  } catch (networkErr) {
+    throw new Error(`เชื่อมต่อเซิร์ฟเวอร์อัปโหลดล้มเหลว: ${networkErr.message}`);
+  }
+
+  // Read response body once as text, then try to parse as JSON
+  let rawText = '';
+  try {
+    rawText = await response.text();
+  } catch {
+    throw new Error('ไม่สามารถอ่านข้อมูลตอบกลับจากเซิร์ฟเวอร์ได้');
+  }
 
   let result = null;
   try {
-    result = await response.json();
+    result = JSON.parse(rawText);
   } catch {
-    throw new Error('ไม่สามารถอ่านผลลัพธ์จากเซิร์ฟเวอร์อัปโหลดได้');
+    // Google Apps Script sometimes returns HTML on error — surface useful info
+    console.error('[driveUpload] Non-JSON response from server:', rawText.slice(0, 500));
+    throw new Error(
+      'เซิร์ฟเวอร์อัปโหลดตอบกลับไม่ถูกรูปแบบ (ไม่ใช่ JSON)\n' +
+      'กรุณาตรวจสอบ Google Apps Script ว่า Deploy และ Authorize แล้ว\n' +
+      `รายละเอียด: ${rawText.slice(0, 200)}`
+    );
   }
 
   if (!response.ok) {
-    throw new Error(result?.message || 'อัปโหลดล้มเหลว');
+    throw new Error(result?.message || `server error ${response.status}`);
   }
 
   if (result?.status === 'success') {
     return result.fileUrl || result.url || result.link || '';
   }
 
-  throw new Error(result?.message || 'อัปโหลดล้มเหลว');
+  throw new Error(result?.message || 'อัปโหลดล้มเหลว (status ไม่ใช่ success)');
 };
