@@ -7,7 +7,8 @@ import { useAuth } from '../contexts/AuthContext';
 const AdminProfile = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const username = user?.email || '';
+  // legacy login stores username in .email field
+  const username = user?.email || user?.user_metadata?.people_id || '';
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -56,23 +57,42 @@ const AdminProfile = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (saving) return;
+    if (!form.user) {
+      Swal.fire('Error', 'ไม่พบชื่อผู้ใช้งาน กรุณา Login ใหม่', 'error');
+      return;
+    }
     setSaving(true);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('tbl_user')
         .update({
           name: form.name,
           email: form.email,
           telephone: form.telephone,
           line_token: form.line_token,
+          lastupdate: new Date().toISOString(),
         })
-        .eq('user', form.user);
+        .eq('user', form.user)
+        .select();
+
       if (error) throw error;
-      Swal.fire('สำเร็จ', 'แก้ไขข้อมูลสำเร็จ', 'success');
+
+      if (!data || data.length === 0) {
+        // RLS บล็อก — ต้องแก้ใน Supabase dashboard
+        Swal.fire({
+          title: 'ไม่สามารถบันทึกได้',
+          html: 'ระบบความปลอดภัย (RLS) บล็อกการแก้ไข<br/>กรุณาไปที่ <b>Supabase Dashboard → SQL Editor</b> แล้วรัน:<br/><code style="font-size:11px">ALTER TABLE tbl_user DISABLE ROW LEVEL SECURITY;</code>',
+          icon: 'warning',
+          confirmButtonText: 'เข้าใจแล้ว'
+        });
+        return;
+      }
+
+      Swal.fire('สำเร็จ ✅', 'แก้ไขข้อมูลสำเร็จ', 'success');
       navigate('/profile');
     } catch (err) {
       console.error(err);
-      Swal.fire('Error', 'ไม่สามารถแก้ไขข้อมูลได้ เกิดข้อผิดพลาด', 'error');
+      Swal.fire('Error', err.message || 'ไม่สามารถแก้ไขข้อมูลได้ เกิดข้อผิดพลาด', 'error');
     } finally {
       setSaving(false);
     }
@@ -106,11 +126,11 @@ const AdminProfile = () => {
               </div>
               <div className="mb-3">
                 <label htmlFor="email">Email:</label>
-                <input type="email" className="form-control" id="email" name="email" value={form.email} onChange={handleChange} required />
+                <input type="email" className="form-control" id="email" name="email" value={form.email} onChange={handleChange} placeholder="(ไม่บังคับ)" />
               </div>
               <div className="mb-3">
                 <label htmlFor="telephone">เบอร์โทรศัพท์:</label>
-                <input type="text" className="form-control" id="telephone" name="telephone" value={form.telephone} onChange={handleChange} required />
+                <input type="text" className="form-control" id="telephone" name="telephone" value={form.telephone} onChange={handleChange} placeholder="(ไม่บังคับ)" />
               </div>
               <div className="mb-3">
                 <label htmlFor="line_token">line token:</label>
