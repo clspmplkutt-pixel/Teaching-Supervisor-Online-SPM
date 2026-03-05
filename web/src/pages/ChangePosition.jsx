@@ -14,6 +14,18 @@ const ChangePosition = () => {
     });
     const [selectedUser, setSelectedUser] = useState(null);
     const [newPosition, setNewPosition] = useState('');
+    const [newLevel, setNewLevel] = useState('');
+
+    // mapping ประเภทบุคลากร → ระดับ login
+    const levelOptions = [
+        { value: 'teacher', label: 'ครูผู้สอน' },
+        { value: 'headdepartment', label: 'หัวหน้ากลุ่มสาระโรงเรียน' },
+        { value: 'directorschool', label: 'ผู้อำนวยการ/รองผู้อำนวยการโรงเรียน' },
+        { value: 'chairman', label: 'ประธานสหวิทยาเขต' },
+        { value: 'supervision', label: 'ผู้นิเทศ' },
+        { value: 'supervisor', label: 'ศึกษานิเทศก์' },
+        { value: 'districdirector', label: 'ผู้อำนวยการเขต/รอง ผอ. เขต' },
+    ];
 
     useEffect(() => {
         loadData();
@@ -53,15 +65,15 @@ const ChangePosition = () => {
 
     const handleChangePosition = async (e) => {
         e.preventDefault();
-        if (!selectedUser || !newPosition) {
-            Swal.fire('Warning', 'กรุณาเลือกผู้ใช้และตำแหน่งใหม่', 'warning');
+        if (!selectedUser || !newPosition || !newLevel) {
+            Swal.fire('Warning', 'กรุณาเลือกผู้ใช้, ตำแหน่งใหม่ และระดับการใช้งาน', 'warning');
             return;
         }
 
         try {
             const result = await Swal.fire({
                 title: 'ยืนยันการเปลี่ยนตำแหน่ง?',
-                html: `คุณต้องการเปลี่ยนตำแหน่งของ <strong>${selectedUser.name} ${selectedUser.lastname}</strong><br/>จาก <strong>${lookups.personType[selectedUser.persontype_id]}</strong><br/>เป็น <strong>${lookups.personType[newPosition]}</strong>`,
+                html: `คุณต้องการเปลี่ยนตำแหน่งของ <strong>${selectedUser.name} ${selectedUser.lastname}</strong><br/>จาก <strong>${lookups.personType[selectedUser.persontype_id]}</strong><br/>เป็น <strong>${lookups.personType[newPosition]}</strong><br/>ระดับการเข้าใช้: <strong class="text-primary">${levelOptions.find(l => l.value === newLevel)?.label}</strong>`,
                 icon: 'question',
                 showCancelButton: true,
                 confirmButtonText: 'ยืนยัน',
@@ -72,7 +84,7 @@ const ChangePosition = () => {
 
             const { error } = await supabase
                 .from('tbl_Users')
-                .update({ persontype_id: newPosition })
+                .update({ persontype_id: newPosition, level: newLevel })
                 .eq('id', selectedUser.id);
 
             if (error) throw error;
@@ -80,6 +92,7 @@ const ChangePosition = () => {
             Swal.fire('สำเร็จ', 'เปลี่ยนตำแหน่งเรียบร้อยแล้ว', 'success');
             setSelectedUser(null);
             setNewPosition('');
+            setNewLevel('');
             loadData();
         } catch (err) {
             console.error('ChangePosition error:', err);
@@ -137,21 +150,26 @@ const ChangePosition = () => {
                                 <div className="col-md-6">
                                     <div className="form-group">
                                         <label>
-                                            ตำแหน่งใหม่ <span className="text-danger">*</span>
+                                            ตำแหน่งใหม่ (ประเภทบุคลากร) <span className="text-danger">*</span>
                                         </label>
-                                        <select
-                                            className="form-control"
-                                            value={newPosition}
-                                            onChange={(e) => setNewPosition(e.target.value)}
-                                            required
-                                        >
+                                        <select className="form-control" value={newPosition} onChange={(e) => setNewPosition(e.target.value)} required>
                                             <option value="">-- เลือกตำแหน่งใหม่ --</option>
                                             {Object.entries(lookups.personType).map(([id, name]) => (
-                                                <option key={id} value={id}>
-                                                    {name}
-                                                </option>
+                                                <option key={id} value={id}>{name}</option>
                                             ))}
                                         </select>
+                                    </div>
+                                    <div className="form-group">
+                                        <label>
+                                            ระดับการเข้าใช้งาน (สำคัญ!) <span className="text-danger">*</span>
+                                        </label>
+                                        <select className="form-control" value={newLevel} onChange={(e) => setNewLevel(e.target.value)} required>
+                                            <option value="">-- เลือกระดับ (ใช้ตอน Login) --</option>
+                                            {levelOptions.map((l) => (
+                                                <option key={l.value} value={l.value}>{l.label}</option>
+                                            ))}
+                                        </select>
+                                        <small className="text-danger"><i className="fas fa-exclamation-triangle"></i> ต้องเลือกให้ตรงกับตำแหน่ง มิฉะนั้น Login ไม่ได้!</small>
                                     </div>
                                 </div>
                             </div>
