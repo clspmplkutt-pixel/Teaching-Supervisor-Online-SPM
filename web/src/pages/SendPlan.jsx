@@ -215,6 +215,10 @@ const SendPlan = () => {
     if (!$) return;
     const $teach = $('#teach_subject_id');
     const $grade = $('#grade_level_id');
+    const $competency = $('#competency');
+    const $ability21 = $('[name="ability21"]');
+    const $desirable = $('[name="desirable"]');
+
     const handleTeach = (e) => {
       const value = e.target?.value ?? '';
       setForm((prev) => ({ ...prev, teach_subject_id: value }));
@@ -223,11 +227,31 @@ const SendPlan = () => {
       const value = e.target?.value ?? '';
       setForm((prev) => ({ ...prev, grade_level_id: value }));
     };
+    const handleCompetency = () => {
+      const values = $competency.val() || [];
+      setForm((prev) => ({ ...prev, competency: Array.isArray(values) ? values : [values] }));
+    };
+    const handleAbility21 = () => {
+      const values = $ability21.val() || [];
+      setForm((prev) => ({ ...prev, ability21: Array.isArray(values) ? values : [values] }));
+    };
+    const handleDesirable = () => {
+      const values = $desirable.val() || [];
+      setForm((prev) => ({ ...prev, desirable: Array.isArray(values) ? values : [values] }));
+    };
+
     $teach.on('change', handleTeach);
     $grade.on('change', handleGrade);
+    $competency.on('change', handleCompetency);
+    $ability21.on('change', handleAbility21);
+    $desirable.on('change', handleDesirable);
+
     return () => {
       $teach.off('change', handleTeach);
       $grade.off('change', handleGrade);
+      $competency.off('change', handleCompetency);
+      $ability21.off('change', handleAbility21);
+      $desirable.off('change', handleDesirable);
     };
   }, []);
 
