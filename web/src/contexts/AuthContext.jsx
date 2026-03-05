@@ -1,7 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import CryptoJS from 'crypto-js';
 import { encryptLegacyPassword, encryptLegacyPasswordPHP } from '../utils/legacyCrypto';
 import { useNavigate } from 'react-router-dom';
 
@@ -96,38 +95,18 @@ export const AuthProvider = ({ children }) => {
 
         // *** LEGACY SYSTEM LOGIN (Match PHP Logic) ***
         try {
-            // 1. Encrypt Password
-            // PHP: hash('sha256', 'PNS2AREA') -> hex string (64 chars). AES-256 takes 32 bytes.
-            const secret_key = 'PNS2AREA';
-            const secret_iv = 'SyS4School';
 
-            const keyHash = CryptoJS.SHA256(secret_key).toString(CryptoJS.enc.Hex);
-            const ivHash = CryptoJS.SHA256(secret_iv).toString(CryptoJS.enc.Hex);
+            // ลองทั้ง JS format (single base64) และ PHP format (double base64)
+            const encryptedJS = encryptLegacyPassword(password);
+            const encryptedPHP = encryptLegacyPasswordPHP(password);
 
-            // Use CryptoJS Utf8 parse to treat the hex string slice as the key bytes
-            const key = CryptoJS.enc.Utf8.parse(keyHash.substring(0, 32));
-            const iv = CryptoJS.enc.Utf8.parse(ivHash.substring(0, 16));
-
-            const encryptedPass = CryptoJS.AES.encrypt(password, key, {
-                iv: iv,
-                mode: CryptoJS.mode.CBC,
-                padding: CryptoJS.pad.Pkcs7
-            }).toString();
-
-
-            // 2. Select Table based on Level
-            // Note: Supabase table names preserve case, use exact names from database
-            let table = 'tbl_Users'; // Default for teachers etc. (U uppercase)
+            let table = 'tbl_Users';
             let userCol = 'people_id';
 
             if (level === 'admin' || level === 'root') {
-                table = 'tbl_user'; // Admin table (u lowercase)
+                table = 'tbl_user';
                 userCol = 'user';
             }
-
-            // 3. Query Supabase — ลองทั้ง JS format (single base64) และ PHP format (double base64)
-            const encryptedJS = encryptLegacyPassword(password);   // JS: single base64
-            const encryptedPHP = encryptLegacyPasswordPHP(password); // PHP: double base64
 
             console.log('🔍 Login Debug Info:');
             console.log('  - Table:', table, '| Column:', userCol, '| User:', email);
@@ -193,7 +172,8 @@ export const AuthProvider = ({ children }) => {
                 if (userCheck) {
                     console.log('👤 User exists but password mismatch');
                     console.log('  - Stored password:', userCheck.passwd);
-                    console.log('  - Tried password:', encryptedPass);
+                    console.log('  - Tried JS format:', encryptedJS);
+                    console.log('  - Tried PHP format:', encryptedPHP);
                 } else {
                     console.log('👤 User not found with username:', email);
                 }
