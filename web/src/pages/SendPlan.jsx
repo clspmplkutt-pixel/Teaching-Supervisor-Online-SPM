@@ -326,9 +326,9 @@ const SendPlan = () => {
     try {
       const planFilename = `${profile.people_id}_${getFileTimestamp()}.pdf`;
       const driveUrl = await uploadToDrive(file, { filename: planFilename });
-      const eduYear = config.EDUYEAR || new Date().getFullYear() + 543;
-      const eduTerm = config.EDUROUND || 1;
-      const budgetYear = config.BUDGET_YEAR || eduYear;
+      const eduYear = parseInt(config.EDUYEAR) || new Date().getFullYear() + 543;
+      const eduTerm = parseInt(config.EDUROUND) || 1;
+      const budgetYear = parseInt(config.BUDGET_YEAR) || eduYear;
       const teachDate = normalizeThaiDate(form.teach_date);
       const payload = {
         people_id: profile.people_id,
@@ -342,10 +342,10 @@ const SendPlan = () => {
         subject_name: form.subject_name,
         subject_content: form.subject_content,
         subject_name_plan: form.subject_name_plan,
-        teach_date: teachDate,
+        teach_date: teachDate || null,
         teach_timestart: form.teach_timestart,
         teach_timeend: form.teach_timeend,
-        teach_minute: form.teach_minute,
+        teach_minute: parseInt(form.teach_minute) || 0,
         learning_model: form.learning_model,
         competency: form.competency.join(','),
         ability21: form.ability21.join(','),
@@ -366,11 +366,6 @@ const SendPlan = () => {
         committee3: '',
         committee4: '',
         committee5: '',
-        date_scoring1: null,
-        date_scoring2: null,
-        date_scoring3: null,
-        date_scoring4: null,
-        date_scoring5: null,
       };
 
       const { error } = await supabase.from('tbl_sendplan').insert([payload]);

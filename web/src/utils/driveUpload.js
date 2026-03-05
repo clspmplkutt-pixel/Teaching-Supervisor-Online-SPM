@@ -34,7 +34,6 @@ export const uploadToDrive = async (file, options = {}) => {
   try {
     response = await fetch(uploadUrl, {
       method: 'POST',
-      // text/plain avoids CORS preflight (simple request) — required for GAS web apps
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload),
       redirect: 'follow',
@@ -43,7 +42,6 @@ export const uploadToDrive = async (file, options = {}) => {
     throw new Error(`เชื่อมต่อเซิร์ฟเวอร์อัปโหลดล้มเหลว: ${networkErr.message}`);
   }
 
-  // Read response body once as text, then try to parse as JSON
   let rawText = '';
   try {
     rawText = await response.text();
@@ -55,13 +53,8 @@ export const uploadToDrive = async (file, options = {}) => {
   try {
     result = JSON.parse(rawText);
   } catch {
-    // Google Apps Script sometimes returns HTML on error — surface useful info
-    console.error('[driveUpload] Non-JSON response from server:', rawText.slice(0, 500));
-    throw new Error(
-      'เซิร์ฟเวอร์อัปโหลดตอบกลับไม่ถูกรูปแบบ (ไม่ใช่ JSON)\n' +
-      'กรุณาตรวจสอบ Google Apps Script ว่า Deploy และ Authorize แล้ว\n' +
-      `รายละเอียด: ${rawText.slice(0, 200)}`
-    );
+    console.error('[driveUpload] Non-JSON response:', rawText.slice(0, 500));
+    throw new Error('เซิร์ฟเวอร์อัปโหลดตอบกลับไม่ถูกรูปแบบ กรุณาลองอีกครั้ง');
   }
 
   if (!response.ok) {
@@ -72,5 +65,5 @@ export const uploadToDrive = async (file, options = {}) => {
     return result.fileUrl || result.url || result.link || '';
   }
 
-  throw new Error(result?.message || 'อัปโหลดล้มเหลว (status ไม่ใช่ success)');
+  throw new Error(result?.message || 'อัปโหลดล้มเหลว');
 };
