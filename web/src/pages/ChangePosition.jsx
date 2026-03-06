@@ -2,17 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import Swal from 'sweetalert2';
 import LoadingSpinner from '../components/LoadingSpinner';
-import useSelect2 from '../hooks/useSelect2';
 
 const ChangePosition = () => {
     const [loading, setLoading] = useState(true);
-    const [users, setUsers] = useState([]);
-    const [teachers, setTeachers] = useState([]);
     const [lookups, setLookups] = useState({
         prefix: {},
         gender: {},
         personType: {}
     });
+    const [search, setSearch] = useState('');
+    const [searchLoading, setSearchLoading] = useState(false);
+    const [searchResults, setSearchResults] = useState([]);
     const [selectedUser, setSelectedUser] = useState(null);
     const [newPosition, setNewPosition] = useState('');
     const [newLevel, setNewLevel] = useState('');
@@ -28,8 +28,6 @@ const ChangePosition = () => {
         { value: 'districdirector', label: 'ผู้อำนวยการเขต/รอง ผอ. เขต' },
     ];
 
-    useSelect2([loading, users.length]);
-
     useEffect(() => {
         loadData();
     }, []);
@@ -37,11 +35,11 @@ const ChangePosition = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [prefixRes, genderRes, personTypeRes, usersRes] = await Promise.all([
+            // ไม่ต้องโหลด users ทั้งหมดแล้ว, ค้นหาแยกเอา
+            const [prefixRes, genderRes, personTypeRes] = await Promise.all([
                 supabase.from('tbl_system_prefix').select('prefix_id, prefix_name'),
                 supabase.from('tbl_system_gender').select('gender, gender_name'),
-                supabase.from('tbl_system_PersonType').select('persontype_id, persontype_name'),
-                supabase.from('tbl_Users').select('*').order('name', { ascending: true })
+                supabase.from('tbl_system_PersonType').select('persontype_id, persontype_name')
             ]);
 
             const prefixMap = {};
@@ -52,17 +50,36 @@ const ChangePosition = () => {
             personTypeRes.data?.forEach((pt) => { personTypeMap[pt.persontype_id] = pt.persontype_name; });
 
             setLookups({ prefix: prefixMap, gender: genderMap, personType: personTypeMap });
-            setUsers(usersRes.data || []);
-            setTeachers(
-                (usersRes.data || []).filter(
-                    (u) => u.persontype_id === '26' // Teacher
-                )
-            );
         } catch (err) {
             console.error('ChangePosition load error:', err);
             Swal.fire('Error', 'ไม่สามารถโหลดข้อมูลได้', 'error');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSearch = async (e) => {
+        e.preventDefault();
+        if (!search.trim()) return;
+
+        setSearchLoading(true);
+        setSearchResults([]);
+        setSelectedUser(null);
+
+        try {
+            const { data, error } = await supabase
+                .from('tbl_Users')
+                .select('*')
+                .or(`people_id.eq.${search.trim()},name.ilike.%${search.trim()}%,lastname.ilike.%${search.trim()}%`)
+                .order('name', { ascending: true })
+                .limit(30);
+
+            if (error) throw error;
+            setSearchResults(data || []);
+        } catch (err) {
+            Swal.fire('Error', err.message, 'error');
+        } finally {
+            setSearchLoading(false);
         }
     };
 
@@ -125,29 +142,69 @@ const ChangePosition = () => {
 
                         <form onSubmit={handleChangePosition}>
                             <div className="row">
-                                <div className="col-md-6">
-                                    <div className="form-group">
-                                        <label>
-                                            เลือกผู้ใช้ <span className="text-danger">*</span>
-                                        </label>
-                                        <select
-                                            className="form-control select2bs4"
-                                            value={selectedUser?.id || ''}
-                                            onChange={(e) => {
-                                                const user = users.find((u) => u.id === parseInt(e.target.value));
-                                                setSelectedUser(user);
-                                            }}
-                                            required
-                                        >
-                                            <option value="">-- เลือกผู้ใช้ --</option>
-                                            {users.map((user) => (
-                                                <option key={user.id} value={user.id}>
-                                                    {lookups.prefix[user.prefix] || ''} {user.name} {user.lastname}
-                                                    {' '}({lookups.personType[user.persontype_id] || 'ไม่ระบุ'})
-                                                </option>
-                                            ))}
-                                        </select>
+                                <div className="col-12 mb-3">
+                                    <label>
+                                        ค้นหาและเลือกผู้ใช้ที่ต้องการเปลี่ยนตำแหน่ง <span className="text-danger">*</span>
+                                    </label>
+                                    <div className="input-group">
+                                        <input
+                                            type="text"
+                                            className="form-control"
+                                            placeholder="ค้นหาด้วย เลขบัตรประชาชน / ชื่อ / นามสกุล"
+                                            value={search}
+                                            onChange={(e) => setSearch(e.target.value)}
+                                        />
+                                        <div className="input-group-append">
+                                            <button type="button" className="btn btn-primary" onClick={handleSearch} disabled={searchLoading}>
+                                                <i className="fas fa-search"></i> ค้นหา
+                                            </button>
+                                        </div>
                                     </div>
+
+                                    {searchLoading && (
+                                        <div className="text-center mt-3">
+                                            <div className="spinner-border spinner-border-sm text-primary" role="status"></div> กำลังค้นหา...
+                                        </div>
+                                    )}
+
+                                    {!searchLoading && searchResults.length > 0 && (
+                                        <div className="table-responsive mt-3 border rounded">
+                                            <table className="table table-sm table-hover table-striped mb-0">
+                                                <thead className="thead-light">
+                                                    <tr>
+                                                        <th>เลขบัตร</th>
+                                                        <th>ชื่อ - นามสกุล</th>
+                                                        <th>ตำแหน่งปัจจุบัน</th>
+                                                        <th className="text-center">เลือก</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {searchResults.map((u) => (
+                                                        <tr key={u.id} className={selectedUser?.id === u.id ? 'table-warning' : ''}>
+                                                            <td>{u.people_id}</td>
+                                                            <td>{lookups.prefix[u.prefix] || ''}{u.name} {u.lastname}</td>
+                                                            <td><span className="badge badge-info">{lookups.personType[u.persontype_id] || 'ไม่ระบุ'}</span></td>
+                                                            <td className="text-center">
+                                                                <button
+                                                                    type="button"
+                                                                    className={`btn btn-sm ${selectedUser?.id === u.id ? 'btn-warning' : 'btn-outline-warning'}`}
+                                                                    onClick={() => setSelectedUser(u)}
+                                                                >
+                                                                    <i className="fa-solid fa-check"></i> เลือก
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+
+                                    {!searchLoading && search && searchResults.length === 0 && (
+                                        <div className="alert alert-warning mt-3 py-2">
+                                            ไม่พบข้อมูลที่ตรงกับ <strong>"{search}"</strong>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="col-md-6">
@@ -232,70 +289,6 @@ const ChangePosition = () => {
                             </div>
                         </form>
 
-                        <hr className="my-4" />
-
-                        <h5 className="mb-3">
-                            <i className="fa-solid fa-users mr-2"></i>
-                            รายชื่อครูในระบบ (ตำแหน่งปัจจุบัน: ครู)
-                        </h5>
-                        <div className="table-responsive">
-                            <table className="table table-bordered table-striped table-hover">
-                                <thead>
-                                    <tr>
-                                        <th className="text-center" style={{ width: '50px' }}>
-                                            #
-                                        </th>
-                                        <th>ชื่อ-นามสกุล</th>
-                                        <th>เลขประจำตัวประชาชน</th>
-                                        <th className="text-center">ตำแหน่ง</th>
-                                        <th className="text-center">สถานะ</th>
-                                        <th className="text-center" style={{ width: '120px' }}>
-                                            จัดการ
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {teachers.length === 0 ? (
-                                        <tr>
-                                            <td colSpan="6" className="text-center text-muted">
-                                                ไม่พบข้อมูลครูในระบบ
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        teachers.map((user, index) => (
-                                            <tr key={user.id}>
-                                                <td className="text-center">{index + 1}</td>
-                                                <td>
-                                                    {lookups.prefix[user.prefix] || ''} {user.name} {user.lastname}
-                                                </td>
-                                                <td>{user.people_id}</td>
-                                                <td className="text-center">
-                                                    <span className="badge badge-info">
-                                                        {lookups.personType[user.persontype_id] || 'ไม่ระบุ'}
-                                                    </span>
-                                                </td>
-                                                <td className="text-center">
-                                                    {user.register_isConfirm === '1' ? (
-                                                        <span className="badge badge-success">อนุมัติแล้ว</span>
-                                                    ) : (
-                                                        <span className="badge badge-warning">รอการอนุมัติ</span>
-                                                    )}
-                                                </td>
-                                                <td className="text-center">
-                                                    <button
-                                                        className="btn btn-sm btn-primary"
-                                                        onClick={() => setSelectedUser(user)}
-                                                        title="เลือกเพื่อเปลี่ยนตำแหน่ง"
-                                                    >
-                                                        <i className="fa-solid fa-arrow-up-right-from-square"></i> เลือก
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
                     </div>
                 </div>
             </div>
