@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import Swal from 'sweetalert2';
 import LoadingSpinner from '../components/LoadingSpinner';
+import useSelect2 from '../hooks/useSelect2';
 
 const ChangePosition = () => {
     const [loading, setLoading] = useState(true);
@@ -26,6 +27,8 @@ const ChangePosition = () => {
         { value: 'supervisor', label: 'ศึกษานิเทศก์' },
         { value: 'districdirector', label: 'ผู้อำนวยการเขต/รอง ผอ. เขต' },
     ];
+
+    useSelect2([loading, users.length]);
 
     useEffect(() => {
         loadData();
@@ -128,7 +131,7 @@ const ChangePosition = () => {
                                             เลือกผู้ใช้ <span className="text-danger">*</span>
                                         </label>
                                         <select
-                                            className="form-control"
+                                            className="form-control select2bs4"
                                             value={selectedUser?.id || ''}
                                             onChange={(e) => {
                                                 const user = users.find((u) => u.id === parseInt(e.target.value));
