@@ -41,6 +41,7 @@ const ViewScoring = () => {
     ability21: {},
     desirable: {},
     school: {},
+    subjectType: {},
   });
 
   useEffect(() => {
@@ -72,7 +73,7 @@ const ViewScoring = () => {
 
         const academicId = teacherData?.academic_id || '';
 
-        const [policy1Res, policy2Res, scoreRes, academicRes, teachSubjectRes, gradeRes, competencyRes, abilityRes, desirableRes, schoolRes] = await Promise.all([
+        const [policy1Res, policy2Res, scoreRes, academicRes, teachSubjectRes, gradeRes, competencyRes, abilityRes, desirableRes, schoolRes, subjectTypeRes] = await Promise.all([
           supabase.from('tbl_policy_number').select('*').eq('academic', academicId).eq('side', '1').order('auto_id', { ascending: true }),
           supabase.from('tbl_policy_number').select('*').eq('academic', academicId).eq('side', '2').order('auto_id', { ascending: true }),
           supabase.from('tbl_sendplan_score').select('planid, policy_id, score_weight, supervision').eq('planid', String(planid)),
@@ -83,6 +84,7 @@ const ViewScoring = () => {
           supabase.from('tbl_ability21').select('ability21_id, ability21_name_th'),
           supabase.from('tbl_system_Desirable').select('desirable_id, desirable_name'),
           supabase.from('tbl_school').select('school_id, school_name'),
+          supabase.from('tbl_system_SubjectType').select('subjecttype_id, subjecttype_name'),
         ]);
 
         const academicMap = {};
@@ -99,6 +101,8 @@ const ViewScoring = () => {
         desirableRes.data?.forEach((d) => { desirableMap[d.desirable_id] = d.desirable_name; });
         const schoolMap = {};
         schoolRes.data?.forEach((s) => { schoolMap[s.school_id] = s.school_name; });
+        const subjectTypeMap = {};
+        subjectTypeRes.data?.forEach((t) => { subjectTypeMap[t.subjecttype_id] = t.subjecttype_name; });
 
         if (mounted) {
           setPlan(planData);
@@ -114,6 +118,7 @@ const ViewScoring = () => {
             ability21: abilityMap,
             desirable: desirableMap,
             school: schoolMap,
+            subjectType: subjectTypeMap,
           });
         }
       } catch (err) {
@@ -227,7 +232,7 @@ const ViewScoring = () => {
                     </tr>
                     <tr>
                       <td colSpan={3 + committeeList.length}>
-                        กลุ่มสาระการเรียนรู้/รายวิชาที่ขอรับการประเมิน : {lookups.teachSubject[plan.teach_subject_id] || ''} &nbsp;&nbsp;&nbsp;&nbsp;ระดับชั้น : {lookups.gradeLevel[plan.grade_level_id] || ''}<br />
+                        กลุ่มสาระการเรียนรู้/รายวิชาที่ขอรับการประเมิน : {lookups.teachSubject[plan.teach_subject_id] || ''} &nbsp;&nbsp;&nbsp;&nbsp;ระดับชั้น : {lookups.gradeLevel[plan.grade_level_id] || ''}&nbsp;&nbsp;&nbsp;&nbsp;ประเภทวิชา : <strong>{lookups.subjectType[plan.subject_type] || plan.subject_type || 'พื้นฐาน'}</strong><br />
                         ชื่อวิชา : {plan.subject_name} ({plan.subject_code}) &nbsp;&nbsp;&nbsp;&nbsp;ชื่อหน่วย : {plan.subject_name} &nbsp;&nbsp;&nbsp;&nbsp; ชื่อแผนการสอน : {plan.subject_content}<br />
                         ปีการศึกษา : {plan.edu_year} &nbsp;&nbsp;&nbsp;&nbsp;ภาคเรียนที่ : {plan.edu_term} &nbsp;&nbsp;&nbsp;&nbsp;วันที่ : {plan.teach_date} [เวลา {plan.teach_timestart} - {plan.teach_timeend} ({plan.teach_minute} นาที)]<br />
                         วิธีการสอน : {plan.learning_model} &nbsp;&nbsp;&nbsp;&nbsp;<br />

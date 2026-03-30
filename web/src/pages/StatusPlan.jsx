@@ -28,6 +28,7 @@ const StatusPlan = () => {
     gradeLevel: {},
     status: {},
     prefix: {},
+    subjectType: {},
   });
   const [scoreMap, setScoreMap] = useState({});
 
@@ -41,11 +42,12 @@ const StatusPlan = () => {
       }
       setLoading(true);
       try {
-        const [subjectRes, gradeRes, statusRes, prefixRes] = await Promise.all([
+        const [subjectRes, gradeRes, statusRes, prefixRes, subjectTypeRes] = await Promise.all([
           supabase.from('tbl_system_Teach_Subject').select('teach_subject_id, teach_subject, teach_subject_1'),
           supabase.from('tbl_system_GradeLevel').select('grade_level_id, grade_level_name'),
           supabase.from('tbl_sendplan_status').select('id, status_name'),
           supabase.from('tbl_system_prefix').select('prefix_id, prefix'),
+          supabase.from('tbl_system_SubjectType').select('subjecttype_id, subjecttype_name'),
         ]);
 
         const teachSubjectMap = {};
@@ -63,6 +65,9 @@ const StatusPlan = () => {
 
         const prefixMap = {};
         prefixRes.data?.forEach((p) => { prefixMap[p.prefix_id] = p.prefix; });
+
+        const subjectTypeMap = {};
+        subjectTypeRes.data?.forEach((t) => { subjectTypeMap[t.subjecttype_id] = t.subjecttype_name; });
 
         let plans = [];
         if (roleId === 'directorschool') {
@@ -99,6 +104,7 @@ const StatusPlan = () => {
             gradeLevel: gradeMap,
             status: statusMap,
             prefix: prefixMap,
+            subjectType: subjectTypeMap,
           });
           setRows(plans);
         }
@@ -146,6 +152,7 @@ const StatusPlan = () => {
         <td className="text-center">{row.planid}</td>
         <td>{lookups.teachSubjectShort[row.teach_subject_id] || ''}</td>
         <td>{lookups.gradeLevel[row.grade_level_id] || ''}</td>
+        <td><span className="badge badge-secondary">{lookups.subjectType[row.subject_type] || row.subject_type || 'พื้นฐาน'}</span></td>
         <td>{row.subject_content}</td>
         <td>{row.subject_name_plan}</td>
         <td>{row.edu_year}/{row.edu_term}<br />(ปีงบ {row.budget_year})</td>
@@ -190,6 +197,7 @@ const StatusPlan = () => {
         <td className="text-center">{row.teacher_name || ''}</td>
         <td>{lookups.teachSubjectShort[row.teach_subject_id] || ''}</td>
         <td>{lookups.gradeLevel[row.grade_level_id] || ''}</td>
+        <td><span className="badge badge-secondary">{lookups.subjectType[row.subject_type] || row.subject_type || 'พื้นฐาน'}</span></td>
         <td>{row.subject_name} ({row.subject_code})</td>
         <td>{row.subject_content}</td>
         <td>{row.subject_name_plan}</td>
@@ -240,6 +248,7 @@ const StatusPlan = () => {
                       <th>ครู</th>
                       <th>กลุ่มสาระ (ย่อ)</th>
                       <th>ระดับชั้น</th>
+                      <th>ประเภทวิชา</th>
                       <th>ชื่อวิชา (รหัสวิชา)</th>
                       <th>หน่วยการเรียนรู้</th>
                       <th>ชื่อแผนการสอน</th>
@@ -253,6 +262,7 @@ const StatusPlan = () => {
                       <th>ที่</th>
                       <th>กลุ่มสาระ (ย่อ)</th>
                       <th>ระดับชั้น</th>
+                      <th>ประเภทวิชา</th>
                       <th>หน่วยการเรียนรู้</th>
                       <th>ชื่อแผนการสอน</th>
                       <th>ปีการศึกษา/ภาคเรียน (ปีงบประมาณ)</th>

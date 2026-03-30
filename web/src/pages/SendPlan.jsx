@@ -54,6 +54,7 @@ const SendPlan = () => {
     ability21: [],
     desirable: [],
     learningModel: [],
+    subjectTypes: [],
   });
 
   const [indicators, setIndicators] = useState({ mid: [], final: [] });
@@ -69,6 +70,7 @@ const SendPlan = () => {
   const [form, setForm] = useState({
     teach_subject_id: '',
     grade_level_id: '',
+    subject_type: '01',
     subject_code: '',
     subject_name: '',
     subject_content: '',
@@ -96,13 +98,17 @@ const SendPlan = () => {
     indicators_final: [],
   });
 
+  // ประเภทวิชาที่ไม่ต้องมีตัวชี้วัดระหว่างทาง/ปลายทาง
+  const SUBJECT_TYPES_NO_INDICATORS = ['02', '08', '09'];
+  const needsIndicators = !SUBJECT_TYPES_NO_INDICATORS.includes(form.subject_type);
+
   useEffect(() => {
     let mounted = true;
 
     const loadData = async () => {
       setLoading(true);
       try {
-        const [configRes, subjectRes, gradeRes, competencyRes, abilityRes, desirableRes, modelRes, prefixRes, positionRes, academicRes, schoolRes, teachSubjectRes] = await Promise.all([
+        const [configRes, subjectRes, gradeRes, competencyRes, abilityRes, desirableRes, modelRes, prefixRes, positionRes, academicRes, schoolRes, teachSubjectRes, subjectTypeRes] = await Promise.all([
           supabase.from('tbl_config').select('config_name, config_value'),
           supabase.from('tbl_system_Teach_Subject').select('teach_subject_id, teach_subject').eq('teach_subject_status', '1').order('teach_subject_id', { ascending: true }),
           supabase.from('tbl_system_GradeLevel').select('grade_level_id, grade_level_name').eq('grade_level_status', '1').neq('grade_level_id', '499').order('grade_level_id', { ascending: true }),
@@ -115,6 +121,7 @@ const SendPlan = () => {
           supabase.from('tbl_system_Academic_Standing').select('academic_id, academic_standing'),
           supabase.from('tbl_school').select('school_id, school_name'),
           supabase.from('tbl_system_Teach_Subject').select('teach_subject_id, teach_subject'),
+          supabase.from('tbl_system_SubjectType').select('subjecttype_id, subjecttype_name').eq('subjecttype_status', '1').order('id', { ascending: true }),
         ]);
 
         const configMap = {};
@@ -140,6 +147,7 @@ const SendPlan = () => {
             ability21: abilityRes.data || [],
             desirable: desirableRes.data || [],
             learningModel: modelRes.data || [],
+            subjectTypes: subjectTypeRes.data || [],
           });
           setLookups({
             prefix: prefixMap,
@@ -359,6 +367,7 @@ const SendPlan = () => {
         school_code: profile.school,
         teach_subject_id: form.teach_subject_id,
         grade_level_id: form.grade_level_id,
+        subject_type: form.subject_type,
         edu_year: eduYear,
         edu_term: eduTerm,
         budget_year: budgetYear,
@@ -378,8 +387,8 @@ const SendPlan = () => {
         learning_content: form.learning_content,
         learning_activities: form.learning_activities,
         instructional_media: form.instructional_media,
-        indicators_mid: form.indicators_mid.join(','),
-        indicators_final: form.indicators_final.join(','),
+        indicators_mid: needsIndicators ? form.indicators_mid.join(',') : '',
+        indicators_final: needsIndicators ? form.indicators_final.join(',') : '',
         measurement_how: form.Measurement_how,
         measurement_tools: form.Measurement_tools,
         measurement_scoring: form.Measurement_scoring,
@@ -459,11 +468,11 @@ const SendPlan = () => {
 
             <div className="card card-teal">
               <div className="card-header">
-                <h4 className="card-title">กลุ่มสาระ/ระดับชั้น</h4>
+                <h4 className="card-title">กลุ่มสาระ/ระดับชั้น/ประเภทวิชา</h4>
               </div>
               <div className="card-body">
                 <div className="row">
-                  <div className="col-lg-6">
+                  <div className="col-lg-4">
                     <div className="mb-3 mt-3">
                       <label htmlFor="teach_subject_id">กลุ่มสาระ :</label>
                       <select name="teach_subject_id" id="teach_subject_id" className="select2bs4" value={form.teach_subject_id} onChange={handleChange} style={{ width: '100%' }} required>
@@ -474,7 +483,7 @@ const SendPlan = () => {
                       </select>
                     </div>
                   </div>
-                  <div className="col-lg-6">
+                  <div className="col-lg-4">
                     <div className="mb-3 mt-3">
                       <label htmlFor="grade_level_id">ระดับชั้นที่ทำการสอน :</label>
                       <select name="grade_level_id" id="grade_level_id" className="select2bs4" value={form.grade_level_id} onChange={handleChange} style={{ width: '100%' }} required>
@@ -483,6 +492,21 @@ const SendPlan = () => {
                           <option key={row.grade_level_id} value={row.grade_level_id}>{row.grade_level_name}</option>
                         ))}
                       </select>
+                    </div>
+                  </div>
+                  <div className="col-lg-4">
+                    <div className="mb-3 mt-3">
+                      <label htmlFor="subject_type">ประเภทวิชา :</label>
+                      <select name="subject_type" id="subject_type" className="form-control" value={form.subject_type} onChange={handleChange} required>
+                        {options.subjectTypes.map((row) => (
+                          <option key={row.subjecttype_id} value={row.subjecttype_id}>{row.subjecttype_name}</option>
+                        ))}
+                      </select>
+                      {!needsIndicators && (
+                        <small className="text-info">
+                          <i className="fa-solid fa-info-circle"></i> ประเภทนี้ไม่จำเป็นต้องระบุตัวชี้วัดระหว่างทาง/ปลายทาง
+                        </small>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -700,7 +724,7 @@ const SendPlan = () => {
               </div>
             </div>
 
-            {teachSubjectId && gradeLevelId && (
+            {teachSubjectId && gradeLevelId && needsIndicators && (
               <div className="card card-pink">
                 <div className="card-header">
                   <h4 className="card-title">ตัวชี้วัดระหว่างทาง</h4>
@@ -729,7 +753,7 @@ const SendPlan = () => {
               </div>
             )}
 
-            {teachSubjectId && gradeLevelId && (
+            {teachSubjectId && gradeLevelId && needsIndicators && (
               <div className="card card-purple">
                 <div className="card-header">
                   <h4 className="card-title">ตัวชี้วัดปลายทาง</h4>
@@ -753,6 +777,21 @@ const SendPlan = () => {
                         </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!needsIndicators && (
+              <div className="card card-warning">
+                <div className="card-header">
+                  <h4 className="card-title"><i className="fa-solid fa-circle-info"></i> หมายเหตุ</h4>
+                </div>
+                <div className="card-body">
+                  <div className="alert alert-info mb-0">
+                    <i className="fa-solid fa-info-circle"></i>&nbsp;
+                    รายวิชาประเภท <strong>{options.subjectTypes.find(t => t.subjecttype_id === form.subject_type)?.subjecttype_name || form.subject_type}</strong> ไม่จำเป็นต้องระบุตัวชี้วัดระหว่างทาง และตัวชี้วัดปลายทาง
+                    <br />สามารถระบุ <strong>ผลการเรียนรู้</strong> ได้ในช่อง "มาตรฐานการเรียนรู้ ตัวชี้วัด/ผลการเรียนรู้" ด้านบนแทน
                   </div>
                 </div>
               </div>
