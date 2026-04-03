@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
+import { decryptLegacyPassword } from '../utils/legacyCrypto';
 
 const Login = () => {
     const [loginData, setLoginData] = useState({
@@ -11,6 +13,73 @@ const Login = () => {
     const [error, setError] = useState('');
     const { login } = useAuth();
     const navigate = useNavigate();
+
+    // Forgot Password State
+    const [showForgotModal, setShowForgotModal] = useState(false);
+    const [forgotId, setForgotId] = useState('');
+    const [forgotInfo, setForgotInfo] = useState(null);
+    const [forgotError, setForgotError] = useState('');
+    const [forgotLoading, setForgotLoading] = useState(false);
+
+    const handleForgotSubmit = async (e) => {
+        e.preventDefault();
+        setForgotError('');
+        setForgotInfo(null);
+        setForgotLoading(true);
+
+        try {
+            const { data: user, error } = await supabase
+                .from('tbl_Users')
+                .select('*')
+                .eq('people_id', forgotId)
+                .maybeSingle();
+
+            if (error) throw error;
+
+            if (!user) {
+                setForgotError('ไม่พบข้อมูลผู้ใช้งานนี้ในระบบ หรือพิมพ์เลขประจำตัวผิด');
+            } else {
+                let schoolName = 'ไม่ระบุ';
+                if (user.school) {
+                    const { data: sData } = await supabase.from('tbl_school').select('school_name').eq('school_id', user.school).maybeSingle();
+                    if (sData) schoolName = sData.school_name;
+                }
+                
+                let positionName = 'ไม่ระบุ';
+                if (user.position_id) {
+                    const { data: pData } = await supabase.from('tbl_system_PersonPositionType').select('position_name').eq('position_id', user.position_id).maybeSingle();
+                    if (pData) positionName = pData.position_name;
+                }
+
+                let prefixName = '';
+                if (user.prefix) {
+                    const { data: preData } = await supabase.from('tbl_system_prefix').select('prefix').eq('prefix_id', user.prefix).maybeSingle();
+                    if (preData) prefixName = preData.prefix;
+                }
+
+                const decryptedPass = decryptLegacyPassword(user.passwd);
+
+                setForgotInfo({
+                    name: `${prefixName}${user.name} ${user.lastname}`,
+                    position: positionName,
+                    school: schoolName,
+                    password: decryptedPass || 'ไม่สามารถถอดรหัสได้ (กรุณาติดต่อแอดมินเพื่อรีเซ็ต)'
+                });
+            }
+        } catch (err) {
+            console.error(err);
+            setForgotError('เกิดข้อผิดพลาดในการดึงข้อมูลจากฐานข้อมูล');
+        } finally {
+            setForgotLoading(false);
+        }
+    };
+
+    const closeForgotModal = () => {
+        setShowForgotModal(false);
+        setForgotId('');
+        setForgotInfo(null);
+        setForgotError('');
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -108,6 +177,14 @@ const Login = () => {
                                     <a href="/register" className="btn btn-danger btn-block" style={{ marginTop: '5px' }}>
                                         <i className="fas fa-user-plus"></i> บุคลากรลงทะเบียน
                                     </a>
+                                    <button 
+                                        type="button" 
+                                        className="btn btn-warning btn-block" 
+                                        style={{ marginTop: '5px' }}
+                                        onClick={() => setShowForgotModal(true)}
+                                    >
+                                        <i className="fas fa-question-circle"></i> ลืมรหัสผ่าน?
+                                    </button>
                                 </div>
                             </div>
                         </form>
@@ -160,6 +237,65 @@ const Login = () => {
                     </p>
                 </div>
             </div>
+
+            {/* Forgot Password Modal */}
+            {showForgotModal && (
+                <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+                    <div className="modal-dialog modal-dialog-centered">
+                        <div className="modal-content">
+                            <div className="modal-header bg-warning">
+                                <h5 className="modal-title font-weight-bold"><i className="fas fa-key"></i> ค้นหารหัสผ่านของคุณ</h5>
+                                <button type="button" className="close" onClick={closeForgotModal}>
+                                    <span>&times;</span>
+                                </button>
+                            </div>
+                            <div className="modal-body">
+                                {!forgotInfo ? (
+                                    <form onSubmit={handleForgotSubmit}>
+                                        <div className="form-group mb-3">
+                                            <label>กรอกเลขประจำตัวประชาชน 13 หลัก</label>
+                                            <input 
+                                                type="text" 
+                                                className="form-control form-control-lg" 
+                                                value={forgotId} 
+                                                onChange={(e) => setForgotId(e.target.value.replace(/[^0-9]/g, ''))}
+                                                maxLength="13"
+                                                required 
+                                                autoFocus
+                                                placeholder="เลข 13 หลัก"
+                                            />
+                                        </div>
+                                        {forgotError && <div className="alert alert-danger"><i className="fas fa-exclamation-triangle"></i> {forgotError}</div>}
+                                        <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={forgotLoading || forgotId.length !== 13}>
+                                            {forgotLoading ? 'กำลังค้นหา...' : <span><i className="fas fa-search"></i> ค้นหาข้อมูล</span>}
+                                        </button>
+                                    </form>
+                                ) : (
+                                    <div className="alert alert-success shadow-sm">
+                                        <h5 className="alert-heading border-bottom pb-2 mb-3 text-success"><i className="fas fa-check-circle"></i> พบข้อมูลของคุณ</h5>
+                                        <p className="mb-2"><strong>ชื่อ-สกุล:</strong> {forgotInfo.name}</p>
+                                        <p className="mb-2"><strong>ตำแหน่ง:</strong> {forgotInfo.position}</p>
+                                        <p className="mb-2"><strong>โรงเรียน:</strong> {forgotInfo.school}</p>
+                                        <hr />
+                                        <div className="text-center mt-3">
+                                            <span className="text-muted small">รหัสผ่านของคุณคือ</span>
+                                            <h3 className="text-danger mb-0 mt-1 font-weight-bold" style={{ letterSpacing: '2px' }}>{forgotInfo.password}</h3>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="modal-footer bg-light">
+                                {forgotInfo && (
+                                    <button type="button" className="btn btn-success" onClick={() => { closeForgotModal(); setLoginData({...loginData, user: forgotId}); }}>
+                                        นำไปเข้าสู่ระบบ
+                                    </button>
+                                )}
+                                <button type="button" className="btn btn-secondary" onClick={closeForgotModal}>ปิดหน้าต่าง</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

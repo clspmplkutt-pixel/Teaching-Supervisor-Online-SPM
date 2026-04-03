@@ -8,6 +8,7 @@ const Register = () => {
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
+    const [generatedPassword, setGeneratedPassword] = useState('');
 
     // Step 1 Data
     const [peopleId, setPeopleId] = useState('');
@@ -170,8 +171,12 @@ const Register = () => {
             // Assuming input is YYYY-MM-DD (standard date input) -> convert to DDMMYYYY
             // Note: PHP uses Thai date input, so we might need to adjust logic if we use standard date input.
             // Let's assume standard YYYY-MM-DD input for now.
+            // Encrypt Password (DDMMYYYY from Birthday)
+            // Fix: Check if input year is already in Buddhist Era
             const dateParts = formData.birthday.split('-');
-            const pwdRaw = `${dateParts[2]}${dateParts[1]}${parseInt(dateParts[0]) + 543}`; // DDMMYYYY (Thai Year)
+            let year = parseInt(dateParts[0]);
+            const thaiYear = year < 2400 ? year + 543 : year;
+            const pwdRaw = `${dateParts[2]}${dateParts[1]}${thaiYear}`; // DDMMYYYY (Thai Year)
 
             // Encryption Logic (Same as Login)
             const secret_key = 'PNS2AREA';
@@ -215,8 +220,8 @@ const Register = () => {
 
             if (error) throw error;
 
-            alert('สมัครสมาชิกสำเร็จ! กรุณารอผู้ดูแลระบบอนุมัติ');
-            navigate('/login');
+            setGeneratedPassword(pwdRaw);
+            setStep(3);
 
         } catch (err) {
             console.error("Registration Error:", err);
@@ -257,7 +262,7 @@ const Register = () => {
                                             placeholder="กรอกเลข 13 หลัก"
                                         />
                                     </div>
-                                ) : (
+                                ) : step === 2 ? (
                                     /* STEP 2: Full Form */
                                     <form onSubmit={handleSubmit}>
                                         <div className="mb-3">
@@ -402,6 +407,23 @@ const Register = () => {
                                             </div>
                                         </div>
                                     </form>
+                                ) : (
+                                    /* STEP 3: Summary */
+                                    <div className="text-center p-4">
+                                        <div className="mb-4">
+                                            <i className="fas fa-check-circle text-success" style={{ fontSize: '4rem' }}></i>
+                                        </div>
+                                        <h4 className="text-success mb-3">สมัครสมาชิกสำเร็จ!</h4>
+                                        <div className="alert alert-info">
+                                            <p className="mb-2">กรุณาบันทึกข้อมูลการเข้าสู่ระบบของท่านไว้</p>
+                                            <h5 className="mb-1"><strong>ชื่อผู้ใช้ (Username):</strong> {peopleId}</h5>
+                                            <h5 className="mb-0"><strong>รหัสผ่าน (Password):</strong> {generatedPassword}</h5>
+                                        </div>
+                                        <p className="text-muted mt-3 mb-4">สถานะ: รอผู้ดูแลระบบอนุมัติการใช้งาน (ไม่เกิน 1 วันทำการ)</p>
+                                        <Link to="/login" className="btn btn-primary btn-lg px-5">
+                                            <i className="fas fa-sign-in-alt"></i> กลับไปหน้าเข้าสู่ระบบ
+                                        </Link>
+                                    </div>
                                 )}
                             </div>
                             {step === 1 && (
