@@ -30,7 +30,7 @@ const isSubmenuPage = (moduleName) => {
 };
 
 const SidebarRole = () => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const location = useLocation();
   const roleId = getRoleId(user);
 
@@ -75,6 +75,13 @@ const SidebarRole = () => {
               </Link>
             </li>
           ))}
+
+          <li className="nav-item mt-3">
+            <a href="#" onClick={(e) => { e.preventDefault(); logout(); }} className="nav-link">
+              <i className="nav-icon fa-solid fa-arrow-right-from-bracket text-danger"></i>
+              <p>ออกจากระบบ</p>
+            </a>
+          </li>
         </ul>
       </nav>
     </div>

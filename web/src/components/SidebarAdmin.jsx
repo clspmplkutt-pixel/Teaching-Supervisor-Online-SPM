@@ -1,11 +1,34 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
+import { useAuth } from '../contexts/AuthContext';
 
 const SidebarAdmin = () => {
+    const { logout } = useAuth();
     const location = useLocation();
-    const [pendingUsers, _setPendingUsers] = React.useState(0);
-    const [errorUsers, _setErrorUsers] = React.useState(0);
-    const [duplicateUsers, _setDuplicateUsers] = React.useState(0);
+    const [pendingUsers, setPendingUsers] = useState(0);
+    const [errorUsers, _setErrorUsers] = useState(0);
+    const [duplicateUsers, _setDuplicateUsers] = useState(0);
+
+    useEffect(() => {
+        let mounted = true;
+        const fetchPendingUsers = async () => {
+            try {
+                const { count } = await supabase
+                    .from('tbl_Users')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('level', 'teacher')
+                    .eq('register_isConfirm', '0');
+                if (mounted && count !== null) {
+                    setPendingUsers(count);
+                }
+            } catch (err) {
+                console.error('Error fetching pending users count:', err);
+            }
+        };
+        fetchPendingUsers();
+        return () => { mounted = false; };
+    }, []);
 
     const isActive = (path) => {
         return location.pathname === path ? 'active' : '';
@@ -224,12 +247,12 @@ const SidebarAdmin = () => {
                     <li className="nav-item">
                         <Link to="/import-dmc" className={`nav-link ${isActive('/import-dmc')}`}>
                             <i className="nav-icon fa-solid fa-file-import text-success"></i>
-                            <p>Import From DMC</p>
+                            <p>นำเข้าข้อมูล DMC</p>
                         </Link>
                     </li>
 
                     <li className="nav-item">
-                        <a href="#" onClick={(e) => { e.preventDefault(); window.location.href = '/logout'; }} className="nav-link">
+                        <a href="#" onClick={(e) => { e.preventDefault(); logout(); }} className="nav-link">
                             <i className="nav-icon fa-solid fa-arrow-right-from-bracket text-danger"></i>
                             <p>ออกจากระบบ</p>
                         </a>

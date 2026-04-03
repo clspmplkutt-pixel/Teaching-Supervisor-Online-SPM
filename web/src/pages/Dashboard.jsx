@@ -1,15 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
+import { useUserProfile } from '../hooks/useUserProfile';
 import LoadingSpinner from '../components/LoadingSpinner';
+import EmptyState from '../components/EmptyState';
 
 const Dashboard = () => {
     const { user } = useAuth();
+    const { profile, loading: profileLoading } = useUserProfile();
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [khetStats, setKhetStats] = useState([]);
     const [sizeStats, setSizeStats] = useState([]);
     const [studentData, setStudentData] = useState([]);
     const [configData, setConfigData] = useState({});
+    const [planStats, setPlanStats] = useState(null);
     const [lookupData, setLookupData] = useState({
         khet: {},
         province: {},
@@ -104,23 +109,59 @@ const Dashboard = () => {
                 setStudentData(dmcData || []);
             }
 
+            // 5. Load Plan Stats (For Teachers / Authors / Directors)
+            const role = user?.level_id || user?.user_metadata?.role || user?.role || 'teacher';
+            if (role === 'teacher' && profile?.people_id) {
+                const { data: plans } = await supabase
+                    .from('tbl_sendplan')
+                    .select('plan_status')
+                    .eq('people_id', profile.people_id);
+                if (plans) {
+                    setPlanStats({
+                        type: 'teacher',
+                        total: plans.length,
+                        pending: plans.filter(p => String(p.plan_status) === '1').length,
+                        passed: plans.filter(p => String(p.plan_status) === '2').length,
+                        rejected: plans.filter(p => String(p.plan_status) === '3').length,
+                    });
+                }
+            } else if (role === 'directorschool' && profile?.school) {
+                const { count } = await supabase
+                    .from('tbl_sendplan')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('school_code', profile.school)
+                    .eq('plan_status', '1');
+                setPlanStats({ type: 'director', pending: count || 0 });
+            }
+
         } catch (error) {
             console.error('Dashboard data load error:', error);
+            setError(error.message);
         } finally {
             setLoading(false);
         }
-    }, [user]);
+    }, [user, profile]);
 
     useEffect(() => {
-        loadDashboardData();
-    }, [loadDashboardData]);
+        if (!profileLoading) {
+            loadDashboardData();
+        }
+    }, [loadDashboardData, profileLoading]);
 
-    if (loading) {
+    if (loading || profileLoading) {
         return (
             <LoadingSpinner
                 title="หน้าหลัก"
                 message="กำลังโหลดข้อมูลสถิติ กรุณารอสักครู่..."
             />
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="p-4">
+                <EmptyState title="ไม่สามารถแสดงข้อมูลได้" message={error} type="error" />
+            </div>
         );
     }
 
@@ -142,9 +183,78 @@ const Dashboard = () => {
             <section className="content">
                 <div className="container-fluid">
                     <div className="row">
+                        {/* Welcome Banner */}
+                        <div className="col-12 mb-3">
+                            <div className="alert alert-info alert-dismissible bg-info text-white border-0 shadow-sm">
+                                <button type="button" className="close text-white" data-dismiss="alert" aria-hidden="true">×</button>
+                                <h5><i className="icon fas fa-info"></i> ยินดีต้อนรับสู่ระบบ</h5>
+                                สวัสดีคุณ {profile?.name} {profile?.lastname} 
+                            </div>
+                        </div>
+
+                        {/* Info Boxes (Stats) */}
+                        {planStats && planStats.type === 'teacher' && (
+                            <div className="col-12 mb-3">
+                                <div className="row">
+                                    <div className="col-md-3 col-sm-6 col-12">
+                                        <div className="info-box bg-info">
+                                            <span className="info-box-icon"><i className="far fa-file-alt"></i></span>
+                                            <div className="info-box-content">
+                                                <span className="info-box-text">แผนทั้งหมด</span>
+                                                <span className="info-box-number">{planStats.total}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="col-md-3 col-sm-6 col-12">
+                                        <div className="info-box bg-warning">
+                                            <span className="info-box-icon"><i className="far fa-clock"></i></span>
+                                            <div className="info-box-content">
+                                                <span className="info-box-text">รอการประเมิน</span>
+                                                <span className="info-box-number">{planStats.pending}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="col-md-3 col-sm-6 col-12">
+                                        <div className="info-box bg-success">
+                                            <span className="info-box-icon"><i className="far fa-check-circle"></i></span>
+                                            <div className="info-box-content">
+                                                <span className="info-box-text">ผ่านแล้ว</span>
+                                                <span className="info-box-number">{planStats.passed}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="col-md-3 col-sm-6 col-12">
+                                        <div className="info-box bg-danger">
+                                            <span className="info-box-icon"><i className="fas fa-times-circle"></i></span>
+                                            <div className="info-box-content">
+                                                <span className="info-box-text">ไม่ผ่าน (รอแก้ไข)</span>
+                                                <span className="info-box-number">{planStats.rejected}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {planStats && planStats.type === 'director' && (
+                            <div className="col-12 mb-3">
+                                <div className="row">
+                                    <div className="col-md-4 col-sm-6 col-12">
+                                        <div className="info-box bg-warning">
+                                            <span className="info-box-icon"><i className="far fa-envelope"></i></span>
+                                            <div className="info-box-content">
+                                                <span className="info-box-text">แผนรอการประเมิน (โรงเรียน)</span>
+                                                <span className="info-box-number">{planStats.pending}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {/* สหวิทยาเขต */}
                         <div className="col-lg-6">
-                            <div className="card card-success">
+                            <div className="card card-outline card-primary">
                                 <div className="card-header">
                                     <h3 className="card-title">ข้อมูลสหวิทยาเขต</h3>
                                 </div>
@@ -177,7 +287,7 @@ const Dashboard = () => {
                             </div>
 
                             {/* ขนาดโรงเรียน */}
-                            <div className="card card-success">
+                            <div className="card card-outline card-info">
                                 <div className="card-header">
                                     <h3 className="card-title">ข้อมูลขนาดโรงเรียน</h3>
                                 </div>
@@ -211,7 +321,7 @@ const Dashboard = () => {
                         {/* ข้อมูลนักเรียน (Admin Only) */}
                         {(user?.user_metadata?.role === 'admin' || user?.level_id === 'admin') && studentData.length > 0 && (
                             <div className="col-lg-12">
-                                <div className="card card-success">
+                                <div className="card card-outline card-teal">
                                     <div className="card-header">
                                         <h3 className="card-title">
                                             ข้อมูลนักเรียน ปีการศึกษา {configData.EDUYEAR} ภาคเรียนที่ {configData.EDUROUND}

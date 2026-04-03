@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../hooks/useUserProfile';
+import LoadingSpinner from '../components/LoadingSpinner';
+import EmptyState from '../components/EmptyState';
 
 const getRoleId = (user) => {
   return user?.level_id || user?.user_metadata?.role || user?.role || 'teacher';
@@ -15,6 +17,21 @@ const statusBadgeClass = (status) => {
   return 'badge-info';
 };
 
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  try {
+    return new Date(dateStr).toLocaleDateString('th-TH', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (err) {
+    return dateStr;
+  }
+};
+
 const StatusPlan = () => {
   const { user } = useAuth();
   const { profile, loading: profileLoading } = useUserProfile();
@@ -22,6 +39,7 @@ const StatusPlan = () => {
 
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [lookups, setLookups] = useState({
     teachSubject: {},
     teachSubjectShort: {},
@@ -156,7 +174,7 @@ const StatusPlan = () => {
         <td>{row.subject_content}</td>
         <td>{row.subject_name_plan}</td>
         <td>{row.edu_year}/{row.edu_term}<br />(ปีงบ {row.budget_year})</td>
-        <td>{row.plan_senddate}</td>
+        <td>{formatDate(row.plan_senddate)}</td>
         <td className="text-center">
           {row.plan_file && (
             <a href={row.plan_file} title="แผน" target="_blank" rel="noreferrer"><i className="fa-regular fa-file-pdf fa-lg"></i></a>
@@ -202,7 +220,7 @@ const StatusPlan = () => {
         <td>{row.subject_content}</td>
         <td>{row.subject_name_plan}</td>
         <td>{row.edu_year}/{row.edu_term} (ปีงบประมาณ {row.budget_year})</td>
-        <td>{row.plan_senddate}</td>
+        <td>{formatDate(row.plan_senddate)}</td>
         <td className="text-center">
           {row.plan_file && (
             <a href={row.plan_file} target="_blank" rel="noreferrer"><i className="fa-regular fa-file-pdf fa-2xl"></i></a>
@@ -216,27 +234,42 @@ const StatusPlan = () => {
   };
 
   const enrichedRows = useMemo(() => {
-    if (roleId !== 'directorschool') return rows;
-    return rows.map((row) => {
+    let filteredRows = rows;
+    if (searchTerm) {
+      const lowerTerm = searchTerm.toLowerCase();
+      filteredRows = rows.filter(r => 
+        (r.subject_name_plan && r.subject_name_plan.toLowerCase().includes(lowerTerm)) ||
+        (r.subject_content && r.subject_content.toLowerCase().includes(lowerTerm)) ||
+        (r.teacher_name && r.teacher_name.toLowerCase().includes(lowerTerm)) ||
+        (r.planid && String(r.planid).includes(lowerTerm))
+      );
+    }
+    if (roleId !== 'directorschool') return filteredRows;
+    return filteredRows.map((row) => {
       return { ...row };
     });
-  }, [rows, roleId]);
+  }, [rows, roleId, searchTerm]);
 
   if (loading || profileLoading) {
-    return (
-      <div className="text-center p-4">
-        <div className="spinner-border text-primary" role="status"></div>
-        <p className="mt-2">กำลังโหลดข้อมูล...</p>
-      </div>
-    );
+    return <LoadingSpinner fullPage={false} />;
   }
 
   return (
     <div className="row">
       <div className="col-12">
-        <div className="card card-success">
-          <div className="card-header">
-            <h3 className="card-title"><i className="fa-solid fa-school-circle-check"></i> สถานะแผนการส่ง</h3>
+        <div className="card card-primary card-outline">
+          <div className="card-header d-flex justify-content-between align-items-center">
+            <h3 className="card-title m-0"><i className="fa-solid fa-school-circle-check"></i> สถานะแผนการส่ง</h3>
+            <div className="card-tools ml-auto">
+                <div className="input-group input-group-sm" style={{ width: '250px' }}>
+                    <input type="text" className="form-control float-right" placeholder="ค้นหาชื่อแผน / หน่วย / รหัส..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                    <div className="input-group-append">
+                        <button type="button" className="btn btn-default" disabled>
+                            <i className="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
           </div>
           <div className="card-body">
             <div className="table-responsive">
@@ -277,14 +310,14 @@ const StatusPlan = () => {
                 <tbody>
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={totalColumns}>
-                        <h4 className="text-center text-danger">ยังไม่มีข้อมูล</h4>
+                      <td colSpan={totalColumns} style={{ padding: 0 }}>
+                        <EmptyState fullPage={false} message="ยังไม่มีข้อมูลแผนการส่ง" />
                       </td>
                     </tr>
                   )}
                   {roleId === 'directorschool'
                     ? enrichedRows.map(renderDirectorRow)
-                    : rows.map(renderTeacherRow)}
+                    : enrichedRows.map(renderTeacherRow)}
                 </tbody>
               </table>
             </div>

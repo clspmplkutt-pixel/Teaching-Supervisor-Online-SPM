@@ -1,7 +1,7 @@
 /* Apply Sarabun font but exclude Font Awesome icons */
 *:not(.fa):not(.fas):not(.far):not(.fab):not(.fal):not(.fad):not([class*="fa-"]) {
     font-family: 'Sarabun', sans-serif;
-    font-size: 14px;
+    font-size: 16px;
 }
 
 h1,

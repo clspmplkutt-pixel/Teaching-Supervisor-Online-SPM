@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
 import useUserLookups from '../hooks/useUserLookups';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const ConfirmUser = () => {
   const { lookups, loading: lookupsLoading } = useUserLookups();
@@ -89,20 +90,18 @@ const ConfirmUser = () => {
   };
 
   if (loading || lookupsLoading) {
-    return (
-      <div className="text-center p-4">
-        <div className="spinner-border text-primary" role="status"></div>
-        <p className="mt-2">กำลังโหลดข้อมูล...</p>
-      </div>
-    );
+    return <LoadingSpinner fullPage={false} />;
   }
 
   return (
     <div className="row">
       <div className="col-sm-12 col-md-12 col-lg-12 col-xl-12">
-        <div className="card card-success">
+        <div className="card card-warning card-outline">
           <div className="card-header d-flex justify-content-between align-items-center">
-            <h3 className="card-title m-0"><i className="fa-solid fa-school-circle-check"></i> ยืนยันผู้ใช้งาน</h3>
+            <h3 className="card-title m-0">
+                <i className="fa-solid fa-school-circle-check"></i> ยืนยันผู้ใช้งาน 
+                <span className="badge badge-warning ml-2 text-dark" style={{fontSize: '0.8rem'}}>เฉพาะระดับครูผู้สอน</span>
+            </h3>
             {rows.length > 0 && (
                 <button type="button" className="btn btn-primary btn-sm ml-auto" onClick={handleBulkConfirm} disabled={selectedIds.length === 0}>
                     <i className="fa-solid fa-users"></i> อนุมัติเป้าหมายที่เลือก ({selectedIds.length})
@@ -124,7 +123,7 @@ const ConfirmUser = () => {
                     <th>ตำแหน่ง</th>
                     <th>วิทยฐานะ</th>
                     <th>ประเภทบุคลากร</th>
-                    <th>Operation</th>
+                    <th>การดำเนินการ</th>
                   </tr>
                 </thead>
                 <tbody>

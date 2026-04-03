@@ -249,10 +249,27 @@ const Register = () => {
             </div>
 
             <div className="container">
+                {step < 3 && (
+                    <div className="row justify-content-center mb-4">
+                        <div className="col-lg-8">
+                            <div className="progress" style={{ height: '30px' }}>
+                                <div 
+                                    className={`progress-bar progress-bar-striped progress-bar-animated ${step === 1 ? 'bg-warning w-50' : 'bg-success w-100'}`} 
+                                    role="progressbar" 
+                                    aria-valuenow={step === 1 ? 50 : 100} 
+                                    aria-valuemin="0" 
+                                    aria-valuemax="100"
+                                >
+                                    <h6 className="m-0 text-dark"><b>ขั้นที่ {step} จาก 2</b></h6>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 <div className="row justify-content-center">
                     <div className="col-lg-12">
                         <div className="card">
-                            <div className="card-header bg-success text-white">
+                            <div className="card-header bg-primary text-white">
                                 <h4 className="card-title m-0">สมัครสมาชิก (คุณครู)</h4>
                             </div>
                             <div className="card-body">
