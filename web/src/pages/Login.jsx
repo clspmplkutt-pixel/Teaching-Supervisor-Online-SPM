@@ -39,9 +39,26 @@ const Login = () => {
 
             if (!user) {
                 setForgotError('ไม่พบข้อมูลผู้ใช้งานนี้ในระบบ หรือพิมพ์เลขประจำตัวผิด');
-            } else if (user.birthday !== forgotDob) {
-                setForgotError('วัน/เดือน/ปีเกิด ไม่ตรงกับข้อมูลในระบบ');
             } else {
+                const checkBirthdayMatch = (dbDate, inputDate) => {
+                    if (!dbDate || !inputDate) return false;
+                    const dbParts = dbDate.split('-');
+                    const inParts = inputDate.split('-');
+                    if (dbParts.length !== 3 || inParts.length !== 3) return false;
+                    
+                    // Month and Day must match exactly
+                    if (dbParts[1] !== inParts[1] || dbParts[2] !== inParts[2]) return false;
+                    
+                    // Tolerance for Buddhist Era vs Christian Era (543 years shift)
+                    const dbY = parseInt(dbParts[0], 10);
+                    const inY = parseInt(inParts[0], 10);
+                    
+                    return dbY === inY || Math.abs(dbY - inY) === 543;
+                };
+
+                if (!checkBirthdayMatch(user.birthday, forgotDob)) {
+                    setForgotError('วัน/เดือน/ปีเกิด ไม่ตรงกับข้อมูลในระบบ');
+                } else {
                 let schoolName = 'ไม่ระบุ';
                 if (user.school) {
                     const { data: sData } = await supabase.from('tbl_school').select('school_name').eq('school_id', user.school).maybeSingle();
@@ -68,6 +85,7 @@ const Login = () => {
                     school: schoolName,
                     password: decryptedPass || 'ไม่สามารถถอดรหัสได้ (กรุณาติดต่อแอดมินเพื่อรีเซ็ต)'
                 });
+                }
             }
         } catch (err) {
             console.error(err);
