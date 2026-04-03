@@ -42,17 +42,30 @@ const Login = () => {
             } else {
                 const checkBirthdayMatch = (dbDate, inputDate) => {
                     if (!dbDate || !inputDate) return false;
-                    const dbParts = dbDate.split('-');
-                    const inParts = inputDate.split('-');
+                    
+                    // Normalize: trim whitespace and handle potential '/' separators
+                    const normalizeDate = (d) => d.trim().replace(/\//g, '-');
+                    const dbNorm = normalizeDate(dbDate);
+                    const inNorm = normalizeDate(inputDate);
+                    
+                    // Direct match
+                    if (dbNorm === inNorm) return true;
+                    
+                    const dbParts = dbNorm.split('-');
+                    const inParts = inNorm.split('-');
+                    
                     if (dbParts.length !== 3 || inParts.length !== 3) return false;
                     
-                    // Month and Day must match exactly
-                    if (dbParts[1] !== inParts[1] || dbParts[2] !== inParts[2]) return false;
+                    const dbY = parseInt(dbParts[0], 10);
+                    const dbM = parseInt(dbParts[1], 10);
+                    const dbD = parseInt(dbParts[2], 10);
+                    const inY = parseInt(inParts[0], 10);
+                    const inM = parseInt(inParts[1], 10);
+                    const inD = parseInt(inParts[2], 10);
+                    
+                    if (dbM !== inM || dbD !== inD) return false;
                     
                     // Tolerance for Buddhist Era vs Christian Era (543 years shift)
-                    const dbY = parseInt(dbParts[0], 10);
-                    const inY = parseInt(inParts[0], 10);
-                    
                     return dbY === inY || Math.abs(dbY - inY) === 543;
                 };
 
