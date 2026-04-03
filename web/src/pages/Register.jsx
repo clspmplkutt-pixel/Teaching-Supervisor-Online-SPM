@@ -32,7 +32,7 @@ const Register = () => {
         teach_subject: '',
         headDepartment: '0',
         teach_subject_name: '',
-        teach_level: ''
+        teach_level: []
     });
 
     // Dropdown Data
@@ -137,7 +137,18 @@ const Register = () => {
 
     // Handle Step 2 Input Change
     const handleChange = (e) => {
-        const { name, value } = e.target;
+        const { name, value, type, checked } = e.target;
+        if (type === 'checkbox' && name === 'teach_level') {
+            setFormData(prev => {
+                const currentLevels = Array.isArray(prev.teach_level) ? prev.teach_level : [];
+                if (checked) {
+                    return { ...prev, teach_level: [...currentLevels, value] };
+                } else {
+                    return { ...prev, teach_level: currentLevels.filter(v => v !== value) };
+                }
+            });
+            return;
+        }
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
@@ -210,7 +221,7 @@ const Register = () => {
                 chairman: "0",
                 teach_subject: formData.teach_subject,
                 teach_subject_name: formData.teach_subject_name,
-                teach_level: formData.teach_level,
+                teach_level: Array.isArray(formData.teach_level) ? formData.teach_level.join(',') : formData.teach_level,
                 phone: formData.phone,
                 email: formData.email,
                 level: level,
@@ -391,13 +402,25 @@ const Register = () => {
                                                 <input type="text" name="teach_subject_name" className="form-control" onChange={handleChange} />
                                             </div>
                                             <div className="col-lg-4 mb-3">
-                                                <label>ระดับชั้นที่ทำการสอน</label>
-                                                <select name="teach_level" className="form-control" onChange={handleChange}>
-                                                    <option value="">ระดับชั้นที่ทำการสอน</option>
+                                                <label>ระดับชั้นที่ทำการสอน (เลือกได้มากกว่า 1)</label>
+                                                <div className="border p-2 rounded" style={{ maxHeight: '150px', overflowY: 'auto', backgroundColor: '#f8f9fa' }}>
                                                     {options.gradeLevels.map(opt => (
-                                                        <option key={opt.grade_level_id || opt.id} value={opt.grade_level_id || opt.id}>{opt.grade_level_name}</option>
+                                                        <div className="custom-control custom-checkbox mb-1" key={opt.grade_level_id || opt.id}>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="custom-control-input" 
+                                                                id={`grade_${opt.grade_level_id || opt.id}`} 
+                                                                name="teach_level"
+                                                                value={opt.grade_level_id || opt.id}
+                                                                checked={Array.isArray(formData.teach_level) && formData.teach_level.includes(String(opt.grade_level_id || opt.id))}
+                                                                onChange={handleChange}
+                                                            />
+                                                            <label className="custom-control-label" htmlFor={`grade_${opt.grade_level_id || opt.id}`}>
+                                                                {opt.grade_level_name}
+                                                            </label>
+                                                        </div>
                                                     ))}
-                                                </select>
+                                                </div>
                                             </div>
                                             <div className="col-lg-4 pt-4 text-right">
                                                 <button type="submit" className="btn btn-success mr-2" disabled={loading}>

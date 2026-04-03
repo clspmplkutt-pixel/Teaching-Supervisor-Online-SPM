@@ -57,7 +57,7 @@ const UserEdit = ({ variant }) => {
     chairman: '0',
     teach_subject: '',
     teach_subject_name: '',
-    teach_level: '',
+    teach_level: [],
     khet_code: '',
     phone: '',
     email: '',
@@ -149,7 +149,7 @@ const UserEdit = ({ variant }) => {
           chairman: data.chairman || '0',
           teach_subject: data.teach_subject || '',
           teach_subject_name: data.teach_subject_name || '',
-          teach_level: data.teach_level || '',
+          teach_level: data.teach_level ? data.teach_level.split(',') : [],
           khet_code: data.khet_code || '',
           phone: data.phone || '',
           email: data.email || '',
@@ -208,7 +208,18 @@ const UserEdit = ({ variant }) => {
   };
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
+    if (type === 'checkbox' && name === 'teach_level') {
+      setForm((prev) => {
+        const currentLevels = Array.isArray(prev.teach_level) ? prev.teach_level : [];
+        if (checked) {
+          return { ...prev, teach_level: [...currentLevels, String(value)] };
+        } else {
+          return { ...prev, teach_level: currentLevels.filter(v => v !== String(value)) };
+        }
+      });
+      return;
+    }
     setForm((prev) => ({ ...prev, [name]: value }));
     if (name === 'people_id') {
       validatePeopleId(value);
@@ -256,7 +267,7 @@ const UserEdit = ({ variant }) => {
       payload.chairman = '0';
       payload.teach_subject = form.teach_subject;
       payload.teach_subject_name = form.teach_subject_name;
-      payload.teach_level = form.teach_level;
+      payload.teach_level = Array.isArray(form.teach_level) ? form.teach_level.join(',') : form.teach_level;
     }
 
     if (variant === 'directorschool') {
@@ -536,13 +547,25 @@ const UserEdit = ({ variant }) => {
                   {showTeachLevel && (
                     <div className="col-lg-4">
                       <div className="mb-3 mt-3">
-                        <label htmlFor="teach_level">ระดับชั้นที่ทำการสอน</label>
-                        <select name="teach_level" id="teach_level" className="custom-select select2bs4" value={form.teach_level} onChange={handleChange} required>
-                          <option value="">ระดับชั้นที่ทำการสอน</option>
-                          {lists.gradeLevel.filter((row) => row.grade_level_id !== '499').map((row) => (
-                            <option key={row.grade_level_id} value={row.grade_level_id}>{row.grade_level_name}</option>
-                          ))}
-                        </select>
+                        <label htmlFor="teach_level">ระดับชั้นที่ทำการสอน (เลือกได้มากกว่า 1)</label>
+                        <div className="border p-2 rounded" style={{ maxHeight: '150px', overflowY: 'auto', backgroundColor: '#f8f9fa' }}>
+                            {lists.gradeLevel.filter((row) => row.grade_level_id !== '499').map((row) => (
+                                <div className="custom-control custom-checkbox mb-1" key={row.grade_level_id}>
+                                    <input 
+                                        type="checkbox" 
+                                        className="custom-control-input" 
+                                        id={`grade_${row.grade_level_id}`} 
+                                        name="teach_level"
+                                        value={row.grade_level_id}
+                                        checked={Array.isArray(form.teach_level) && form.teach_level.includes(String(row.grade_level_id))}
+                                        onChange={handleChange}
+                                    />
+                                    <label className="custom-control-label" htmlFor={`grade_${row.grade_level_id}`}>
+                                        {row.grade_level_name}
+                                    </label>
+                                </div>
+                            ))}
+                        </div>
                       </div>
                     </div>
                   )}

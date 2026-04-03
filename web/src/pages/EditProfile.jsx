@@ -40,7 +40,7 @@ const EditProfile = () => {
     teach_subject: '',
     headDepartment: '0',
     teach_subject_name: '',
-    teach_level: '',
+    teach_level: [],
   });
 
   const peopleIdReadOnly = useMemo(() => {
@@ -107,14 +107,25 @@ const EditProfile = () => {
       headDepartment: profile.headDepartment ?? '0',
       teach_subject: profile.teach_subject || '',
       teach_subject_name: profile.teach_subject_name || '',
-      teach_level: profile.teach_level || '',
+      teach_level: profile.teach_level ? profile.teach_level.split(',') : [],
       phone: profile.phone || '',
       email: profile.email || '',
     }));
   }, [profile]);
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
+    if (type === 'checkbox' && name === 'teach_level') {
+      setForm((prev) => {
+        const currentLevels = Array.isArray(prev.teach_level) ? prev.teach_level : [];
+        if (checked) {
+          return { ...prev, teach_level: [...currentLevels, String(value)] };
+        } else {
+          return { ...prev, teach_level: currentLevels.filter(v => v !== String(value)) };
+        }
+      });
+      return;
+    }
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -145,7 +156,7 @@ const EditProfile = () => {
           chairman: '0',
           teach_subject: form.teach_subject,
           teach_subject_name: form.teach_subject_name,
-          teach_level: form.teach_level,
+          teach_level: Array.isArray(form.teach_level) ? form.teach_level.join(',') : form.teach_level,
           phone: form.phone,
           email: form.email,
           lastupdate: new Date().toISOString(),
@@ -346,13 +357,25 @@ const EditProfile = () => {
                 </div>
                 <div className="col-lg-4">
                   <div className="mb-3 mt-3">
-                    <label htmlFor="teach_level">ระดับชั้นที่ทำการสอน</label>
-                    <select name="teach_level" id="teach_level" className="custom-select select2bs4" value={form.teach_level} onChange={handleChange} required>
-                      <option value="">ระดับชั้นที่ทำการสอน</option>
-                      {options.gradeLevel.map((row) => (
-                        <option key={row.grade_level_id} value={row.grade_level_id}>{row.grade_level_name}</option>
-                      ))}
-                    </select>
+                    <label htmlFor="teach_level">ระดับชั้นที่ทำการสอน (เลือกได้มากกว่า 1)</label>
+                    <div className="border p-2 rounded" style={{ maxHeight: '150px', overflowY: 'auto', backgroundColor: '#f8f9fa' }}>
+                        {options.gradeLevel.map((opt) => (
+                            <div className="custom-control custom-checkbox mb-1" key={opt.grade_level_id}>
+                                <input 
+                                    type="checkbox" 
+                                    className="custom-control-input" 
+                                    id={`grade_${opt.grade_level_id}`} 
+                                    name="teach_level"
+                                    value={opt.grade_level_id}
+                                    checked={Array.isArray(form.teach_level) && form.teach_level.includes(String(opt.grade_level_id))}
+                                    onChange={handleChange}
+                                />
+                                <label className="custom-control-label" htmlFor={`grade_${opt.grade_level_id}`}>
+                                    {opt.grade_level_name}
+                                </label>
+                            </div>
+                        ))}
+                    </div>
                   </div>
                 </div>
               </div>
