@@ -233,7 +233,7 @@ const UserTeacher = () => {
                             <button type="button" className="btn btn-danger btn-sm" onClick={() => handleRemove(row.people_id)}>
                               <i className="fa-solid fa-trash"></i>
                             </button>
-                            <Link to={`/reset_user_password`} className="btn btn-info btn-sm" title="Reset รหัสผ่าน">
+                            <Link to={`/reset_user_password?people_id=${row.people_id}`} className="btn btn-info btn-sm" title="Reset รหัสผ่าน">
                               <i className="fa-solid fa-key"></i>
                             </Link>
                           </div>

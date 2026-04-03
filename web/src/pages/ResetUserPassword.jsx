@@ -1,10 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
 import { encryptLegacyPassword } from '../utils/legacyCrypto';
+import { useSearchParams } from 'react-router-dom';
 
 const ResetUserPassword = () => {
-    const [search, setSearch] = useState('');
+    const [searchParams] = useSearchParams();
+    const defaultSearch = searchParams.get('people_id') || '';
+    const [search, setSearch] = useState(defaultSearch);
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -29,9 +32,8 @@ const ResetUserPassword = () => {
         fetchLookups();
     }, []);
 
-    const handleSearch = async (e) => {
-        e.preventDefault();
-        if (!search.trim()) return;
+    const performSearch = useCallback(async (query) => {
+        if (!query.trim()) return;
         setLoading(true);
         setUsers([]);
         setSelected(null);
@@ -39,15 +41,31 @@ const ResetUserPassword = () => {
             const { data, error } = await supabase
                 .from('tbl_Users')
                 .select('people_id, name, lastname, prefix, school, level, approved')
-                .or(`people_id.eq.${search.trim()},name.ilike.%${search.trim()}%,lastname.ilike.%${search.trim()}%`)
+                .or(`people_id.eq.${query.trim()},name.ilike.%${query.trim()}%,lastname.ilike.%${query.trim()}%`)
                 .limit(20);
             if (error) throw error;
             setUsers(data || []);
+            
+            // Auto select if only one match and it matches the initially searched people_id
+            if (data?.length === 1 && data[0].people_id === query.trim()) {
+                setSelected(data[0]);
+            }
         } catch (err) {
             Swal.fire('Error', err.message, 'error');
         } finally {
             setLoading(false);
         }
+    }, []);
+
+    useEffect(() => {
+        if (defaultSearch) {
+            performSearch(defaultSearch);
+        }
+    }, [defaultSearch, performSearch]);
+
+    const handleSearch = (e) => {
+        e.preventDefault();
+        performSearch(search);
     };
 
     const handleReset = async (e) => {

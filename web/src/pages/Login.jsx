@@ -17,6 +17,7 @@ const Login = () => {
     // Forgot Password State
     const [showForgotModal, setShowForgotModal] = useState(false);
     const [forgotId, setForgotId] = useState('');
+    const [forgotDob, setForgotDob] = useState('');
     const [forgotInfo, setForgotInfo] = useState(null);
     const [forgotError, setForgotError] = useState('');
     const [forgotLoading, setForgotLoading] = useState(false);
@@ -38,6 +39,8 @@ const Login = () => {
 
             if (!user) {
                 setForgotError('ไม่พบข้อมูลผู้ใช้งานนี้ในระบบ หรือพิมพ์เลขประจำตัวผิด');
+            } else if (user.birthday !== forgotDob) {
+                setForgotError('วัน/เดือน/ปีเกิด ไม่ตรงกับข้อมูลในระบบ');
             } else {
                 let schoolName = 'ไม่ระบุ';
                 if (user.school) {
@@ -77,6 +80,7 @@ const Login = () => {
     const closeForgotModal = () => {
         setShowForgotModal(false);
         setForgotId('');
+        setForgotDob('');
         setForgotInfo(null);
         setForgotError('');
     };
@@ -85,7 +89,25 @@ const Login = () => {
         e.preventDefault();
         setError('');
         try {
-            await login(loginData.user, loginData.password, loginData.level);
+            const data = await login(loginData.user, loginData.password, loginData.level);
+            
+            // Check default password logic (DDMMYYYY or 123456)
+            if (data && data.birthday) {
+                const defaultPass = data.birthday.split('-').reverse().join('');
+                if (loginData.password === defaultPass || loginData.password === '123456' || loginData.password === data.people_id) {
+                    Swal.fire({
+                        title: 'คำแนะนำด้านความปลอดภัย',
+                        text: 'รหัสผ่านของคุณคาดเดาได้ง่ายเกินไป กรุณาเปลี่ยนรหัสผ่านเพื่อความปลอดภัยของข้อมูล!',
+                        icon: 'warning',
+                        confirmButtonText: 'เปลี่ยนรหัสผ่าน',
+                        allowOutsideClick: false
+                    }).then(() => {
+                        navigate('/chgpasswd');
+                    });
+                    return;
+                }
+            }
+
             navigate('/');
         } catch (err) {
             setError('ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง หรือยังไม่ได้รับการยืนยันจากแอดมิน !');
@@ -256,7 +278,7 @@ const Login = () => {
                                             <label>กรอกเลขประจำตัวประชาชน 13 หลัก</label>
                                             <input 
                                                 type="text" 
-                                                className="form-control form-control-lg" 
+                                                className="form-control form-control-lg mb-2" 
                                                 value={forgotId} 
                                                 onChange={(e) => setForgotId(e.target.value.replace(/[^0-9]/g, ''))}
                                                 maxLength="13"
@@ -264,9 +286,17 @@ const Login = () => {
                                                 autoFocus
                                                 placeholder="เลข 13 หลัก"
                                             />
+                                            <label>วัน/เดือน/ปีเกิด <span className="text-danger small">(ที่ใช้ลงทะเบียน)</span></label>
+                                            <input 
+                                                type="date" 
+                                                className="form-control form-control-lg" 
+                                                value={forgotDob} 
+                                                onChange={(e) => setForgotDob(e.target.value)}
+                                                required 
+                                            />
                                         </div>
                                         {forgotError && <div className="alert alert-danger"><i className="fas fa-exclamation-triangle"></i> {forgotError}</div>}
-                                        <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={forgotLoading || forgotId.length !== 13}>
+                                        <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={forgotLoading || forgotId.length !== 13 || !forgotDob}>
                                             {forgotLoading ? 'กำลังค้นหา...' : <span><i className="fas fa-search"></i> ค้นหาข้อมูล</span>}
                                         </button>
                                     </form>
