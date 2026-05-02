@@ -33,6 +33,7 @@ import UserAdminAdd from './pages/UserAdminAdd';
 import UserAdminEdit from './pages/UserAdminEdit';
 import UserAdminChgpwd from './pages/UserAdminChgpwd';
 import AdminProfile from './pages/AdminProfile';
+import AdminMonitor from './pages/AdminMonitor';
 import UserEdit from './pages/UserEdit';
 import UserRemove from './pages/UserRemove';
 import ResetPwd from './pages/ResetPwd';
@@ -136,6 +137,7 @@ function App() {
             <Route path="UserAdmin_Chgpwd" element={<UserAdminChgpwd />} />
             <Route path="reset_user_password" element={<ResetUserPassword />} />
             <Route path="profile" element={<AdminProfile />} />
+            <Route path="admin_monitor" element={<AdminMonitor />} />
             <Route path="teacher_edit" element={<UserEdit variant="teacher" />} />
             <Route path="directorschool_edit" element={<UserEdit variant="directorschool" />} />
             <Route path="supervisor_edit" element={<UserEdit variant="supervisor" />} />
