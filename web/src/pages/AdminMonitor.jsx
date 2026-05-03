@@ -14,6 +14,8 @@ const AdminMonitor = () => {
     const [filterUsage, setFilterUsage] = useState('');
     const [searchCommittee, setSearchCommittee] = useState('');
     const [filterProgress, setFilterProgress] = useState('');
+
+    useEffect(() => {
         let mounted = true;
         const loadData = async () => {
             setLoading(true);
