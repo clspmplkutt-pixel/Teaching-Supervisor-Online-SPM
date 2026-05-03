@@ -24,12 +24,38 @@ const scorePassLabel = (score, pass) => {
   return (<span><i className="fa-regular fa-square"></i> ผ่าน <i className="fa-regular fa-square-check"></i> ไม่ผ่าน</span>);
 };
 
+// แสดงลายเซ็นต์จาก URL หรือ path
+const SignatureImage = ({ src, alt }) => {
+  if (!src) {
+    return (
+      <div style={{
+        width: '180px', height: '70px', border: '1px dashed #aaa',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: '#aaa', fontSize: '12px', margin: '0 auto'
+      }}>
+        ยังไม่มีลายเซ็นต์
+      </div>
+    );
+  }
+  const url = String(src).startsWith('http') ? src : `/fileupload/signature/${src}`;
+  return (
+    <img
+      src={url}
+      alt={alt || 'signature'}
+      style={{ maxWidth: '180px', maxHeight: '70px', objectFit: 'contain', display: 'block', margin: '0 auto' }}
+      onError={(e) => { e.target.style.display = 'none'; }}
+    />
+  );
+};
+
 const ViewScoring = () => {
   const query = useQuery();
   const planid = query.get('planid') || '';
   const [loading, setLoading] = useState(true);
   const [plan, setPlan] = useState(null);
   const [teacher, setTeacher] = useState(null);
+  // committeeProfiles: array of user objects for each committee member (same order as committeeList)
+  const [committeeProfiles, setCommitteeProfiles] = useState([]);
   const [policySide1, setPolicySide1] = useState([]);
   const [policySide2, setPolicySide2] = useState([]);
   const [scores, setScores] = useState([]);
@@ -42,6 +68,7 @@ const ViewScoring = () => {
     desirable: {},
     school: {},
     subjectType: {},
+    prefix: {},
   });
 
   useEffect(() => {
@@ -73,7 +100,12 @@ const ViewScoring = () => {
 
         const academicId = teacherData?.academic_id || '';
 
-        const [policy1Res, policy2Res, scoreRes, academicRes, teachSubjectRes, gradeRes, competencyRes, abilityRes, desirableRes, schoolRes, subjectTypeRes] = await Promise.all([
+        const [
+          policy1Res, policy2Res, scoreRes,
+          academicRes, teachSubjectRes, gradeRes,
+          competencyRes, abilityRes, desirableRes,
+          schoolRes, subjectTypeRes, prefixRes,
+        ] = await Promise.all([
           supabase.from('tbl_policy_number').select('*').eq('academic', academicId).eq('side', '1').order('auto_id', { ascending: true }),
           supabase.from('tbl_policy_number').select('*').eq('academic', academicId).eq('side', '2').order('auto_id', { ascending: true }),
           supabase.from('tbl_sendplan_score').select('planid, policy_id, score_weight, supervision').eq('planid', String(planid)),
@@ -85,6 +117,7 @@ const ViewScoring = () => {
           supabase.from('tbl_system_Desirable').select('desirable_id, desirable_name'),
           supabase.from('tbl_school').select('school_id, school_name'),
           supabase.from('tbl_system_SubjectType').select('subjecttype_id, subjecttype_name'),
+          supabase.from('tbl_system_prefix').select('prefix_id, prefix'),
         ]);
 
         const academicMap = {};
@@ -103,6 +136,26 @@ const ViewScoring = () => {
         schoolRes.data?.forEach((s) => { schoolMap[s.school_id] = s.school_name; });
         const subjectTypeMap = {};
         subjectTypeRes.data?.forEach((t) => { subjectTypeMap[t.subjecttype_id] = t.subjecttype_name; });
+        const prefixMap = {};
+        prefixRes.data?.forEach((p) => { prefixMap[p.prefix_id] = p.prefix; });
+
+        // ดึงข้อมูลกรรมการ (people_id, name, lastname, prefix, academic_id, signature, position_id)
+        const committeeIds = [
+          planData.committee1, planData.committee2, planData.committee3,
+          planData.committee4, planData.committee5,
+        ].filter(Boolean);
+
+        let committeeProfiles = [];
+        if (committeeIds.length > 0) {
+          const { data: cData } = await supabase
+            .from('tbl_Users')
+            .select('people_id, name, lastname, prefix, academic_id, signature, position_id')
+            .in('people_id', committeeIds);
+          // เรียงตามลำดับ committeeIds
+          const cMap = {};
+          (cData || []).forEach((u) => { cMap[u.people_id] = u; });
+          committeeProfiles = committeeIds.map((id) => cMap[id] || { people_id: id });
+        }
 
         if (mounted) {
           setPlan(planData);
@@ -110,6 +163,7 @@ const ViewScoring = () => {
           setPolicySide1(policy1Res.data || []);
           setPolicySide2(policy2Res.data || []);
           setScores(scoreRes.data || []);
+          setCommitteeProfiles(committeeProfiles);
           setLookups({
             academic: academicMap,
             teachSubject: teachSubjectMap,
@@ -119,6 +173,7 @@ const ViewScoring = () => {
             desirable: desirableMap,
             school: schoolMap,
             subjectType: subjectTypeMap,
+            prefix: prefixMap,
           });
         }
       } catch (err) {
@@ -224,7 +279,7 @@ const ViewScoring = () => {
                     <tr>
                       <th colSpan={3 + committeeList.length}>
                         แบบสรุปผลการประเมินตำแหน่งและวิทยฐานะ ด้านที่ 1 และ ด้านที่ 2<br />
-                        ผู้ขอรับการประเมิน ชื่อ-สกุล : {teacher?.name || ''} {teacher?.lastname || ''}<br />
+                        ผู้ขอรับการประเมิน ชื่อ-สกุล : {lookups.prefix[teacher?.prefix] || ''}{teacher?.name || ''} {teacher?.lastname || ''}<br />
                         วิทยฐานะ : <strong>{lookups.academic[teacher?.academic_id] || ''}</strong><br />
                         สถานศึกษา : โรงเรียน{lookups.school[plan.school_code] || ''}<br />
                         สังกัด : สำนักงานเขตพื้นที่การศึกษามัธยมศึกษาพิษณุโลก อุตรดิตถ์
@@ -233,7 +288,8 @@ const ViewScoring = () => {
                     <tr>
                       <td colSpan={3 + committeeList.length}>
                         กลุ่มสาระการเรียนรู้/รายวิชาที่ขอรับการประเมิน : {lookups.teachSubject[plan.teach_subject_id] || ''} &nbsp;&nbsp;&nbsp;&nbsp;ระดับชั้น : {lookups.gradeLevel[plan.grade_level_id] || ''}&nbsp;&nbsp;&nbsp;&nbsp;ประเภทวิชา : <strong>{lookups.subjectType[plan.subject_type] || plan.subject_type || 'พื้นฐาน'}</strong><br />
-                        ชื่อวิชา : {plan.subject_name} ({plan.subject_code}) &nbsp;&nbsp;&nbsp;&nbsp;ชื่อหน่วย : {plan.subject_name} &nbsp;&nbsp;&nbsp;&nbsp; ชื่อแผนการสอน : {plan.subject_content}<br />
+                        {/* ✅ แก้ Bug: ชื่อหน่วย ใช้ subject_content, ชื่อแผน ใช้ subject_name_plan */}
+                        ชื่อวิชา : {plan.subject_name} ({plan.subject_code}) &nbsp;&nbsp;&nbsp;&nbsp;ชื่อหน่วย : {plan.subject_content} &nbsp;&nbsp;&nbsp;&nbsp; ชื่อแผนการสอน : {plan.subject_name_plan}<br />
                         ปีการศึกษา : {plan.edu_year} &nbsp;&nbsp;&nbsp;&nbsp;ภาคเรียนที่ : {plan.edu_term} &nbsp;&nbsp;&nbsp;&nbsp;วันที่ : {plan.teach_date} [เวลา {plan.teach_timestart} - {plan.teach_timeend} ({plan.teach_minute} นาที)]<br />
                         วิธีการสอน : {plan.learning_model} &nbsp;&nbsp;&nbsp;&nbsp;<br />
                         สมรรถนะ : {competencyNames.map((c) => (<span key={c} className="text-success">{c}<br /></span>))}
@@ -279,7 +335,7 @@ const ViewScoring = () => {
                     </tr>
                     <tr>
                       <td colSpan={2 + committeeList.length}>
-                        ได้คะแนนร้อยละ <strong>{policySide1Totals.toFixed(2)}</strong> อยู่ในระดับ <strong>{explanScore(policySide1Totals)}</strong>
+                        ได้คะแนนร้อยละ <strong>{policySide1Totals.toFixed(2)}</strong> อยู่ในระดับ <strong>{explanScore(policySide1Totals)}</strong>&nbsp;&nbsp;
                         ผลการพิจารณา {scorePassLabel(policySide1Totals, scorePassThreshold)} (ผ่านเกณฑ์ร้อยละ {scorePassThreshold})
                       </td>
                     </tr>
@@ -318,8 +374,67 @@ const ViewScoring = () => {
                     </tr>
                     <tr>
                       <td colSpan={2 + committeeList.length}>
-                        ได้คะแนนร้อยละ <strong>{policySide2Totals.toFixed(2)}</strong> อยู่ในระดับ <strong>{explanScore(policySide2Totals)}</strong>
+                        ได้คะแนนร้อยละ <strong>{policySide2Totals.toFixed(2)}</strong> อยู่ในระดับ <strong>{explanScore(policySide2Totals)}</strong>&nbsp;&nbsp;
                         ผลการพิจารณา {scorePassLabel(policySide2Totals, scorePassThreshold)} (ผ่านเกณฑ์ร้อยละ {scorePassThreshold})
+                      </td>
+                    </tr>
+
+                    {/* ── ลายเซ็นต์กรรมการ ── */}
+                    {committeeProfiles.length > 0 && (
+                      <tr>
+                        <td colSpan={3 + committeeList.length} className="p-0">
+                          <table className="table table-bordered mb-0" style={{ tableLayout: 'fixed' }}>
+                            <tbody>
+                              <tr>
+                                {committeeProfiles.map((cp, idx) => (
+                                  <td key={cp.people_id || idx} className="text-center" style={{ width: `${100 / committeeProfiles.length}%`, padding: '12px 8px' }}>
+                                    <div style={{ fontWeight: 'bold', marginBottom: '6px', fontSize: '13px' }}>
+                                      กรรมการคนที่ {idx + 1}
+                                    </div>
+                                    <SignatureImage src={cp.signature} alt={`signature-${idx + 1}`} />
+                                    <div style={{ borderTop: '1px solid #333', marginTop: '8px', paddingTop: '4px', fontSize: '13px' }}>
+                                      {lookups.prefix[cp.prefix] || ''}{cp.name || ''} {cp.lastname || ''}
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: '#555' }}>
+                                      วิทยฐานะ {lookups.academic[cp.academic_id] || '-'}
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: '#555' }}>
+                                      วันที่ประเมิน : {plan[`date_scoring${idx + 1}`] || '....................'}
+                                    </div>
+                                  </td>
+                                ))}
+                              </tr>
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+
+                    {/* ── ลายเซ็นต์ครูรับทราบผลการประเมิน ── */}
+                    <tr>
+                      <td colSpan={3 + committeeList.length}>
+                        <table className="table table-bordered mb-0">
+                          <tbody>
+                            <tr>
+                              <td className="text-center" style={{ width: '50%', padding: '12px 8px' }}>
+                                <div style={{ fontWeight: 'bold', marginBottom: '6px', fontSize: '13px' }}>
+                                  ลายเซ็นต์ผู้รับทราบผลการประเมิน (ครูผู้สอน)
+                                </div>
+                                <SignatureImage src={teacher?.signature} alt="teacher-signature" />
+                                <div style={{ borderTop: '1px solid #333', marginTop: '8px', paddingTop: '4px', fontSize: '13px' }}>
+                                  {lookups.prefix[teacher?.prefix] || ''}{teacher?.name || ''} {teacher?.lastname || ''}
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#555' }}>
+                                  วิทยฐานะ {lookups.academic[teacher?.academic_id] || '-'}
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#555' }}>
+                                  วันที่รับทราบ : ..............................
+                                </div>
+                              </td>
+                              <td style={{ width: '50%' }}></td>
+                            </tr>
+                          </tbody>
+                        </table>
                       </td>
                     </tr>
                   </tbody>
