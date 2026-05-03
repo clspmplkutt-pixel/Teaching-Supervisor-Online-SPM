@@ -1,8 +1,10 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import useNotifications from '../hooks/useNotifications';
 
 const SidebarTeacher = () => {
     const location = useLocation();
+    const notifCount = useNotifications();
 
     const isActive = (path) => {
         return location.pathname === path ? 'active' : '';
@@ -33,7 +35,14 @@ const SidebarTeacher = () => {
                     <li className="nav-item">
                         <Link to="/statusplan" className={`nav-link ${isActive('/statusplan')}`}>
                             <i className="nav-icon fa-regular fa-clock text-info"></i>
-                            <p>สถานะแผนการสอน</p>
+                            <p>
+                                สถานะแผนการสอน
+                                {notifCount > 0 && (
+                                    <span className="badge badge-warning right ml-1" style={{ fontSize: '10px' }}>
+                                        {notifCount > 99 ? '99+' : notifCount}
+                                    </span>
+                                )}
+                            </p>
                         </Link>
                     </li>
 

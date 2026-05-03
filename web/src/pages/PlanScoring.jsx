@@ -22,6 +22,7 @@ const PlanScoring = () => {
   const [policySide2, setPolicySide2] = useState([]);
   const [policyItems, setPolicyItems] = useState({});
   const [scores, setScores] = useState({});
+  const [comment, setComment] = useState('');
   const [alreadyScored, setAlreadyScored] = useState(false);
 
   useEffect(() => {
@@ -134,6 +135,10 @@ const PlanScoring = () => {
         if (committeeNum) {
           const updatePayload = {};
           updatePayload[`date_scoring${committeeNum}`] = new Date().toISOString().slice(0, 10);
+          // บันทึกข้อเสนอแนะของกรรมการ
+          if (comment.trim()) {
+            updatePayload[`committee${committeeNum}_comment`] = comment.trim();
+          }
           await supabase.from('tbl_sendplan').update(updatePayload).eq('planid', planid);
         }
       }
@@ -272,10 +277,40 @@ const PlanScoring = () => {
                 </table>
               </div>
 
+              {/* ── ข้อเสนอแนะจากกรรมการ ── */}
+              <div className="row mt-3">
+                <div className="col-12">
+                  <div className="card card-warning">
+                    <div className="card-header">
+                      <h4 className="card-title">
+                        <i className="fa-solid fa-comment-dots"></i> ข้อเสนอแนะ / ความคิดเห็นของกรรมการ
+                      </h4>
+                    </div>
+                    <div className="card-body">
+                      <textarea
+                        className="form-control"
+                        rows="5"
+                        placeholder="กรอกข้อเสนอแนะหรือความคิดเห็นเพิ่มเติมสำหรับครูผู้สอน (ถ้ามี)"
+                        value={comment}
+                        onChange={(e) => setComment(e.target.value)}
+                        disabled={alreadyScored}
+                      />
+                      <small className="text-muted">
+                        <i className="fa-solid fa-info-circle"></i> ข้อเสนอแนะนี้จะปรากฏในรายงานผลการประเมิน เพื่อให้ครูนำไปพัฒนาการสอน
+                      </small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="row">
                 <div className="col-12 text-center">
-                  <button type="submit" className="btn btn-success btn-xl" disabled={alreadyScored}> <i className="fa-regular fa-floppy-disk"></i> บันทึกคะแนน</button>
-                  <Link to="/Plan_Check" className="btn btn-danger btn-xl ml-2"><i className="fa-solid fa-xmark"></i> ยกเลิก</Link>
+                  <button type="submit" className="btn btn-success btn-xl" disabled={alreadyScored}>
+                    <i className="fa-regular fa-floppy-disk"></i> บันทึกคะแนน
+                  </button>
+                  <Link to="/Plan_Check" className="btn btn-danger btn-xl ml-2">
+                    <i className="fa-solid fa-xmark"></i> ยกเลิก
+                  </Link>
                 </div>
               </div>
             </form>

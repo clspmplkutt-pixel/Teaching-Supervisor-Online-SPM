@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { roleModules, moduleLabels, moduleIcons } from '../config/roleModules';
+import useNotifications from '../hooks/useNotifications';
 
 const humanizeModule = (moduleName) => {
   const fromMap = moduleLabels[moduleName];
@@ -33,6 +34,7 @@ const SidebarRole = () => {
   const { user, logout } = useAuth();
   const location = useLocation();
   const roleId = getRoleId(user);
+  const notifCount = useNotifications();
 
   const modules = roleModules[roleId] || [];
 
@@ -71,7 +73,14 @@ const SidebarRole = () => {
             <li className="nav-item" key={moduleName}>
               <Link to={`/${moduleName}`} className={`nav-link ${isActive(`/${moduleName}`)}`}>
                 <i className={`${moduleIcons[moduleName] || 'nav-icon far fa-circle'}`}></i>
-                <p>{humanizeModule(moduleName) || moduleName}</p>
+                <p>
+                  {humanizeModule(moduleName) || moduleName}
+                  {moduleName === 'Plan_Check' && notifCount > 0 && (
+                    <span className="badge badge-danger right ml-1" style={{ fontSize: '10px' }}>
+                      {notifCount > 99 ? '99+' : notifCount}
+                    </span>
+                  )}
+                </p>
               </Link>
             </li>
           ))}

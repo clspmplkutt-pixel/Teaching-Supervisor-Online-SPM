@@ -2,9 +2,9 @@
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
+import useNotifications from '../hooks/useNotifications';
 
 const thai_date_full = (date) => {
-    // Basic implementation of Thai date format
     const d = new Date(date);
     const months = [
         "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
@@ -15,7 +15,7 @@ const thai_date_full = (date) => {
 
 const Header = () => {
     const { user, logout } = useAuth();
-    // Default values if user is not fully loaded
+    const notifCount = useNotifications();
     const userName = user?.user_metadata?.name || 'Guest';
     const userRole = user?.user_metadata?.role || 'User';
 
@@ -41,6 +41,21 @@ const Header = () => {
                         {thai_date_full(new Date())} | <span className="text-blue">{userName} ({userRole}) <span className="badge badge-warning">React Version</span></span>
                     </span>
                 </li>
+
+                {/* 🔔 Notification Bell */}
+                {notifCount > 0 && (
+                    <li className="nav-item">
+                        <Link to="/" className="nav-link" title={`มี ${notifCount} รายการรอดำเนินการ`}>
+                            <i className="fas fa-bell text-warning"></i>
+                            <span
+                                className="badge badge-danger navbar-badge"
+                                style={{ fontSize: '10px' }}
+                            >
+                                {notifCount > 99 ? '99+' : notifCount}
+                            </span>
+                        </Link>
+                    </li>
+                )}
 
                 <li className="nav-item">
                     <a className="nav-link" data-widget="fullscreen" href="#" role="button">

@@ -4,6 +4,25 @@ import { supabase } from '../supabaseClient';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
 
+// Print styles injected once
+const PRINT_STYLE_ID = 'view-scoring-print-style';
+const injectPrintStyle = () => {
+  if (document.getElementById(PRINT_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = PRINT_STYLE_ID;
+  style.innerHTML = `
+    @media print {
+      .main-header, .main-sidebar, .content-header,
+      .footer, .no-print { display: none !important; }
+      .content-wrapper { margin-left: 0 !important; padding: 0 !important; }
+      .card { border: none !important; box-shadow: none !important; }
+      .card-header { background: #fff !important; color: #000 !important; }
+      body { font-size: 12px; }
+    }
+  `;
+  document.head.appendChild(style);
+};
+
 const useQuery = () => {
   const { search } = useLocation();
   return useMemo(() => new URLSearchParams(search), [search]);
@@ -245,6 +264,18 @@ const ViewScoring = () => {
     return list.map((id) => lookups.desirable[id] || id).join(', ');
   }, [plan, lookups]);
 
+  // Inject print CSS on first render (must be before any early return)
+  useEffect(() => { injectPrintStyle(); }, []);
+
+  // ดึงข้อเสนอแนะกรรมการจาก plan (committee1_comment ... committee5_comment)
+  const committeeComments = useMemo(() => {
+    if (!plan || !committeeProfiles.length) return [];
+    return committeeProfiles.map((cp, idx) => ({
+      label: `กรรมการคนที่ ${idx + 1} (${lookups.prefix[cp.prefix] || ''}${cp.name || ''} ${cp.lastname || ''})`,
+      text: plan[`committee${idx + 1}_comment`] || '',
+    })).filter((c) => c.text);
+  }, [plan, committeeProfiles, lookups.prefix]);
+
   if (loading) {
     return (
       <LoadingSpinner
@@ -264,8 +295,19 @@ const ViewScoring = () => {
     );
   }
 
+
   return (
     <div className="view-scoring">
+      <div className="row no-print mb-2">
+        <div className="col-12 text-right">
+          <button
+            className="btn btn-primary"
+            onClick={() => window.print()}
+          >
+            <i className="fa-solid fa-print"></i> พิมพ์รายงาน
+          </button>
+        </div>
+      </div>
       <div className="row">
         <div className="col-12">
           <div className="card card-success">
@@ -440,6 +482,23 @@ const ViewScoring = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* ── ข้อเสนอแนะจากกรรมการ ── */}
+              {committeeComments.length > 0 && (
+                <div className="mt-4">
+                  <h5><i className="fa-solid fa-comment-dots text-warning"></i> ข้อเสนอแนะจากกรรมการ</h5>
+                  {committeeComments.map((c, idx) => (
+                    <div key={idx} className="card card-warning mb-2">
+                      <div className="card-header py-2">
+                        <strong>{c.label}</strong>
+                      </div>
+                      <div className="card-body py-2" style={{ whiteSpace: 'pre-wrap' }}>
+                        {c.text}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {!planid && (
                 <div className="alert alert-info mt-3">
