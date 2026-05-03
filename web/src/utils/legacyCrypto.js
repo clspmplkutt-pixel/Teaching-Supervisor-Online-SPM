@@ -51,11 +51,15 @@ export const decryptLegacyPassword = (encryptedText) => {
     const d = CryptoJS.AES.decrypt(inner, key, { iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 });
     const result = d.toString(CryptoJS.enc.Utf8);
     if (result) return result;
-  } catch { }
+  } catch {
+    // eslint-disable-next-line no-empty
+  }
   try {
     // ลองเป็น single base64 (JS format)
     const d = CryptoJS.AES.decrypt(encryptedText, key, { iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 });
     return d.toString(CryptoJS.enc.Utf8) || null;
-  } catch { }
+  } catch {
+    // eslint-disable-next-line no-empty
+  }
   return null;
 };

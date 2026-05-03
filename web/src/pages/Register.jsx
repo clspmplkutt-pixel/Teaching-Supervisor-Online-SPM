@@ -1,11 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import CryptoJS from 'crypto-js';
 
 const Register = () => {
-    const navigate = useNavigate();
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [generatedPassword, setGeneratedPassword] = useState('');

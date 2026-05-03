@@ -208,7 +208,7 @@ const SendPlan = () => {
     if (!form.teach_subject_id && profile.teach_subject) {
       setForm((prev) => ({ ...prev, teach_subject_id: String(profile.teach_subject) }));
     }
-  }, [profile, options.teachSubject.length]);
+  }, [profile, options.teachSubject.length, form.teach_subject_id]);
 
   // Keep select2 UI in sync when state changes programmatically
   useEffect(() => {

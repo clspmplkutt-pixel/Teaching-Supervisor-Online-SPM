@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { decryptLegacyPassword } from '../utils/legacyCrypto';
+import Swal from 'sweetalert2';
 
 const Login = () => {
     const [loginData, setLoginData] = useState({
