@@ -90,7 +90,9 @@ export const allModules = [
   "usersupervisor",
   "userteacher",
   "view_appointment",
-  "view_scoring"
+  "view_scoring",
+  "nominate_evaluator",
+  "approve_evaluator"
 ];
 
 export const roleModules = {
@@ -151,7 +153,8 @@ export const roleModules = {
     "chgpasswd",
     "log",
     "importDMC",
-    "reset_user_password"
+    "reset_user_password",
+    "approve_evaluator"
   ],
   directorschool: [
     "chgpasswd",
@@ -162,7 +165,8 @@ export const roleModules = {
     "statusplan",
     "statusplan_clip",
     "statusplan_pass",
-    "view_scoring"
+    "view_scoring",
+    "nominate_evaluator"
   ],
   headdepartment: [
     "info",
@@ -284,7 +288,9 @@ export const moduleLabels = {
   reset_user_password: "Reset รหัสผ่านบุคลากร",
   updatepwd: "อัปเดตรหัสผ่าน",
   send_clip: "ส่งคลิป (เก่า)",
-  view_scoring: "ดูคะแนนการประเมิน"
+  view_scoring: "ดูคะแนนการประเมิน",
+  nominate_evaluator: "เสนอแต่งตั้งผู้นิเทศ",
+  approve_evaluator: "อนุมัติผู้นิเทศ"
 };
 
 export const moduleIcons = {
@@ -358,6 +364,8 @@ export const moduleIcons = {
   profile: "nav-icon fa-solid fa-user-gear text-info",
   updatepwd: "nav-icon fa-solid fa-key-skeleton text-warning",
   log: "nav-icon fa-solid fa-anchor-lock text-warning",
-  importDMC: "nav-icon fa-solid fa-file-import text-success"
+  importDMC: "nav-icon fa-solid fa-file-import text-success",
+  nominate_evaluator: "nav-icon fas fa-user-plus text-primary",
+  approve_evaluator: "nav-icon fas fa-user-check text-success"
 };
 

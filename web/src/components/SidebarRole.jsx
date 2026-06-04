@@ -36,7 +36,17 @@ const SidebarRole = () => {
   const roleId = getRoleId(user);
   const notifCount = useNotifications();
 
-  const modules = roleModules[roleId] || [];
+  let modules = [...(roleModules[roleId] || [])];
+  
+  const isEvaluator = user?.is_evaluator || user?.user_metadata?.is_evaluator;
+  if (isEvaluator && roleId !== 'supervision') {
+    const supervisionModules = roleModules['supervision'] || [];
+    supervisionModules.forEach(m => {
+      if (!modules.includes(m)) {
+        modules.push(m);
+      }
+    });
+  }
 
   // Filter out 'info' and submenu pages
   const moduleLinks = modules.filter((m) =>

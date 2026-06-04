@@ -145,6 +145,22 @@ export const AuthProvider = ({ children }) => {
 
                 // Success!
                 console.log('✅ Login successful!');
+                
+                // Check if user is an evaluator
+                let is_evaluator = false;
+                const roleId = data.level || level;
+                if (roleId === 'districdirector' || roleId === 'supervisor' || roleId === 'admin' || roleId === 'root') {
+                    is_evaluator = true;
+                } else if (table === 'tbl_Users' && data.people_id) {
+                    const { data: nomData } = await supabase
+                        .from('tbl_EvaluatorNominations')
+                        .select('id')
+                        .eq('nominee_people_id', data.people_id)
+                        .eq('status', 'approved')
+                        .maybeSingle();
+                    if (nomData) is_evaluator = true;
+                }
+
                 // Map legacy user data to session-like object
                 const userData = {
                     id: data.id,
@@ -153,9 +169,11 @@ export const AuthProvider = ({ children }) => {
                         name: data.name + ' ' + (data.lastname || ''),
                         role: data.level || level,
                         people_id: data.people_id || email,
-                        school: data.school || null
+                        school: data.school || null,
+                        is_evaluator: is_evaluator
                     },
-                    level_id: data.level || level
+                    level_id: data.level || level,
+                    is_evaluator: is_evaluator
                 };
                 setUser(userData);
 

@@ -18,6 +18,8 @@ import PlanScoring from './pages/PlanScoring';
 import Appointment from './pages/Appointment';
 import ViewAppointment from './pages/ViewAppointment';
 import PlanClip from './pages/PlanClip';
+import NominateEvaluator from './pages/NominateEvaluator';
+import ApproveEvaluator from './pages/ApproveEvaluator';
 import ConfirmUser from './pages/ConfirmUser';
 import UserTeacher from './pages/UserTeacher';
 import UserDirectorSchool from './pages/UserDirectorSchool';
@@ -121,6 +123,8 @@ function App() {
             <Route path="appointment" element={<Appointment />} />
             <Route path="view_appointment" element={<ViewAppointment />} />
             <Route path="plan_clip" element={<PlanClip />} />
+            <Route path="nominate_evaluator" element={<NominateEvaluator />} />
+            <Route path="approve_evaluator" element={<ApproveEvaluator />} />
             <Route path="confirmUser" element={<ConfirmUser />} />
             <Route path="userteacher" element={<UserTeacher />} />
             <Route path="userdirectorschool" element={<UserDirectorSchool />} />
