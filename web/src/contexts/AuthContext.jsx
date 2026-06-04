@@ -137,15 +137,6 @@ export const AuthProvider = ({ children }) => {
             }
 
             if (data) {
-                // Security Check: Verify that the user's database level matches the selected role
-                if (table === 'tbl_Users' && data.level && data.level !== level) {
-                    console.error('❌ Role mismatch. User is', data.level, 'but tried to login as', level);
-                    throw new Error('Invalid role selected for this user');
-                }
-
-                // Success!
-                console.log('✅ Login successful!');
-                
                 // Check if user is an evaluator
                 let is_evaluator = false;
                 const roleId = data.level || level;
@@ -161,6 +152,20 @@ export const AuthProvider = ({ children }) => {
                     if (nomData) is_evaluator = true;
                 }
 
+                // Security Check: Verify that the user's database level matches the selected role
+                if (table === 'tbl_Users' && data.level && data.level !== level) {
+                    // Allow login as 'supervision' (ผู้นิเทศ) if the user has evaluator rights
+                    const isAllowedEvaluatorLogin = (level === 'supervision' && is_evaluator);
+                    
+                    if (!isAllowedEvaluatorLogin) {
+                        console.error('❌ Role mismatch. User is', data.level, 'but tried to login as', level);
+                        throw new Error('Invalid role selected for this user');
+                    }
+                }
+
+                // Success!
+                console.log('✅ Login successful!');
+                
                 // Map legacy user data to session-like object
                 const userData = {
                     id: data.id,
