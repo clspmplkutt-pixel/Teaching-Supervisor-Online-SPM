@@ -13,11 +13,11 @@ const UserSupervision = () => {
   const loadUsers = async () => {
     setLoading(true);
     try {
-      // 1. Fetch users whose primary level is 'supervision'
+      // 1. Fetch users whose primary level is 'supervision', 'supervisor', or 'districdirector'
       const { data: directSupervisors, error: err1 } = await supabase
         .from('tbl_Users')
         .select('*')
-        .eq('level', 'supervision');
+        .in('level', ['supervision', 'supervisor', 'districdirector']);
       if (err1) throw err1;
 
       // 2. Fetch approved nominations from tbl_EvaluatorNominations
