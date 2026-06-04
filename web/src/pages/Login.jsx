@@ -248,12 +248,12 @@ const Login = () => {
                 {/* Banner Download */}
                 <div className="row mt-3 text-center">
                     <div className="col-4 px-1">
-                        <a href="https://drive.google.com/file/d/1sXUxzEqs4aFMq0Ca2rmlAOoo3Dd-s08N/view?usp=sharing" target="_blank" rel="noopener noreferrer">
+                        <a href="https://img2.pic.in.th/2078e38cfd7ff5093.jpg" target="_blank" rel="noopener noreferrer">
                             <img src="/images/manual1.jpg" alt="คู่มือครู" className="img-fluid rounded shadow-sm border hover-zoom" style={{ transition: 'transform 0.2s' }} onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'} onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'} />
                         </a>
                     </div>
                     <div className="col-4 px-1">
-                        <a href="https://drive.google.com/file/d/1BYrvVIMwNmPkDWg22X05PDd1Wy77hjCD/view?usp=sharing" target="_blank" rel="noopener noreferrer">
+                        <a href="https://img1.pic.in.th/images/4924ed7f823622c84.jpg" target="_blank" rel="noopener noreferrer">
                             <img src="/images/manual2.jpg" alt="คู่มือผู้นิเทศ" className="img-fluid rounded shadow-sm border hover-zoom" style={{ transition: 'transform 0.2s' }} onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'} onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'} />
                         </a>
                     </div>
