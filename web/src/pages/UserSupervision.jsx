@@ -13,14 +13,55 @@ const UserSupervision = () => {
   const loadUsers = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // 1. Fetch users whose primary level is 'supervision'
+      const { data: directSupervisors, error: err1 } = await supabase
         .from('tbl_Users')
         .select('*')
-        .eq('level', 'supervision')
-        .order('position_id', { ascending: false })
-        .order('academic_id', { ascending: true });
-      if (error) throw error;
-      setRows(data || []);
+        .eq('level', 'supervision');
+      if (err1) throw err1;
+
+      // 2. Fetch approved nominations from tbl_EvaluatorNominations
+      const { data: approvedNominations, error: err2 } = await supabase
+        .from('tbl_EvaluatorNominations')
+        .select('nominee_people_id')
+        .eq('status', 'approved');
+      if (err2) throw err2;
+
+      let allUsers = [...(directSupervisors || [])];
+
+      // 3. Fetch nominated users if any exist
+      if (approvedNominations && approvedNominations.length > 0) {
+        const nomineeIds = approvedNominations.map(n => n.nominee_people_id).filter(Boolean);
+        if (nomineeIds.length > 0) {
+          const { data: nominatedUsers, error: err3 } = await supabase
+            .from('tbl_Users')
+            .select('*')
+            .in('people_id', nomineeIds);
+          if (err3) throw err3;
+
+          if (nominatedUsers) {
+            nominatedUsers.forEach(user => {
+              if (!allUsers.some(u => u.people_id === user.people_id)) {
+                allUsers.push(user);
+              }
+            });
+          }
+        }
+      }
+
+      // Sort combined array by position_id (descending) then academic_id (ascending)
+      allUsers.sort((a, b) => {
+        const posA = String(a.position_id || '');
+        const posB = String(b.position_id || '');
+        if (posA !== posB) {
+          return posB.localeCompare(posA); // descending
+        }
+        const acadA = String(a.academic_id || '');
+        const acadB = String(b.academic_id || '');
+        return acadA.localeCompare(acadB); // ascending
+      });
+
+      setRows(allUsers);
     } catch (err) {
       console.error(err);
     } finally {
