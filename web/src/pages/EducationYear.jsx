@@ -38,13 +38,21 @@ const EducationYear = () => {
     if (!result.isConfirmed) return;
 
     try {
-      await supabase.from('tbl_education_year').update({ active: '0' }).eq('active', '1');
-      const { error } = await supabase.from('tbl_education_year').update({ active: '1' }).eq('id', row.id);
-      if (error) throw error;
+      const { error: err1 } = await supabase.from('tbl_education_year').update({ active: '0' }).eq('active', '1');
+      if (err1) {
+        console.error('❌ Reset active error:', err1);
+        throw new Error(`Reset failed: ${err1.message} (code: ${err1.code})`);
+      }
+      const { error: err2 } = await supabase.from('tbl_education_year').update({ active: '1' }).eq('id', row.id);
+      if (err2) {
+        console.error('❌ Set active error:', err2);
+        throw new Error(`Set active failed: ${err2.message} (code: ${err2.code})`);
+      }
+      Swal.fire('สำเร็จ', `ตั้งค่าปี ${row.year} ภาคเรียนที่ ${row.section} เป็นปีการศึกษาปัจจุบันแล้ว`, 'success');
       loadData();
     } catch (err) {
-      console.error(err);
-      Swal.fire('Error', 'เกิดข้อผิดพลาด', 'error');
+      console.error('❌ handleSetCurrent error:', err);
+      Swal.fire('Error', `เกิดข้อผิดพลาด: ${err.message}`, 'error');
     }
   };
 

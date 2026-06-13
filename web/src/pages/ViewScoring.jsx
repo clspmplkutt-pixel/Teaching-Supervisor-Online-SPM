@@ -28,6 +28,21 @@ const useQuery = () => {
   return useMemo(() => new URLSearchParams(search), [search]);
 };
 
+// แปลงวันที่เป็นรูปแบบไทย (dd เดือน พ.ศ.)
+const formatThaiDate = (dateStr) => {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  const thaiMonths = [
+    'มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน',
+    'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'
+  ];
+  const day = d.getDate();
+  const month = thaiMonths[d.getMonth()];
+  const year = d.getFullYear() + 543;
+  return `${day} ${month} ${year}`;
+};
+
 const explanScore = (score) => {
   if (score >= 90) return 'ดีเด่น';
   if (score >= 80) return 'ดีมาก';
@@ -441,7 +456,7 @@ const ViewScoring = () => {
                                       วิทยฐานะ {lookups.academic[cp.academic_id] || '-'}
                                     </div>
                                     <div style={{ fontSize: '12px', color: '#555' }}>
-                                      วันที่ประเมิน : {plan[`date_scoring${idx + 1}`] || '....................'}
+                                      วันที่ประเมิน : {formatThaiDate(plan[`date_scoring${idx + 1}`]) || '....................'}
                                     </div>
                                   </td>
                                 ))}
