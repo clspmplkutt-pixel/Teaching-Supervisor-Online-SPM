@@ -16,17 +16,30 @@ const useSelect2 = (deps = []) => {
       if (e.originalEvent) return;
 
       const element = this;
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLSelectElement.prototype,
-        'value'
-      ).set;
+      const isMultiple = element.multiple;
 
-      if (nativeInputValueSetter) {
-        nativeInputValueSetter.call(element, element.value);
+      if (isMultiple) {
+        // multi-select: sync array of selected values back to React
+        const selectedValues = $(element).val() || [];
+        // Set each option's selected state manually
+        Array.from(element.options).forEach((opt) => {
+          opt.selected = selectedValues.includes(opt.value);
+        });
+        // Dispatch a change event so React picks it up
+        const event = new Event('change', { bubbles: true });
+        element.dispatchEvent(event);
+      } else {
+        // single select: original behavior
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+          window.HTMLSelectElement.prototype,
+          'value'
+        ).set;
+        if (nativeInputValueSetter) {
+          nativeInputValueSetter.call(element, element.value);
+        }
+        const event = new Event('change', { bubbles: true });
+        element.dispatchEvent(event);
       }
-
-      const event = new Event('change', { bubbles: true });
-      element.dispatchEvent(event);
     });
 
     return () => {

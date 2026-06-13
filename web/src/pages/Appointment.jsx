@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
@@ -151,6 +151,56 @@ const Appointment = ({ readOnly = false }) => {
 
     return () => { mounted = false; };
   }, [planid, profileLoading]);
+
+  // ── Select2 สำหรับ dropdown กรรมการ ──
+  const select2InitRef = useRef(false);
+  useEffect(() => {
+    const $ = window.$;
+    if (!$ || !$.fn || !$.fn.select2) return;
+    if (loading || committeeOptions.length === 0) return;
+
+    const timeout = setTimeout(() => {
+      [1, 2, 3, 4, 5].forEach((num) => {
+        const $el = $(`#committee${num}`);
+        if (!$el.length) return;
+        try { $el.select2('destroy'); } catch { /* noop */ }
+        $el.select2({
+          theme: 'bootstrap4',
+          width: '100%',
+          placeholder: `ค้นหากรรมการท่านที่ ${num}...`,
+          allowClear: true,
+        });
+        // sync Select2 value → React state
+        $el.on('change.select2commit', function () {
+          const val = $(this).val() || '';
+          setForm((prev) => ({ ...prev, [`committee${num}`]: val }));
+        });
+      });
+      select2InitRef.current = true;
+    }, 100);
+
+    return () => {
+      clearTimeout(timeout);
+      [1, 2, 3, 4, 5].forEach((num) => {
+        try {
+          const $el = $(`#committee${num}`);
+          $el.off('change.select2commit');
+          $el.select2('destroy');
+        } catch { /* noop */ }
+      });
+      select2InitRef.current = false;
+    };
+  }, [loading, committeeOptions.length]);
+
+  // sync React form state → Select2 UI เมื่อ form.committeeX เปลี่ยน
+  useEffect(() => {
+    const $ = window.$;
+    if (!$ || !select2InitRef.current) return;
+    [1, 2, 3, 4, 5].forEach((num) => {
+      const $el = $(`#committee${num}`);
+      if ($el.length) $el.val(form[`committee${num}`] || '').trigger('change.select2');
+    });
+  }, [form.committee1, form.committee2, form.committee3, form.committee4, form.committee5]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -434,16 +484,31 @@ const Appointment = ({ readOnly = false }) => {
                 <div className="row">
                   {[1, 2, 3, 4, 5].map((num) => {
                     const field = `committee${num}`;
-                    const disabled = readOnly || form.plan_approve !== '1' || (num > 1 && !form[`committee${num - 1}`]);
+                    const isDisabled = readOnly || form.plan_approve !== '1' || (num > 1 && !form[`committee${num - 1}`]);
                     return (
                       <div className="col-lg-4" key={field}>
                         <div className="mb-3 mt-3">
                           <div className="form-group">
-                            <label htmlFor={field}><strong>กรรมการท่านที่ {num} : </strong></label>
-                            <select className="form-select committee" name={field} id={field} value={form[field]} onChange={handleChange} style={{ width: '100%' }} disabled={disabled}>
+                            <label htmlFor={field}>
+                              <strong>กรรมการท่านที่ {num} :</strong>
+                              {form[field] && (
+                                <span className="badge badge-success ml-2" style={{ fontSize: '11px' }}>
+                                  <i className="fas fa-check mr-1"></i>เลือกแล้ว
+                                </span>
+                              )}
+                            </label>
+                            <select
+                              id={field}
+                              name={field}
+                              style={{ width: '100%' }}
+                              disabled={isDisabled}
+                              defaultValue={form[field] || ''}
+                            >
                               <option value=""></option>
                               {committeeOptions.map((opt) => (
-                                <option key={`${field}-${opt.value}`} value={opt.value}>{opt.label}</option>
+                                <option key={`${field}-${opt.value}`} value={opt.value}>
+                                  {opt.label}
+                                </option>
                               ))}
                             </select>
                           </div>
