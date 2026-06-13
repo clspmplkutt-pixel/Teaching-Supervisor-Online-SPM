@@ -101,14 +101,46 @@ const Appointment = ({ readOnly = false }) => {
         const indicatorMap = {};
         indicatorRes.data?.forEach((i) => { indicatorMap[i.indicators_name] = i.indicators_details; });
 
+        // 1. Fetch approved nominations from tbl_EvaluatorNominations
+        let approvedNomineeIds = new Set();
+        try {
+          const { data: approvedNominations, error: nomError } = await supabase
+            .from('tbl_EvaluatorNominations')
+            .select('nominee_people_id')
+            .eq('status', 'approved');
+          
+          if (!nomError && approvedNominations) {
+            approvedNominations.forEach((n) => {
+              if (n.nominee_people_id) {
+                approvedNomineeIds.add(n.nominee_people_id);
+              }
+            });
+          }
+        } catch (err) {
+          console.warn('Failed to fetch evaluator nominations:', err);
+        }
+
+        // 2. Fetch all confirmed users with levels of interest
         const { data: committeeData } = await supabase
           .from('tbl_Users')
-          .select('people_id, prefix, name, lastname, school')
+          .select('people_id, prefix, name, lastname, school, level')
           .eq('register_isConfirm', '1')
+          .in('level', ['districdirector', 'supervisor', 'supervision', 'directorschool', 'teacher'])
           .order('school', { ascending: true })
           .order('name', { ascending: true });
 
-        const options = (committeeData || []).map((row) => ({
+        // 3. Filter users: keep non-teachers with target roles, and teachers ONLY if approved as evaluators
+        const filteredCommitteeData = (committeeData || []).filter((row) => {
+          if (['districdirector', 'supervisor', 'supervision', 'directorschool'].includes(row.level)) {
+            return true;
+          }
+          if (row.level === 'teacher') {
+            return approvedNomineeIds.has(row.people_id);
+          }
+          return false;
+        });
+
+        const options = filteredCommitteeData.map((row) => ({
           value: row.people_id,
           label: `${prefixMap[row.prefix] || ''}${row.name} ${row.lastname} (${schoolMap[row.school] || ''})`,
         }));
