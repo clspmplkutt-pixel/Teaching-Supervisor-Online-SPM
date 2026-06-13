@@ -232,6 +232,7 @@ const Appointment = ({ readOnly = false }) => {
       const $el = $(`#committee${num}`);
       if ($el.length) $el.val(form[`committee${num}`] || '').trigger('change.select2');
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.committee1, form.committee2, form.committee3, form.committee4, form.committee5]);
 
   const handleChange = (e) => {

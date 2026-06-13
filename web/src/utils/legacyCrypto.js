@@ -52,14 +52,14 @@ export const decryptLegacyPassword = (encryptedText) => {
     const result = d.toString(CryptoJS.enc.Utf8);
     if (result) return result;
   } catch {
-    // eslint-disable-next-line no-empty
+    // empty
   }
   try {
     // ลองเป็น single base64 (JS format)
     const d = CryptoJS.AES.decrypt(encryptedText, key, { iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 });
     return d.toString(CryptoJS.enc.Utf8) || null;
   } catch {
-    // eslint-disable-next-line no-empty
+    // empty
   }
   return null;
 };

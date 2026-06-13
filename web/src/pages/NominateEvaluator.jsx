@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import Swal from 'sweetalert2';
@@ -17,9 +17,9 @@ const NominateEvaluator = () => {
         if (directorPeopleId) {
             fetchData();
         }
-    }, [directorPeopleId]);
+    }, [directorPeopleId, fetchData]);
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         setLoading(true);
         try {
             // Fetch teachers in the same school
@@ -56,7 +56,7 @@ const NominateEvaluator = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [schoolId, directorPeopleId]);
 
     const handleNominate = async (nomineePeopleId, nomineeName) => {
         // Check if already nominated
@@ -132,7 +132,8 @@ const NominateEvaluator = () => {
             setExternalId('');
 
         } catch (error) {
-            Swal.fire('ข้อผิดพลาด', 'เกิดข้อผิดพลาดในการค้นหาข้อมูล', 'error');
+            console.error("Error nominating external user:", error);
+            Swal.fire('ข้อผิดพลาด', 'เกิดข้อผิดพลาดในการค้นหาข้อมูล: ' + error.message, 'error');
         }
     };
 
