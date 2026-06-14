@@ -58,8 +58,25 @@ const scorePassLabel = (score, pass) => {
   return (<span><i className="fa-regular fa-square"></i> ผ่าน <i className="fa-regular fa-square-check"></i> ไม่ผ่าน</span>);
 };
 
+// แปลง Google Drive URL ให้ embed ได้
+const convertDriveUrl = (url) => {
+  if (!url) return '';
+  // รูปแบบ: https://drive.google.com/file/d/FILE_ID/view
+  const fileMatch = url.match(/drive\.google\.com\/file\/d\/([^/?]+)/);
+  if (fileMatch) {
+    return `https://lh3.googleusercontent.com/d/${fileMatch[1]}`;
+  }
+  // รูปแบบ: https://drive.google.com/uc?id=FILE_ID หรือ ?export=view&id=FILE_ID
+  const ucMatch = url.match(/[?&]id=([^&]+)/);
+  if (ucMatch && url.includes('drive.google.com')) {
+    return `https://lh3.googleusercontent.com/d/${ucMatch[1]}`;
+  }
+  return url;
+};
+
 // แสดงลายเซ็นต์จาก URL หรือ path
 const SignatureImage = ({ src, alt }) => {
+  const [imgError, setImgError] = React.useState(false);
   if (!src) {
     return (
       <div style={{
@@ -71,13 +88,31 @@ const SignatureImage = ({ src, alt }) => {
       </div>
     );
   }
-  const url = String(src).startsWith('http') ? src : `/fileupload/signature/${src}`;
+  let url;
+  if (String(src).startsWith('http')) {
+    url = convertDriveUrl(src);
+  } else {
+    url = `/fileupload/signature/${src}`;
+  }
+
+  if (imgError) {
+    // Fallback: แสดง link แทนถ้าภาพโหลดไม่ได้
+    return (
+      <div style={{ textAlign: 'center', margin: '0 auto' }}>
+        <a href={String(src).startsWith('http') ? src : `/fileupload/signature/${src}`} target="_blank" rel="noreferrer"
+          style={{ fontSize: '12px', color: '#007bff' }}>
+          <i className="fa-solid fa-signature"></i> ดูลายเซ็นต์
+        </a>
+      </div>
+    );
+  }
+
   return (
     <img
       src={url}
       alt={alt || 'signature'}
       style={{ maxWidth: '180px', maxHeight: '70px', objectFit: 'contain', display: 'block', margin: '0 auto' }}
-      onError={(e) => { e.target.style.display = 'none'; }}
+      onError={() => setImgError(true)}
     />
   );
 };
