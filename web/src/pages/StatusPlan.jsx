@@ -159,11 +159,12 @@ const StatusPlan = () => {
     return () => { mounted = false; };
   }, [roleId, profile, profileLoading, user]);
 
-  const totalColumns = roleId === 'directorschool' ? 11 : 11;
+  const totalColumns = roleId === 'directorschool' ? 12 : 13;
 
   const renderTeacherRow = (row) => {
     const committeeTotal = [row.committee1, row.committee2, row.committee3, row.committee4, row.committee5].filter(Boolean).length;
     const scoringCount = scoreMap[row.planid] || 0;
+    const canEdit = ['1', '3', '4'].includes(String(row.plan_status));
 
     return (
       <tr key={row.planid}>
@@ -202,6 +203,15 @@ const StatusPlan = () => {
           <span className={`badge ${statusBadgeClass(row.plan_status)}`}>{lookups.status[String(row.plan_status)] || ''}</span>
           {String(row.plan_status) === '3' && row.plan_ds_comment && (
             <div className="mt-1">หมายเหตุ: {row.plan_ds_comment}</div>
+          )}
+        </td>
+        <td className="text-center">
+          {canEdit ? (
+            <Link to={`/sendplan?planid=${row.planid}`} className="btn btn-sm btn-warning">
+              <i className="fa-solid fa-edit"></i> แก้ไข
+            </Link>
+          ) : (
+            <span className="text-muted"><i className="fa-solid fa-lock"></i> ล็อคแล้ว</span>
           )}
         </td>
       </tr>
@@ -304,6 +314,7 @@ const StatusPlan = () => {
                       <th>คลิป</th>
                       <th>ผลประเมิน</th>
                       <th>สถานะ</th>
+                      <th>การจัดการ</th>
                     </tr>
                   )}
                 </thead>

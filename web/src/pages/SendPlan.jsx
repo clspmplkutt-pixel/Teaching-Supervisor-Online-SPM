@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useMemo } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
 import { useUserProfile } from '../hooks/useUserProfile';
@@ -41,11 +41,17 @@ const getFileTimestamp = () => {
 
 const SendPlan = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const planid = query.get('planid');
+
   const { profile, loading: profileLoading } = useUserProfile();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [file, setFile] = useState(null);
   const [autoComplete, setAutoComplete] = useState({ subjectCodes: [], subjectNames: [] });
+  const [existingPlanFile, setExistingPlanFile] = useState('');
+  const [existingPlanStatus, setExistingPlanStatus] = useState('1');
 
   const [options, setOptions] = useState({
     teachSubject: [],
@@ -216,7 +222,21 @@ const SendPlan = () => {
     if (!$ || !$.fn || !$.fn.select2) return;
     $('#teach_subject_id').val(form.teach_subject_id || '').trigger('change.select2');
     $('#grade_level_id').val(form.grade_level_id || '').trigger('change.select2');
-  }, [form.teach_subject_id, form.grade_level_id, options.teachSubject.length, options.gradeLevel.length]);
+    $('#competency').val(form.competency || []).trigger('change.select2');
+    $('[name="ability21"]').val(form.ability21 || []).trigger('change.select2');
+    $('[name="desirable"]').val(form.desirable || []).trigger('change.select2');
+  }, [
+    form.teach_subject_id,
+    form.grade_level_id,
+    form.competency,
+    form.ability21,
+    form.desirable,
+    options.teachSubject.length,
+    options.gradeLevel.length,
+    options.competency.length,
+    options.ability21.length,
+    options.desirable.length,
+  ]);
 
   useEffect(() => {
     const $ = window.$;
@@ -278,6 +298,60 @@ const SendPlan = () => {
     loadSubjectHints();
     return () => { mounted = false; };
   }, [profile]);
+
+  useEffect(() => {
+    if (!planid) return;
+    let mounted = true;
+    const fetchExistingPlan = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('tbl_sendplan')
+          .select('*')
+          .eq('planid', planid)
+          .maybeSingle();
+        if (error) throw error;
+        if (data && mounted) {
+          setExistingPlanFile(data.plan_file || '');
+          setExistingPlanStatus(data.plan_status || '1');
+          setForm({
+            teach_subject_id: data.teach_subject_id ? String(data.teach_subject_id) : '',
+            grade_level_id: data.grade_level_id ? String(data.grade_level_id) : '',
+            subject_type: data.subject_type || '01',
+            subject_code: data.subject_code || '',
+            subject_name: data.subject_name || '',
+            subject_content: data.subject_content || '',
+            subject_name_plan: data.subject_name_plan || '',
+            teach_date: data.teach_date || '',
+            teach_timestart: data.teach_timestart || '',
+            teach_timeend: data.teach_timeend || '',
+            teach_minute: data.teach_minute ? String(data.teach_minute) : '',
+            learning_model: data.learning_model || '',
+            competency: data.competency ? data.competency.split(',') : [],
+            ability21: data.ability21 ? data.ability21.split(',') : [],
+            desirable: data.desirable ? data.desirable.split(',') : [],
+            objectives_knowledge: data.objectives_knowledge || '',
+            objectives_process: data.objectives_process || '',
+            objectives_attribute: data.objectives_attribute || '',
+            learning_outcomes: data.learning_outcomes || '',
+            learning_content: data.learning_content || '',
+            learning_activities: data.learning_activities || '',
+            instructional_media: data.instructional_media || '',
+            Measurement_how: data.measurement_how || '',
+            Measurement_tools: data.measurement_tools || '',
+            Measurement_scoring: data.measurement_scoring || '',
+            Measurement_outcomes: data.measurement_outcomes || '',
+            indicators_mid: data.indicators_mid ? data.indicators_mid.split(',') : [],
+            indicators_final: data.indicators_final ? data.indicators_final.split(',') : [],
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching existing plan:', err);
+        Swal.fire('Error', 'ไม่สามารถโหลดข้อมูลแผนการสอนเดิมได้', 'error');
+      }
+    };
+    fetchExistingPlan();
+    return () => { mounted = false; };
+  }, [planid]);
 
   const teachSubjectId = form.teach_subject_id;
   const gradeLevelId = form.grade_level_id;
@@ -341,23 +415,28 @@ const SendPlan = () => {
       Swal.fire('Error', 'ไม่พบข้อมูลผู้ใช้งาน', 'error');
       return;
     }
-    if (!file) {
+    if (!file && !planid) {
       Swal.fire('Error', 'กรุณาเลือกไฟล์แผนการสอน (PDF)', 'error');
       return;
     }
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      Swal.fire('Error', 'ไฟล์ต้องเป็น PDF เท่านั้น', 'error');
-      return;
-    }
-    if (file.size > 104857600) {
-      Swal.fire('Error', 'ขนาดไฟล์ใหญ่กว่า 100MB', 'error');
-      return;
+    if (file) {
+      if (!file.name.toLowerCase().endsWith('.pdf')) {
+        Swal.fire('Error', 'ไฟล์ต้องเป็น PDF เท่านั้น', 'error');
+        return;
+      }
+      if (file.size > 104857600) {
+        Swal.fire('Error', 'ขนาดไฟล์ใหญ่กว่า 100MB', 'error');
+        return;
+      }
     }
 
     setSaving(true);
     try {
-      const planFilename = `${profile.people_id}_${getFileTimestamp()}.pdf`;
-      const driveUrl = await uploadToDrive(file, { filename: planFilename });
+      let driveUrl = existingPlanFile;
+      if (file) {
+        const planFilename = `${profile.people_id}_${getFileTimestamp()}.pdf`;
+        driveUrl = await uploadToDrive(file, { filename: planFilename });
+      }
       const eduYear = parseInt(config.EDUYEAR) || new Date().getFullYear() + 543;
       const eduTerm = parseInt(config.EDUROUND) || 1;
       const budgetYear = parseInt(config.BUDGET_YEAR) || eduYear;
@@ -398,20 +477,30 @@ const SendPlan = () => {
         objectives_attribute: form.objectives_attribute,
         plan_file: driveUrl,
         plan_senddate: getLocalTimestamp(),
-        plan_status: '1',
-        plan_clip: '',
-        committee1: '',
-        committee2: '',
-        committee3: '',
-        committee4: '',
-        committee5: '',
+        plan_status: planid ? (existingPlanStatus === '3' ? '4' : existingPlanStatus) : '1',
       };
 
-      const { error } = await supabase.from('tbl_sendplan').insert([payload]);
-      if (error) throw error;
+      if (planid) {
+        const { error } = await supabase
+          .from('tbl_sendplan')
+          .update(payload)
+          .eq('planid', planid);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('tbl_sendplan').insert([{
+          ...payload,
+          plan_clip: '',
+          committee1: '',
+          committee2: '',
+          committee3: '',
+          committee4: '',
+          committee5: '',
+        }]);
+        if (error) throw error;
+      }
 
       Swal.fire({
-        title: 'ส่งสำเร็จแล้ว',
+        title: planid ? 'แก้ไขสำเร็จแล้ว' : 'ส่งสำเร็จแล้ว',
         text: 'ระบบกำลังนำท่านกลับไปหน้าแรก',
         icon: 'success',
       }).then(() => {
@@ -444,7 +533,7 @@ const SendPlan = () => {
           <form onSubmit={handleSubmit} className="form-horizontal was-validated" autoComplete="off">
             <div className="card card-success">
               <div className="card-header">
-                <h4 className="card-title">ข้อมูลผู้จัดทำแผน</h4>
+                <h4 className="card-title">{planid ? 'แก้ไขข้อมูลแผนการสอน' : 'ข้อมูลผู้จัดทำแผน'}</h4>
               </div>
               <div className="card-body">
                 <div className="row">
@@ -737,7 +826,7 @@ const SendPlan = () => {
                     {indicators.mid.map((ind, idx) => (
                       <div className="col-lg-4" key={`mid-${idx}`}>
                         <div className="mb-3 mt-3">
-                          <input type="checkbox" name="indicators_mid" value={ind.indicators_name} onChange={(e) => {
+                          <input type="checkbox" name="indicators_mid" value={ind.indicators_name} checked={Array.isArray(form.indicators_mid) && form.indicators_mid.includes(ind.indicators_name)} onChange={(e) => {
                             const value = e.target.value;
                             setForm((prev) => {
                               const next = new Set(prev.indicators_mid);
@@ -766,7 +855,7 @@ const SendPlan = () => {
                     {indicators.final.map((ind, idx) => (
                       <div className="col-lg-4" key={`final-${idx}`}>
                         <div className="mb-3 mt-3">
-                          <input type="checkbox" name="indicators_final" value={ind.indicators_name} onChange={(e) => {
+                          <input type="checkbox" name="indicators_final" value={ind.indicators_name} checked={Array.isArray(form.indicators_final) && form.indicators_final.includes(ind.indicators_name)} onChange={(e) => {
                             const value = e.target.value;
                             setForm((prev) => {
                               const next = new Set(prev.indicators_final);
@@ -802,13 +891,18 @@ const SendPlan = () => {
                 <h4 className="card-title text-white">แนบไฟล์แผนการสอน :</h4>
               </div>
               <div className="card-body">
-                <input type="file" name="plan_file" id="plan_file" accept="application/pdf" onChange={handleFileChange} required />
+                <input type="file" name="plan_file" id="plan_file" accept="application/pdf" onChange={handleFileChange} required={!planid} />
+                {planid && existingPlanFile && (
+                  <div className="mt-2 text-info">
+                    <i className="fa-regular fa-file-pdf"></i> ไฟล์ปัจจุบัน: <a href={existingPlanFile} target="_blank" rel="noreferrer">ดูไฟล์เดิม</a> (หากไม่ต้องการเปลี่ยนไฟล์ใหม่ ไม่ต้องแนบไฟล์ใหม่)
+                  </div>
+                )}
               </div>
               <div className="card-footer text-center">
                 <button type="submit" className="btn btn-success" id="btn_submit" disabled={saving}>
-                  <i className="fa-regular fa-paper-plane"></i> ส่งแผนการสอน
+                  <i className={planid ? "fa-solid fa-save" : "fa-regular fa-paper-plane"}></i> {planid ? "บันทึกการแก้ไข" : "ส่งแผนการสอน"}
                 </button>
-                <Link to="/" className="btn btn-danger ml-2">
+                <Link to="/statusplan" className="btn btn-danger ml-2">
                   <i className="fa-solid fa-ban"></i> ยกเลิก
                 </Link>
               </div>
