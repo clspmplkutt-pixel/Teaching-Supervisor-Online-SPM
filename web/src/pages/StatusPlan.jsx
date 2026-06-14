@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../hooks/useUserProfile';
@@ -185,7 +186,50 @@ const StatusPlan = () => {
     return () => { mounted = false; };
   }, [roleId, profile, profileLoading, user]);
 
-  const totalColumns = roleId === 'directorschool' ? 12 : 13;
+  const totalColumns = roleId === 'directorschool' ? 12 : 14;
+
+  // ฟังก์ชันลบแผนการสอน
+  const handleDelete = async (row) => {
+    const committeeCount = [row.committee1, row.committee2, row.committee3, row.committee4, row.committee5].filter(Boolean).length;
+    if (committeeCount > 0) {
+      Swal.fire({
+        title: 'ไม่สามารถลบได้',
+        text: 'แผนนี้มีกรรมการถูกแต่งตั้งแล้ว ไม่สามารถลบได้',
+        icon: 'warning',
+        confirmButtonText: 'ตกลง',
+      });
+      return;
+    }
+    const result = await Swal.fire({
+      title: 'ยืนยันการลบแผน',
+      html: `คุณต้องการลบแผน <strong>"${row.subject_name_plan || row.subject_content}"</strong> ใช่หรือไม่?<br/><span class="text-danger">การลบไม่สามารถกู้คืนได้</span>`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#6c757d',
+      confirmButtonText: '<i class="fa-solid fa-trash"></i> ลบแผนนี้',
+      cancelButtonText: 'ยกเลิก',
+    });
+    if (!result.isConfirmed) return;
+    try {
+      // ลบคะแนนที่เกี่ยวข้องก่อน (ถ้ามี)
+      await supabase.from('tbl_sendplan_score').delete().eq('planid', String(row.planid));
+      // ลบแผน
+      const { error } = await supabase.from('tbl_sendplan').delete().eq('planid', row.planid);
+      if (error) throw error;
+      setRows((prev) => prev.filter((r) => r.planid !== row.planid));
+      Swal.fire({
+        title: 'ลบสำเร็จ',
+        text: 'ลบแผนการสอนเรียบร้อยแล้ว',
+        icon: 'success',
+        timer: 1500,
+        showConfirmButton: false,
+      });
+    } catch (err) {
+      console.error('Delete plan error:', err);
+      Swal.fire('Error', err.message || 'ไม่สามารถลบแผนได้', 'error');
+    }
+  };
 
   const renderTeacherRow = (row, index) => {
     const committeeTotal = [row.committee1, row.committee2, row.committee3, row.committee4, row.committee5].filter(Boolean).length;
@@ -235,13 +279,25 @@ const StatusPlan = () => {
           )}
         </td>
         <td className="text-center">
-          {canEdit ? (
-            <Link to={`/sendplan?planid=${row.planid}`} className="btn btn-sm btn-warning">
-              <i className="fa-solid fa-edit"></i> แก้ไข
-            </Link>
-          ) : (
-            <span className="text-muted"><i className="fa-solid fa-lock"></i> ล็อคแล้ว</span>
-          )}
+          <div className="d-flex flex-column gap-1" style={{ gap: '4px' }}>
+            {canEdit ? (
+              <Link to={`/sendplan?planid=${row.planid}`} className="btn btn-sm btn-warning mb-1">
+                <i className="fa-solid fa-edit"></i> แก้ไข
+              </Link>
+            ) : (
+              <span className="text-muted"><i className="fa-solid fa-lock"></i> ล็อคแล้ว</span>
+            )}
+            {/* ลบได้เฉพาะ status 1 (รอตรวจ) หรือ 3 (ไม่ผ่าน) */}
+            {['1', '3'].includes(String(row.plan_status)) && (
+              <button
+                className="btn btn-sm btn-danger"
+                onClick={() => handleDelete(row)}
+                title="ลบแผนการสอนนี้"
+              >
+                <i className="fa-solid fa-trash"></i> ลบ
+              </button>
+            )}
+          </div>
         </td>
       </tr>
     );
