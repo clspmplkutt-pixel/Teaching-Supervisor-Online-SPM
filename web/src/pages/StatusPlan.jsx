@@ -39,6 +39,7 @@ const StatusPlan = () => {
 
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
+  const [schoolPlanRank, setSchoolPlanRank] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
   const [lookups, setLookups] = useState({
     teachSubject: {},
@@ -88,6 +89,8 @@ const StatusPlan = () => {
         subjectTypeRes.data?.forEach((t) => { subjectTypeMap[t.subjecttype_id] = t.subjecttype_name; });
 
         let plans = [];
+        let schoolCode = profile?.school || '';
+
         if (roleId === 'directorschool') {
           plans = (await supabase
             .from('tbl_sendplan')
@@ -96,10 +99,32 @@ const StatusPlan = () => {
             .eq('plan_status', '1')).data || [];
         } else {
           const peopleId = profile?.people_id || user?.email || '';
-          plans = (await supabase
+          // ดึงแผนของครูคนนี้ก่อนเพื่อรู้ school_code
+          const { data: myPlans } = await supabase
             .from('tbl_sendplan')
             .select('*')
-            .eq('people_id', peopleId)).data || [];
+            .eq('people_id', peopleId);
+          plans = myPlans || [];
+          // ดึง school_code จากโปรไฟล์หรือจากแผน
+          if (!schoolCode && plans.length > 0) {
+            schoolCode = plans[0].school_code || '';
+          }
+        }
+
+        // คำนวณลำดับแผนภายในโรงเรียน (school_plan_no)
+        // ดึงแผนทั้งหมดของโรงเรียน (เฉพาะ planid) เพื่อสร้าง rank
+        let rankMap = {};
+        if (schoolCode) {
+          const { data: allSchoolPlans } = await supabase
+            .from('tbl_sendplan')
+            .select('planid')
+            .eq('school_code', schoolCode)
+            .order('planid', { ascending: true });
+          if (allSchoolPlans) {
+            allSchoolPlans.forEach((p, idx) => {
+              rankMap[p.planid] = idx + 1;
+            });
+          }
         }
 
         if (roleId === 'directorschool' && plans.length > 0) {
@@ -125,6 +150,7 @@ const StatusPlan = () => {
             subjectType: subjectTypeMap,
           });
           setRows(plans);
+          setSchoolPlanRank(rankMap);
         }
 
         if (roleId !== 'directorschool' && plans.length > 0) {
@@ -161,14 +187,17 @@ const StatusPlan = () => {
 
   const totalColumns = roleId === 'directorschool' ? 12 : 13;
 
-  const renderTeacherRow = (row) => {
+  const renderTeacherRow = (row, index) => {
     const committeeTotal = [row.committee1, row.committee2, row.committee3, row.committee4, row.committee5].filter(Boolean).length;
     const scoringCount = scoreMap[row.planid] || 0;
     const canEdit = ['1', '3', '4'].includes(String(row.plan_status));
+    const schoolNo = schoolPlanRank[row.planid] || (index + 1);
 
     return (
       <tr key={row.planid}>
-        <td className="text-center">{row.planid}</td>
+        <td className="text-center">
+          <span title={`รหัสแผนระบบ: ${row.planid}`}>{schoolNo}</span>
+        </td>
         <td>{lookups.teachSubjectShort[row.teach_subject_id] || ''}</td>
         <td>{lookups.gradeLevel[row.grade_level_id] || ''}</td>
         <td><span className="badge badge-secondary">{lookups.subjectType[row.subject_type] || row.subject_type || 'พื้นฐาน'}</span></td>
@@ -218,10 +247,13 @@ const StatusPlan = () => {
     );
   };
 
-  const renderDirectorRow = (row) => {
+  const renderDirectorRow = (row, index) => {
+    const schoolNo = schoolPlanRank[row.planid] || (index + 1);
     return (
       <tr key={row.planid}>
-        <td className="text-center">{row.planid}</td>
+        <td className="text-center">
+          <span title={`รหัสแผนระบบ: ${row.planid}`}>{schoolNo}</span>
+        </td>
         <td className="text-center">{row.teacher_name || ''}</td>
         <td>{lookups.teachSubjectShort[row.teach_subject_id] || ''}</td>
         <td>{lookups.gradeLevel[row.grade_level_id] || ''}</td>
