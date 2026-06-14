@@ -12,6 +12,7 @@ const Login = () => {
         level: ''
     });
     const [error, setError] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const { login } = useAuth();
     const navigate = useNavigate();
 
@@ -186,7 +187,7 @@ const Login = () => {
                             </div>
                             <div className="input-group mb-3">
                                 <input
-                                    type="password"
+                                    type={showPassword ? 'text' : 'password'}
                                     className="form-control"
                                     placeholder="รหัสผ่าน"
                                     name="password"
@@ -195,9 +196,15 @@ const Login = () => {
                                     required
                                 />
                                 <div className="input-group-append">
-                                    <div className="input-group-text">
-                                        <span className="fas fa-lock"></span>
-                                    </div>
+                                    <button
+                                        type="button"
+                                        className="btn input-group-text"
+                                        onClick={() => setShowPassword((prev) => !prev)}
+                                        title={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                                        style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+                                    >
+                                        <i className={`fas ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                                    </button>
                                 </div>
                             </div>
                             <div className="input-group mb-3">
