@@ -111,7 +111,7 @@ const PlanCheck = () => {
                       </td>
                     </tr>
                   )}
-                  {rows.map((row) => {
+                  {rows.map((row, index) => {
                     let committee = '';
                     if (row.committee1 === userId) committee = 'committee1';
                     if (row.committee2 === userId) committee = 'committee2';
@@ -123,7 +123,7 @@ const PlanCheck = () => {
 
                     return (
                       <tr key={row.planid}>
-                        <td className="text-center">{row.planid}</td>
+                        <td className="text-center">{index + 1}</td>
                         <td>{lookups.teachSubjectShort[row.teach_subject_id] || ''}</td>
                         <td>{lookups.gradeLevel[row.grade_level_id] || ''}</td>
                         <td>{row.subject_name} ({row.subject_code})</td>
