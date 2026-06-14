@@ -7,7 +7,6 @@ $row_user = $database->select(
     ["[>]tbl_school" => ["school" => "school_id"]],
     "*",
     [
-        "level" => "teacher",
         "register_isConfirm" => "0",
         "ORDER" => [
             "school" => "ASC",

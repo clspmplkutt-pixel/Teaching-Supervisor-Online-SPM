@@ -16,7 +16,6 @@ const ConfirmUser = () => {
       const { data, error } = await supabase
         .from('tbl_Users')
         .select('*')
-        .eq('level', 'teacher')
         .eq('register_isConfirm', '0')
         .order('school', { ascending: true })
         .order('academic_id', { ascending: true })
