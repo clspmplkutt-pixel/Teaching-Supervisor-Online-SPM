@@ -17,7 +17,6 @@ const SidebarAdmin = () => {
                 const { count } = await supabase
                     .from('tbl_Users')
                     .select('*', { count: 'exact', head: true })
-                    .eq('level', 'teacher')
                     .eq('register_isConfirm', '0');
                 if (mounted && count !== null) {
                     setPendingUsers(count);

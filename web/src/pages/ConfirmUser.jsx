@@ -99,7 +99,7 @@ const ConfirmUser = () => {
           <div className="card-header d-flex justify-content-between align-items-center">
             <h3 className="card-title m-0">
                 <i className="fa-solid fa-school-circle-check"></i> ยืนยันผู้ใช้งาน 
-                <span className="badge badge-warning ml-2 text-dark" style={{fontSize: '0.8rem'}}>เฉพาะระดับครูผู้สอน</span>
+                <span className="badge badge-warning ml-2 text-dark" style={{fontSize: '0.8rem'}}>ทุกระดับ</span>
             </h3>
             {rows.length > 0 && (
                 <button type="button" className="btn btn-primary btn-sm ml-auto" onClick={handleBulkConfirm} disabled={selectedIds.length === 0}>
