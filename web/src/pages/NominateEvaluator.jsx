@@ -13,12 +13,6 @@ const NominateEvaluator = () => {
     const directorPeopleId = user?.user_metadata?.people_id;
     const schoolId = user?.user_metadata?.school;
 
-    useEffect(() => {
-        if (directorPeopleId) {
-            fetchData();
-        }
-    }, [directorPeopleId, fetchData]);
-
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -57,6 +51,12 @@ const NominateEvaluator = () => {
             setLoading(false);
         }
     }, [schoolId, directorPeopleId]);
+
+    useEffect(() => {
+        if (directorPeopleId) {
+            fetchData();
+        }
+    }, [directorPeopleId, fetchData]);
 
     const handleNominate = async (nomineePeopleId, nomineeName) => {
         // Check if already nominated

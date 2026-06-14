@@ -47,13 +47,17 @@ COMMENT ON COLUMN tbl_sendplan.committee4_comment IS 'ข้อเสนอแ�
 COMMENT ON COLUMN tbl_sendplan.committee5_comment IS 'ข้อเสนอแนะของกรรมการคนที่ 5';
 
 -- =====================================================
--- RLS FIX: ปิด RLS ทุกตารางที่ระบบต้องเขียนข้อมูล
--- (ระบบใช้ Legacy Login ไม่ใช่ Supabase Auth)
+-- RLS FIX & Column updates: ปิด RLS และปรับโครงสร้างตาราง
 -- =====================================================
 ALTER TABLE tbl_education_year DISABLE ROW LEVEL SECURITY;
 ALTER TABLE tbl_budget_year DISABLE ROW LEVEL SECURITY;
 ALTER TABLE tbl_sendplan DISABLE ROW LEVEL SECURITY;
 ALTER TABLE tbl_sendplan_score DISABLE ROW LEVEL SECURITY;
+
+-- เพิ่มคอลัมน์ signature สำหรับเก็บ URL รูปภาพลายเซ็นต์
+ALTER TABLE "tbl_Users" ADD COLUMN IF NOT EXISTS "signature" TEXT;
+COMMENT ON COLUMN "tbl_Users".signature IS 'URL หรือที่อยู่ไฟล์รูปภาพลายเซ็นต์';
+
 ALTER TABLE "tbl_Users" DISABLE ROW LEVEL SECURITY;
 ALTER TABLE tbl_user DISABLE ROW LEVEL SECURITY;
 ALTER TABLE tbl_school DISABLE ROW LEVEL SECURITY;
@@ -63,3 +67,6 @@ ALTER TABLE "tbl_learningModel" DISABLE ROW LEVEL SECURITY;
 ALTER TABLE tbl_content_standards DISABLE ROW LEVEL SECURITY;
 ALTER TABLE tbl_indicators DISABLE ROW LEVEL SECURITY;
 ALTER TABLE tbl_config DISABLE ROW LEVEL SECURITY;
+
+-- แจ้ง reload schema cache
+NOTIFY pgrst, 'reload schema';

@@ -6,10 +6,6 @@ const ApproveEvaluator = () => {
     const [nominations, setNominations] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        fetchData();
-    }, []);
-
     const fetchData = async () => {
         setLoading(true);
         try {
@@ -52,6 +48,10 @@ const ApproveEvaluator = () => {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        fetchData();
+    }, []);
 
     const handleAction = async (id, newStatus) => {
         const actionText = newStatus === 'approved' ? 'อนุมัติ' : 'ปฏิเสธ';
