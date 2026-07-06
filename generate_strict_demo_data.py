@@ -229,9 +229,9 @@ def generate_sql():
             'plan_clip': 'v=J4-7Z0yUvI4' if is_online else '',
             'committee1': khet_sups[0], 'date_scoring1': score_date_1.strftime('%Y-%m-%d'),
             'committee2': SUPERVISORS[1], 'date_scoring2': score_date_1.strftime('%Y-%m-%d'),
-            'committee3': '', 'date_scoring3': '0000-00-00',
-            'committee4': '', 'date_scoring4': '0000-00-00',
-            'committee5': '', 'date_scoring5': '0000-00-00',
+            'committee3': '', 'date_scoring3': None,
+            'committee4': '', 'date_scoring4': None,
+            'committee5': '', 'date_scoring5': None,
             'director': director,
         }
         plans.append(plan_1)
