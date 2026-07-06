@@ -15,14 +15,14 @@ import os
 from datetime import datetime, timedelta
 
 # ===== CONFIG =====
-EDU_YEAR = '2569'  # To show sustainability as per book
+EDU_YEAR = '2568'  # Set to 2568 to match the report's main evaluation timeframe
 EDU_TERM_1 = '1'
 EDU_TERM_2 = '2'
-BUDGET_YEAR = '2570'
-START_DATE_TERM1 = datetime(2026, 5, 15)
-END_DATE_TERM1 = datetime(2026, 8, 30)
-START_DATE_TERM2 = datetime(2026, 11, 1)
-END_DATE_TERM2 = datetime(2027, 2, 28)
+BUDGET_YEAR = '2569'
+START_DATE_TERM1 = datetime(2025, 5, 15)
+END_DATE_TERM1 = datetime(2025, 8, 30)
+START_DATE_TERM2 = datetime(2025, 11, 1)
+END_DATE_TERM2 = datetime(2026, 2, 28)
 
 SUPERVISORS = [
     '1620100176600', '3640500378842', '3650100588475', '1640100058429',
