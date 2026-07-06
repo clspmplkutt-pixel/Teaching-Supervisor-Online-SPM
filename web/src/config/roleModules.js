@@ -38,6 +38,7 @@ export const allModules = [
   "indicators_add",
   "indicators_edit",
   "info",
+  "supervision_summary",
   "khet",
   "khet_add",
   "khet_edit",
@@ -97,11 +98,13 @@ export const allModules = [
 
 export const roleModules = {
   chairman: [
-    "info"
+    "info",
+    "supervision_summary"
   ],
   admin: [
     // Core Management
     "info",
+    "supervision_summary",
     "khet",
     "school",
     "budget_year",
@@ -160,6 +163,7 @@ export const roleModules = {
     "chgpasswd",
     "editprofile",
     "info",
+    "supervision_summary",
     "Plan_Check",
     "Plan_scoring",
     "statusplan",
@@ -170,30 +174,35 @@ export const roleModules = {
   ],
   headdepartment: [
     "info",
+    "supervision_summary",
     "Plan_Check",
     "Plan_scoring",
     "view_scoring"
   ],
   root: [
     "ManageUserAdmin",
-    "info"
+    "info",
+    "supervision_summary"
   ],
   supervision: [
+    "info",
+    "supervision_summary",
     "Plan_Check",
     "Plan_scoring",
-    "info",
     "view_scoring"
   ],
   districdirector: [
     "chgpasswd",
     "editprofile",
-    "info"
+    "info",
+    "supervision_summary"
   ],
   teacher: [
     "chgpasswd",
     "editSignature",
     "editprofile",
     "info",
+    "supervision_summary",
     "sendplan",
     "statusplan",
     "statusplan_clip",
@@ -201,12 +210,14 @@ export const roleModules = {
   ],
   supervisor: [
     "chgpasswd",
-    "info"
+    "info",
+    "supervision_summary"
   ]
 };
 
 export const moduleLabels = {
   info: "หน้าหลัก",
+  supervision_summary: "สรุปผลการนิเทศระดับชาติ",
   confirmUser: "ผู้ใช้งานรอการอนุมัติ",
   checkupUser: "ข้อมูลผู้ใช้ผิดพลาด",
   checkupUserduplicate: "เลขประจำตัวประชาชนซ้ำ",
@@ -294,8 +305,9 @@ export const moduleLabels = {
 };
 
 export const moduleIcons = {
-  info: "nav-icon fas fa-home text-blue",
-  statusplan: "nav-icon fa-regular fa-clock text-info",
+  info: "fa-solid fa-house-chimney text-blue",
+  supervision_summary: "fa-solid fa-chart-pie text-success",
+  confirmUser: "fa-solid fa-user-check text-success",
   sendplan: "nav-icon fa-regular fa-paper-plane text-success",
   statusplan_clip: "nav-icon fa-brands fa-youtube text-danger",
   send_clip: "nav-icon fa-solid fa-video text-danger",
