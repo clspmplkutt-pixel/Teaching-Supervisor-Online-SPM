@@ -21,6 +21,7 @@ import PlanClip from './pages/PlanClip';
 import NominateEvaluator from './pages/NominateEvaluator';
 import ApproveEvaluator from './pages/ApproveEvaluator';
 import ConfirmUser from './pages/ConfirmUser';
+import SupervisionSummary from './pages/SupervisionSummary';
 import UserTeacher from './pages/UserTeacher';
 import UserDirectorSchool from './pages/UserDirectorSchool';
 import UserHeadDepartment from './pages/UserHeadDepartment';
@@ -142,6 +143,7 @@ function App() {
             <Route path="reset_user_password" element={<ResetUserPassword />} />
             <Route path="profile" element={<AdminProfile />} />
             <Route path="admin_monitor" element={<AdminMonitor />} />
+            <Route path="supervision_summary" element={<SupervisionSummary />} />
             <Route path="teacher_edit" element={<UserEdit variant="teacher" />} />
             <Route path="directorschool_edit" element={<UserEdit variant="directorschool" />} />
             <Route path="supervisor_edit" element={<UserEdit variant="supervisor" />} />

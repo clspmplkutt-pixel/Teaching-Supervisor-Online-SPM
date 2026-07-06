@@ -63,6 +63,13 @@ const SidebarAdmin = () => {
                     </li>
 
                     <li className="nav-item">
+                        <Link to="/supervision_summary" className={`nav-link ${isActive('/supervision_summary')}`}>
+                            <i className="nav-icon fa-solid fa-chart-pie text-success"></i>
+                            <p>สรุปผลการนิเทศระดับชาติ</p>
+                        </Link>
+                    </li>
+
+                    <li className="nav-item">
                         <Link to="/khet" className={`nav-link ${isActive('/khet')}`}>
                             <i className="nav-icon fa-solid fa-school-circle-check text-danger"></i>
                             <p>จัดการสหวิทยาเขต</p>
