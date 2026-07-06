@@ -98,8 +98,7 @@ export const allModules = [
 
 export const roleModules = {
   chairman: [
-    "info",
-    "supervision_summary"
+    "info"
   ],
   admin: [
     // Core Management
@@ -163,7 +162,6 @@ export const roleModules = {
     "chgpasswd",
     "editprofile",
     "info",
-    "supervision_summary",
     "Plan_Check",
     "Plan_scoring",
     "statusplan",
@@ -174,19 +172,16 @@ export const roleModules = {
   ],
   headdepartment: [
     "info",
-    "supervision_summary",
     "Plan_Check",
     "Plan_scoring",
     "view_scoring"
   ],
   root: [
     "ManageUserAdmin",
-    "info",
-    "supervision_summary"
+    "info"
   ],
   supervision: [
     "info",
-    "supervision_summary",
     "Plan_Check",
     "Plan_scoring",
     "view_scoring"
@@ -194,15 +189,13 @@ export const roleModules = {
   districdirector: [
     "chgpasswd",
     "editprofile",
-    "info",
-    "supervision_summary"
+    "info"
   ],
   teacher: [
     "chgpasswd",
     "editSignature",
     "editprofile",
     "info",
-    "supervision_summary",
     "sendplan",
     "statusplan",
     "statusplan_clip",
@@ -210,8 +203,7 @@ export const roleModules = {
   ],
   supervisor: [
     "chgpasswd",
-    "info",
-    "supervision_summary"
+    "info"
   ]
 };
 
