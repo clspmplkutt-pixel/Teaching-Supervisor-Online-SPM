@@ -218,7 +218,6 @@ def generate_sql():
             'learning_outcomes': 'นักเรียนสามารถเขียนโปรแกรมแก้ปัญหาด้วยแนวคิดเชิงคำนวณ',
             'learning_content': 'การเขียนโปรแกรมด้วย Scratch / Python',
             'learning_activities': 'กิจกรรมการเรียนรู้ 6 ขั้นตอนตามแนวทาง Active Coding',
-            'assessment': 'การประเมินจากชิ้นงานและพฤติกรรม',
             'instructional_media': 'สื่อวิดีทัศน์ ใบกิจกรรม เครื่องคอมพิวเตอร์',
             'indicators_mid': 'ว 4.2 ม.1/1', 'indicators_final': 'ว 4.2 ม.1/2',
             'plan_file': f'fileupload/{EDU_YEAR}_{EDU_TERM_1}/{teacher_pid}_plan1.pdf',
@@ -226,8 +225,8 @@ def generate_sql():
             'plan_status': '7', # ประเมินเสร็จ
             'plan_approve': '1', 
             'plan_ds_comment': '<font style="color:green">อนุมัติแผนการจัดการเรียนรู้ มีการออกแบบกิจกรรมที่ส่งเสริม Active Learning อย่างชัดเจน</font>',
-            'plan_after_teaching': '<p>ผลการสอน: นักเรียนเข้าใจแนวคิด แต่ยังต้องปรับปรุงเรื่องการเชื่อมโยงความรู้เข้ากับปัญหาจริง</p>', 
-            'plan_clip': 'dQw4w9WgXcQ' if is_online else '',
+            'plan_after_teaching': '<p>ผลการสอน: นักเรียนสามารถออกแบบโครงงานที่เชื่อมโยงกับทักษะชีวิตและการแก้ปัญหาได้อย่างยอดเยี่ยม</p>', 
+            'plan_clip': 'v=J4-7Z0yUvI4' if is_online else '',
             'committee1': khet_sups[0], 'date_scoring1': score_date_1.strftime('%Y-%m-%d'),
             'committee2': SUPERVISORS[1], 'date_scoring2': score_date_1.strftime('%Y-%m-%d'),
             'committee3': '', 'date_scoring3': '0000-00-00',
@@ -288,7 +287,7 @@ def generate_sql():
     # sql_lines.append("DELETE FROM \"tbl_sendplan\" WHERE planid >= 1000;")
     # sql_lines.append("DELETE FROM \"tbl_sendplan_score\" WHERE planid >= '1000';\n")
 
-    fields = ['planid','people_id','school_code','teach_subject_id','grade_level_id','edu_year','edu_term','budget_year','subject_code','subject_name','subject_content','subject_name_plan','teach_date','teach_timestart','teach_timeend','teach_minute','learning_model','competency','ability21','desirable','learning_outcomes','learning_content','learning_activities','assessment','instructional_media','indicators_mid','indicators_final','plan_file','plan_senddate','plan_status','plan_approve','plan_ds_comment','plan_after_teaching','plan_clip','committee1','date_scoring1','committee2','date_scoring2','committee3','date_scoring3','committee4','date_scoring4','committee5','date_scoring5','director']
+    fields = ['planid','people_id','school_code','teach_subject_id','grade_level_id','edu_year','edu_term','budget_year','subject_code','subject_name','subject_content','subject_name_plan','teach_date','teach_timestart','teach_timeend','teach_minute','learning_model','competency','ability21','desirable','learning_outcomes','learning_content','learning_activities','instructional_media','indicators_mid','indicators_final','plan_file','plan_senddate','plan_status','plan_approve','plan_ds_comment','plan_after_teaching','plan_clip','committee1','date_scoring1','committee2','date_scoring2','committee3','date_scoring3','committee4','date_scoring4','committee5','date_scoring5','director']
     int_fields = {'planid', 'teach_minute'}
 
     for p in plans:
