@@ -296,6 +296,7 @@ def generate_sql():
         for f in fields:
             v = p[f]
             if f in int_fields: vals.append(str(v))
+            elif v is None: vals.append('NULL')
             else: vals.append(f"'{escape_sql(v)}'")
         sql_lines.append(f'INSERT INTO "tbl_sendplan" ({cols}) VALUES ({", ".join(vals)});')
 
