@@ -217,7 +217,7 @@ export const roleModules = {
 
 export const moduleLabels = {
   info: "หน้าหลัก",
-  supervision_summary: "สรุปผลการนิเทศระดับชาติ",
+  supervision_summary: "สรุปผลการนิเทศ Coding ปี 2568",
   confirmUser: "ผู้ใช้งานรอการอนุมัติ",
   checkupUser: "ข้อมูลผู้ใช้ผิดพลาด",
   checkupUserduplicate: "เลขประจำตัวประชาชนซ้ำ",
