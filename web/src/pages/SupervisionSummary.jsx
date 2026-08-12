@@ -36,11 +36,11 @@ const SupervisionSummary = () => {
       high1: 4.61, // พัฒนาคุณภาพ Coding
       high2: 4.58,
       high3: 4.56,
-      lowest: 4.25 // ผสมผสาน On-site/PNS2
+      lowest: 4.25 // ผสมผสาน On-site/LMSS
     },
     expertProcess: {
       total: 4.39,
-      stepT: 4.61 // PNS2 (Highest)
+      stepT: 4.61 // LMSS (Highest)
     }
   };
 
@@ -144,7 +144,7 @@ const SupervisionSummary = () => {
               <div className="col-lg-8">
                 <h2 className="font-weight-bold mb-3">การขับเคลื่อนการนิเทศรูปแบบผสมผสาน (ADAACE_T)</h2>
                 <h5 className="mb-4 text-light" style={{ opacity: 0.9 }}>
-                  ด้วยระบบนิเทศการศึกษาแบบออนไลน์ PNS2 สำหรับการจัดการเรียนรู้ Active Coding
+                  ด้วยระบบนิเทศการศึกษาแบบออนไลน์ LMSS สำหรับการจัดการเรียนรู้ Active Coding
                 </h5>
                 <div className="d-flex flex-wrap gap-3">
                   <span className="badge badge-light px-3 py-2 mr-2 mb-2" style={{ fontSize: '1rem', color: '#001f3f' }}>
@@ -162,7 +162,7 @@ const SupervisionSummary = () => {
                       {reportData.expertProcess.stepT}
                     </div>
                     <div style={{ fontSize: '0.8rem', fontWeight: '700', color: '#6c757d', marginTop: '5px' }}>
-                      คะแนนประเมิน<br/>ขั้น T (PNS2) สูงสุด
+                      คะแนนประเมิน<br/>ขั้น T (LMSS) สูงสุด
                     </div>
                   </div>
                 </div>
@@ -178,7 +178,7 @@ const SupervisionSummary = () => {
                 <i className="fas fa-laptop-house stat-icon-bg text-primary"></i>
                 <div className="card-body">
                   <div className="val-badge text-primary">{reportData.quantitative.onlineSchools} <span style={{fontSize: '1rem'}}>ร.ร.</span></div>
-                  <div className="val-label">นิเทศออนไลน์ผ่าน PNS2</div>
+                  <div className="val-label">นิเทศออนไลน์ผ่าน LMSS</div>
                   <div className="mt-3 text-muted small">
                     <i className="fas fa-video mr-1"></i> รวม {reportData.quantitative.onlineClips} คลิป (2 รอบ)
                   </div>
@@ -319,12 +319,12 @@ const SupervisionSummary = () => {
           {/* Section 3: System Outcomes & Satisfaction */}
           <div className="row mb-4">
             
-            {/* PNS2 5 Competencies */}
+            {/* LMSS 5 Competencies */}
             <div className="col-lg-6 mb-4">
               <div className="card h-100 shadow-sm" style={{ borderRadius: '12px' }}>
                 <div className="card-header bg-white border-0 pt-4 pb-0">
                   <h4 className="card-title font-weight-bold text-primary">
-                    <i className="fas fa-layer-group mr-2"></i> ผลประเมินแผนฯ ผ่าน PNS2 (ตาราง 20)
+                    <i className="fas fa-layer-group mr-2"></i> ผลประเมินแผนฯ ผ่าน LMSS (ตาราง 20)
                   </h4>
                 </div>
                 <div className="card-body">
@@ -426,7 +426,7 @@ const SupervisionSummary = () => {
                       <span className="badge badge-dark">{reportData.satisfaction.lowest}</span>
                     </div>
                     <small className="text-dark d-block">
-                      <strong>รูปแบบผสมผสาน (On-site/PNS2):</strong> แม้อยู่ในเกณฑ์ "มาก" แต่เป็นจุดที่นำเสนอเป็นข้อเสนอแนะในการวิจัย เพื่อพัฒนาระบบ Dashboard ให้ครอบคลุมการวิเคราะห์ข้อมูลแบบผสมผสานได้ลึกซึ้งยิ่งขึ้นในอนาคต
+                      <strong>รูปแบบผสมผสาน (On-site/LMSS):</strong> แม้อยู่ในเกณฑ์ "มาก" แต่เป็นจุดที่นำเสนอเป็นข้อเสนอแนะในการวิจัย เพื่อพัฒนาระบบ Dashboard ให้ครอบคลุมการวิเคราะห์ข้อมูลแบบผสมผสานได้ลึกซึ้งยิ่งขึ้นในอนาคต
                     </small>
                   </div>
                 </div>
@@ -436,7 +436,7 @@ const SupervisionSummary = () => {
           </div>
 
           <div className="text-center text-muted small mt-2 mb-4">
-            <i className="fas fa-shield-alt mr-1"></i> PNS2 System (Version 2026) | Data Verified & Aligned with National Research Report | <i className="fas fa-check-circle text-success mx-1"></i> Criteria x̄ ≥ 3.50 Passed
+            <i className="fas fa-shield-alt mr-1"></i> LMSS System (Version 2026) | Data Verified & Aligned with National Research Report | <i className="fas fa-check-circle text-success mx-1"></i> Criteria x̄ ≥ 3.50 Passed
           </div>
 
         </div>

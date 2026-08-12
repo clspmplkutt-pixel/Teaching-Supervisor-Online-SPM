@@ -235,7 +235,7 @@ export const AuthProvider = ({ children }) => {
         // Show loading spinner while checking auth
         return (
             <div className="preloader flex-column justify-content-center align-items-center" style={{ height: '100vh', display: 'flex' }}>
-                <img className="animation__shake" src="/images/obec.png" alt="PNS2" height="60" width="60" />
+                <img className="animation__shake" src="/images/obec.png" alt="LMSS" height="60" width="60" />
                 <p className="mt-2">กำลังโหลดข้อมูล...</p>
             </div>
         );
