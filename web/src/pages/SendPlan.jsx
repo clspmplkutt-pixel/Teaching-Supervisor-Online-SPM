@@ -424,8 +424,8 @@ const SendPlan = () => {
         Swal.fire('Error', 'ไฟล์ต้องเป็น PDF เท่านั้น', 'error');
         return;
       }
-      if (file.size > 104857600) {
-        Swal.fire('Error', 'ขนาดไฟล์ใหญ่กว่า 100MB', 'error');
+      if (file.size > 31457280) {
+        Swal.fire('Error', 'ขนาดไฟล์ใหญ่กว่า 30MB', 'error');
         return;
       }
     }

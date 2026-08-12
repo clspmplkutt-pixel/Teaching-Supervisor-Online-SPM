@@ -182,6 +182,10 @@ const Register = () => {
             // Note: PHP uses Thai date input, so we might need to adjust logic if we use standard date input.
             // Let's assume standard YYYY-MM-DD input for now.
             // Encrypt Password (DDMMYYYY from Birthday)
+            if (!formData.birthday) {
+                setLoading(false);
+                return alert('กรุณาระบุวัน/เดือน/ปีเกิด');
+            }
             // Fix: Check if input year is already in Buddhist Era
             const dateParts = formData.birthday.split('-');
             let year = parseInt(dateParts[0]);
