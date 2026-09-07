@@ -148,7 +148,7 @@ function success_swal($txt,$url,$time){
 function location_to($url, $sleep = 0)
 {
     // echo "<script>window.location.href='" . $url . "'</script>";
-    echo "<META HTTP-EQUIV=\"Refresh\" CONTENT=\"$sleep;$url\">";
+    echo "<META HTTP-EQUIV=\"Refresh\" CONTENT=\"$sleep;URL=$url\">";
     header("location:" . $url);
 }
 
@@ -220,12 +220,17 @@ function month_thai($d)
     return $day . ' ' . $month_th[substr($d, 4, 2)] . ' ' . substr($d, 0, 4);
 }
 
+$protected_vars = ['database', '_SESSION', '_COOKIE', '_SERVER', '_ENV', 'GLOBALS', 'secret_key', 'secret_iv', 'tbl_prefix'];
 foreach ($_POST as $key => $value) {
-    $$key = $value;
+    if (!in_array($key, $protected_vars)) {
+        $$key = $value;
+    }
 }
 
 foreach ($_GET as $key => $value) {
-    $$key = $value;
+    if (!in_array($key, $protected_vars)) {
+        $$key = $value;
+    }
 }
 
 function CalPercent($total, $num, $decimal_length)

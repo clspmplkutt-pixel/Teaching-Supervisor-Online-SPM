@@ -218,12 +218,13 @@ const Login = () => {
                                     <option value="">เลือกระดับการใช้งาน</option>
                                     <option value="teacher">ครูผู้สอน</option>
                                     <option value="headdepartment">หัวหน้ากลุ่มสาระโรงเรียน</option>
+                                    <option value="admin_school">ผู้ดูแลระบบสถานศึกษา (School Admin)</option>
                                     <option value="directorschool">ผู้อำนวยการโรงเรียน/รองผู้อำนวยการ</option>
                                     <option value="chairman">ประธานสหวิทยาเขต</option>
                                     <option value="supervision">ผู้นิเทศ</option>
                                     <option value="supervisor">ศึกษานิเทศ</option>
                                     <option value="districdirector">ผู้อำนวยการเขต/รอง ผอ. เขต</option>
-                                    <option value="admin">ผู้ดูแลระบบ</option>
+                                    <option value="admin">ผู้ดูแลระบบเขตพื้นที่ (Admin เขต)</option>
                                     {/* Root is usually hidden or debug only, omitting for standard user view unless requested */}
                                 </select>
                             </div>

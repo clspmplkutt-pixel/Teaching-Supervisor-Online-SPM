@@ -3,8 +3,14 @@ import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
 import useUserLookups from '../hooks/useUserLookups';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { useAuth } from '../contexts/AuthContext';
 
 const ConfirmUser = () => {
+  const { user } = useAuth();
+  const roleId = user?.level_id || user?.user_metadata?.role || user?.role;
+  const userSchool = user?.user_metadata?.school || user?.school;
+  const isAdminSchool = roleId === 'admin_school';
+
   const { lookups, loading: lookupsLoading } = useUserLookups();
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
@@ -13,10 +19,16 @@ const ConfirmUser = () => {
   const loadUsers = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('tbl_Users')
         .select('*')
-        .eq('register_isConfirm', '0')
+        .eq('register_isConfirm', '0');
+
+      if (isAdminSchool && userSchool) {
+        query = query.eq('school', userSchool);
+      }
+
+      const { data, error } = await query
         .order('school', { ascending: true })
         .order('academic_id', { ascending: true })
         .order('position_id', { ascending: false });
@@ -99,7 +111,13 @@ const ConfirmUser = () => {
           <div className="card-header d-flex justify-content-between align-items-center">
             <h3 className="card-title m-0">
                 <i className="fa-solid fa-school-circle-check"></i> ยืนยันผู้ใช้งาน 
-                <span className="badge badge-warning ml-2 text-dark" style={{fontSize: '0.8rem'}}>ทุกระดับ</span>
+                {isAdminSchool ? (
+                  <span className="badge badge-info ml-2 text-white" style={{fontSize: '0.85rem'}}>
+                    {lookups.school[userSchool] || 'ระดับสถานศึกษา'}
+                  </span>
+                ) : (
+                  <span className="badge badge-warning ml-2 text-dark" style={{fontSize: '0.8rem'}}>ทุกระดับ</span>
+                )}
             </h3>
             {rows.length > 0 && (
                 <button type="button" className="btn btn-primary btn-sm ml-auto" onClick={handleBulkConfirm} disabled={selectedIds.length === 0}>

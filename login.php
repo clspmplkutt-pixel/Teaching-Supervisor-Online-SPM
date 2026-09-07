@@ -48,6 +48,7 @@ if (isset($_POST['bt_send']) && isset($_POST['g-recaptcha-response'])) {
             ]);
 
             if (count($result) == 1) {
+                session_regenerate_id(true);
                 $_SESSION['level_id'] = $result[0]['level_id'];
                 $_SESSION['user'] = $result[0]['user'];
                 $_SESSION['name'] = $result[0]['name'];
@@ -156,6 +157,7 @@ if (isset($_POST['bt_send']) && isset($_POST['g-recaptcha-response'])) {
             // exit;
 
             if (count($result) != 0) {
+                session_regenerate_id(true);
                 $_SESSION['level_id'] = $level;
                 $_SESSION['user'] = $result['people_id'];
                 $_SESSION['name'] = $database->get("tbl_system_prefix", "prefix", ["prefix_id" => $result['prefix']]) . $result['name'] . " " . $result['lastname'];
@@ -225,8 +227,8 @@ if (isset($_POST['bt_send']) && isset($_POST['g-recaptcha-response'])) {
     <?php include_once("images/fav/favicon.php"); ?>
     <script type=text/javascript>
     function setScreenHWCookie() {
-        $.cookie('sw', screen.width);
-        $.cookie('sh', screen.height);
+        document.cookie = "sw=" + screen.width + "; path=/";
+        document.cookie = "sh=" + screen.height + "; path=/";
         return true;
     }
     setScreenHWCookie();

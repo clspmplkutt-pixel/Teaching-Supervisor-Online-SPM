@@ -24,6 +24,7 @@ import ConfirmUser from './pages/ConfirmUser';
 import SupervisionSummary from './pages/SupervisionSummary';
 import UserTeacher from './pages/UserTeacher';
 import UserDirectorSchool from './pages/UserDirectorSchool';
+import UserSchoolAdmin from './pages/UserSchoolAdmin';
 import UserHeadDepartment from './pages/UserHeadDepartment';
 import UserChairman from './pages/UserChairman';
 import UserSupervisor from './pages/UserSupervisor';
@@ -129,6 +130,7 @@ function App() {
             <Route path="confirmUser" element={<ConfirmUser />} />
             <Route path="userteacher" element={<UserTeacher />} />
             <Route path="userdirectorschool" element={<UserDirectorSchool />} />
+            <Route path="userSchoolAdmin" element={<UserSchoolAdmin />} />
             <Route path="userheadDepartment" element={<UserHeadDepartment />} />
             <Route path="userchairman" element={<UserChairman />} />
             <Route path="usersupervisor" element={<UserSupervisor />} />

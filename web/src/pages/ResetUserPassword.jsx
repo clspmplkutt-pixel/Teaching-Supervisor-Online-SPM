@@ -3,8 +3,14 @@ import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
 import { encryptLegacyPassword } from '../utils/legacyCrypto';
 import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const ResetUserPassword = () => {
+    const { user } = useAuth();
+    const roleId = user?.level_id || user?.user_metadata?.role || user?.role;
+    const userSchool = user?.user_metadata?.school || user?.school;
+    const isAdminSchool = roleId === 'admin_school';
+
     const [searchParams] = useSearchParams();
     const defaultSearch = searchParams.get('people_id') || '';
     const [search, setSearch] = useState(defaultSearch);
@@ -38,11 +44,16 @@ const ResetUserPassword = () => {
         setUsers([]);
         setSelected(null);
         try {
-            const { data, error } = await supabase
+            let dbQuery = supabase
                 .from('tbl_Users')
                 .select('people_id, name, lastname, prefix, school, level, approved')
-                .or(`people_id.eq.${query.trim()},name.ilike.%${query.trim()}%,lastname.ilike.%${query.trim()}%`)
-                .limit(20);
+                .or(`people_id.eq.${query.trim()},name.ilike.%${query.trim()}%,lastname.ilike.%${query.trim()}%`);
+
+            if (isAdminSchool && userSchool) {
+                dbQuery = dbQuery.eq('school', userSchool);
+            }
+
+            const { data, error } = await dbQuery.limit(20);
             if (error) throw error;
             setUsers(data || []);
             
@@ -55,7 +66,7 @@ const ResetUserPassword = () => {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [isAdminSchool, userSchool]);
 
     useEffect(() => {
         if (defaultSearch) {

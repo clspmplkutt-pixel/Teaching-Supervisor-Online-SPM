@@ -22,13 +22,11 @@ $_SESSION[$check_session_name] = $check_session_value;
 $mem_id = (isset($_SESSION['user'])) ? $_SESSION['user'] : '0';
 
 if ($mem_id == '0') {
-    echo "<meta http-equiv='refresh' content='0;url=logout.php'>";
-    echo "<meta http-equiv='refresh' content='0;url=login.php'>";
+    header("Location: login.php");
     exit();
 }
 if (!isset($_COOKIE['user'])) {
-    echo "<meta http-equiv='refresh' content='0;url=logout.php'>";
-    echo "<meta http-equiv='refresh' content='0;url=login.php'>";
+    header("Location: login.php");
     exit();
 }
 ?>
@@ -54,7 +52,7 @@ if (!isset($_COOKIE['user'])) {
             <!-- Brand Logo -->
             <a href="./" class="brand-link">
                 <img src="/images/obec.png" alt="" class="brand-image img-circle elevation-3" style="opacity: .8">
-                <span class="brand-text font-weight-light">PNS2</span>
+                <span class="brand-text font-weight-light">LMSS</span>
             </a>
             <?php include($sidebar_include); ?>
         </aside>

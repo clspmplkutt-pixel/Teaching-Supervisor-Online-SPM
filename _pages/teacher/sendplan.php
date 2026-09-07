@@ -21,7 +21,7 @@
     }
 </style>
 <?php
-session_start();
+
 
 $title_page = "ส่งแผนการสอน";
 $tbl = "tbl_Users";
@@ -65,7 +65,7 @@ if ($operation == $module . "_save") {
 
     // if ($_FILES["plan_file"]["size"] > 5242880) {
     if ($_FILES["plan_file"]["size"] > 104857600) {
-        echo "ขนาดไฟล์ใหญ่มากกว่า 5 เมกกะไบต์<br>";
+        echo "ขนาดไฟล์ใหญ่มากกว่า 100 เมกกะไบต์<br>";
         $uploadOk = 0;
     }
     if (file_exists($document_file)) {
@@ -191,7 +191,7 @@ if ($operation == $module . "_save") {
     $(function() {
         var subject_code = [
             <?php
-            $sql_subject = "SELECT DISTINCT subject_code FROM tbl_sendplan WHERE people_id = " . $_SESSION['user'] . " ORDER BY subject_code ASC";
+            $sql_subject = "SELECT DISTINCT subject_code FROM tbl_sendplan WHERE people_id = '" . $_SESSION['user'] . "' ORDER BY subject_code ASC";
             $data_subject = $database->query($sql_subject)->fetchAll();
 
             foreach ($data_subject as $key => $value) {
@@ -201,7 +201,7 @@ if ($operation == $module . "_save") {
         ];
         var subject_name = [
             <?php
-            $sql_subject = "SELECT DISTINCT subject_name FROM tbl_sendplan WHERE people_id = " . $_SESSION['user'] . " ORDER BY subject_name ASC";
+            $sql_subject = "SELECT DISTINCT subject_name FROM tbl_sendplan WHERE people_id = '" . $_SESSION['user'] . "' ORDER BY subject_name ASC";
             // echo $sql_subject;
             $data_subject = $database->query($sql_subject)->fetchAll();
             foreach ($data_subject as $key => $value) {

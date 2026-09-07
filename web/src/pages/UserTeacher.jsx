@@ -5,9 +5,15 @@ import { supabase } from '../supabaseClient';
 import useUserLookups from '../hooks/useUserLookups';
 import useSelect2 from '../hooks/useSelect2';
 import useAppConfig from '../hooks/useAppConfig';
+import { useAuth } from '../contexts/AuthContext';
 
 const UserTeacher = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const roleId = user?.level_id || user?.user_metadata?.role || user?.role;
+  const userSchool = user?.user_metadata?.school || user?.school;
+  const isAdminSchool = roleId === 'admin_school';
+
   const { lookups, lists, loading: lookupsLoading } = useUserLookups();
   const { config } = useAppConfig();
   const areaCode = config.AREA_CODE10 || '1000650001';
@@ -16,7 +22,7 @@ const UserTeacher = () => {
   const [rows, setRows] = useState([]);
   const [searchText, setSearchText] = useState('');
 
-  const schoolId = searchParams.get('school_id') || '';
+  const schoolId = isAdminSchool ? userSchool : (searchParams.get('school_id') || '');
   const teachSubject = searchParams.get('Teach_Subject') || '';
 
   useSelect2([lookupsLoading, lists.school.length, lists.teachSubject.length]);
@@ -116,12 +122,22 @@ const UserTeacher = () => {
               </div>
 
               <div className="col-sm-12 col-md-3 col-xl-3 col-lg-3">
-                <select className="form-control form-select-lg select2bs4" name="school_id" id="school_id" value={schoolId} onChange={(e) => updateParam('school_id', e.target.value)}>
-                  <option value="">-- ทุกโรงเรียน --</option>
-                  {filteredSchools.map((row) => (
-                    <option key={row.school_id} value={row.school_id}>{row.school_name}</option>
-                  ))}
-                </select>
+                {isAdminSchool ? (
+                  <input
+                    type="text"
+                    className="form-control bg-light font-weight-bold"
+                    value={lookups.school[userSchool] || userSchool}
+                    readOnly
+                    title="โรงเรียนของคุณ"
+                  />
+                ) : (
+                  <select className="form-control form-select-lg select2bs4" name="school_id" id="school_id" value={schoolId} onChange={(e) => updateParam('school_id', e.target.value)}>
+                    <option value="">-- ทุกโรงเรียน --</option>
+                    {filteredSchools.map((row) => (
+                      <option key={row.school_id} value={row.school_id}>{row.school_name}</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div className="col-sm-12 col-md-3 col-xl-3 col-lg-3">

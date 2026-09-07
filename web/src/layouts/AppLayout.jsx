@@ -47,6 +47,13 @@ const AppLayout = () => {
   // Security: Protect admin-only routes from other roles
   const roleId = user?.level_id || user?.user_metadata?.role || user?.role || 'teacher';
   const isAdminOrRoot = roleId === 'admin' || roleId === 'root';
+  const isAdminSchool = roleId === 'admin_school';
+
+  const schoolAdminAllowedModules = [
+    'info', 'supervision_summary', 'confirmUser', 'userteacher',
+    'userheadDepartment', 'teacher_edit', 'user_remove', 'reset_user_password',
+    'nominate_evaluator', 'editprofile', 'chgpasswd'
+  ];
 
   const adminOnlyModules = [
     'userteacher', 'userdirectorschool', 'userheadDepartment', 'userchairman',
@@ -67,8 +74,12 @@ const AppLayout = () => {
     'indicators_edit', 'type_benchmarks', 'policy_side', 'policy_number', 'policy_items', 'log'
   ];
 
-  if (adminOnlyModules.includes(moduleName) && !isAdminOrRoot) {
-    return <Navigate to="/" replace />;
+  if (adminOnlyModules.includes(moduleName)) {
+    if (isAdminSchool && schoolAdminAllowedModules.includes(moduleName)) {
+      // Allowed for school admin
+    } else if (!isAdminOrRoot) {
+      return <Navigate to="/" replace />;
+    }
   }
 
   return (

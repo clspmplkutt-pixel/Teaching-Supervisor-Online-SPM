@@ -23,22 +23,50 @@ const ApproveEvaluator = () => {
                     throw nomError;
                 }
             } else {
-                // Enrich data with names (in a real app you might use a DB view or join, but here we can do it manually or rely on UI)
-                // For simplicity we will fetch all users and map them
-                const { data: users, error: userError } = await supabase.from('tbl_Users').select('people_id, name, lastname');
-                
-                let enrichedData = nomData || [];
-                if (!userError && users) {
-                    enrichedData = enrichedData.map(nom => {
-                        const nominee = users.find(u => u.people_id === nom.nominee_people_id);
-                        const nominator = users.find(u => u.people_id === nom.nominated_by);
-                        return {
-                            ...nom,
-                            nominee_name: nominee ? `${nominee.name} ${nominee.lastname}` : 'ไม่ทราบชื่อ',
-                            nominator_name: nominator ? `${nominator.name} ${nominator.lastname}` : 'ไม่ทราบชื่อ'
-                        };
-                    });
-                }
+                const rawNoms = nomData || [];
+                const peopleIds = Array.from(new Set(
+                    rawNoms.flatMap(n => [n.nominee_people_id, n.nominated_by]).filter(Boolean)
+                ));
+
+                // Fetch only users referenced in the nominations, along with prefix and school lookups
+                const [userRes, prefixRes, schoolRes] = await Promise.all([
+                    peopleIds.length > 0
+                        ? supabase.from('tbl_Users').select('people_id, prefix, name, lastname, school').in('people_id', peopleIds)
+                        : Promise.resolve({ data: [] }),
+                    supabase.from('tbl_system_prefix').select('prefix_id, prefix'),
+                    supabase.from('tbl_school').select('school_id, school_name')
+                ]);
+
+                const prefixMap = {};
+                prefixRes.data?.forEach(p => { prefixMap[p.prefix_id] = p.prefix; });
+
+                const schoolMap = {};
+                schoolRes.data?.forEach(s => { schoolMap[s.school_id] = s.school_name; });
+
+                const userMap = {};
+                userRes.data?.forEach(u => { userMap[u.people_id] = u; });
+
+                const formatUser = (peopleId) => {
+                    const u = userMap[peopleId];
+                    if (!u) return { name: 'ไม่ทราบชื่อ', school: '' };
+                    const prefix = prefixMap[u.prefix] || '';
+                    return {
+                        name: `${prefix}${u.name} ${u.lastname}`.trim() || 'ไม่ทราบชื่อ',
+                        school: schoolMap[u.school] || ''
+                    };
+                };
+
+                const enrichedData = rawNoms.map(nom => {
+                    const nominee = formatUser(nom.nominee_people_id);
+                    const nominator = formatUser(nom.nominated_by);
+                    return {
+                        ...nom,
+                        nominee_name: nominee.name,
+                        nominee_school: nominee.school,
+                        nominator_name: nominator.name,
+                        nominator_school: nominator.school
+                    };
+                });
                 setNominations(enrichedData);
             }
         } catch (error) {
@@ -118,8 +146,20 @@ const ApproveEvaluator = () => {
                                     {pendingNoms.length > 0 ? pendingNoms.map((nom) => (
                                         <tr key={nom.id}>
                                             <td>{new Date(nom.created_at).toLocaleDateString('th-TH')}</td>
-                                            <td>{nom.nominee_name} <br/><small className="text-muted">{nom.nominee_people_id}</small></td>
-                                            <td>{nom.nominator_name} <br/><small className="text-muted">{nom.nominated_by}</small></td>
+                                            <td>
+                                                <strong>{nom.nominee_name}</strong>
+                                                <br/>
+                                                <small className="text-muted">
+                                                    {nom.nominee_school ? `${nom.nominee_school} • ` : ''}{nom.nominee_people_id}
+                                                </small>
+                                            </td>
+                                            <td>
+                                                <strong>{nom.nominator_name}</strong>
+                                                <br/>
+                                                <small className="text-muted">
+                                                    {nom.nominator_school ? `${nom.nominator_school} • ` : ''}{nom.nominated_by}
+                                                </small>
+                                            </td>
                                             <td>
                                                 <button 
                                                     className="btn btn-sm btn-success mr-2"
@@ -164,8 +204,20 @@ const ApproveEvaluator = () => {
                                     {historyNoms.length > 0 ? historyNoms.map((nom) => (
                                         <tr key={nom.id}>
                                             <td>{new Date(nom.created_at).toLocaleDateString('th-TH')}</td>
-                                            <td>{nom.nominee_name}</td>
-                                            <td>{nom.nominator_name}</td>
+                                            <td>
+                                                <strong>{nom.nominee_name}</strong>
+                                                <br/>
+                                                <small className="text-muted">
+                                                    {nom.nominee_school ? `${nom.nominee_school} • ` : ''}{nom.nominee_people_id}
+                                                </small>
+                                            </td>
+                                            <td>
+                                                <strong>{nom.nominator_name}</strong>
+                                                <br/>
+                                                <small className="text-muted">
+                                                    {nom.nominator_school ? `${nom.nominator_school} • ` : ''}{nom.nominated_by}
+                                                </small>
+                                            </td>
                                             <td>{getStatusBadge(nom.status)}</td>
                                             <td>{nom.updated_at ? new Date(nom.updated_at).toLocaleDateString('th-TH') : ''}</td>
                                         </tr>

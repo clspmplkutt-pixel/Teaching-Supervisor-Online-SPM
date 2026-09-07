@@ -90,6 +90,7 @@ export const allModules = [
   "usersupervision",
   "usersupervisor",
   "userteacher",
+  "userSchoolAdmin",
   "view_appointment",
   "view_scoring",
   "nominate_evaluator",
@@ -118,6 +119,7 @@ export const roleModules = {
     "usersupervisor",
     "userchairman",
     "userdirectorschool",
+    "userSchoolAdmin",
     "userheadDepartment",
     "userteacher",
     "change_position",
@@ -204,6 +206,17 @@ export const roleModules = {
   supervisor: [
     "chgpasswd",
     "info"
+  ],
+  admin_school: [
+    "info",
+    "supervision_summary",
+    "confirmUser",
+    "userteacher",
+    "userheadDepartment",
+    "reset_user_password",
+    "nominate_evaluator",
+    "editprofile",
+    "chgpasswd"
   ]
 };
 
@@ -218,6 +231,7 @@ export const moduleLabels = {
   usersupervisor: "ศึกษานิเทศก์",
   userchairman: "ประธานสหวิทยาเขต",
   userdirectorschool: "ผอ.โรงเรียน/รอง ผอ.",
+  userSchoolAdmin: "ผู้ดูแลระบบสถานศึกษา",
   userheadDepartment: "หัวหน้ากลุ่มสาระโรงเรียน",
   userteacher: "ครู",
   change_position: "เปลี่ยนตำแหน่ง",
@@ -329,6 +343,7 @@ export const moduleIcons = {
   usersupervisor: "nav-icon fa-solid fa-user-graduate text-info",
   userchairman: "nav-icon fa-solid fa-user-shield text-warning",
   userdirectorschool: "nav-icon fa-solid fa-user-gear text-danger",
+  userSchoolAdmin: "nav-icon fa-solid fa-school-flag text-warning",
   userheadDepartment: "nav-icon fa-solid fa-users text-primary",
   userteacher: "nav-icon fa-solid fa-chalkboard-user text-success",
   change_position: "nav-icon fa-solid fa-person-booth text-blue",

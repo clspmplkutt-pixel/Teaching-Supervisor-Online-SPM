@@ -413,7 +413,7 @@ if ($operation == $module . "_save") {
                     }
                 }
             }
-            if ($('#people_id').val.length != 13) {
+            if ($('#people_id').val().length != 13) {
                 $('#msg_people_id').text('');
                 document.getElementById('btn_submit').disabled = true;
             }

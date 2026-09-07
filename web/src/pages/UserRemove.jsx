@@ -22,9 +22,9 @@ const UserRemove = () => {
           return;
         }
         if (peopleId) {
-          const { error } = await supabase.from('tbl_Users').delete().eq('people_id', peopleId);
+          const { error } = await supabase.from('tbl_Users').update({ school: '' }).eq('people_id', peopleId);
           if (error) throw error;
-          Swal.fire('สำเร็จ', 'ลบข้อมูลแล้ว', 'success');
+          Swal.fire('สำเร็จ', 'นำผู้ใช้งานออกจากสถานศึกษาเรียบร้อยแล้ว', 'success');
           navigate(`/${from || 'userteacher'}`);
           return;
         }

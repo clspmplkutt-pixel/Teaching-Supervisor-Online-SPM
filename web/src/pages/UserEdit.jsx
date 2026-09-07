@@ -55,6 +55,7 @@ const UserEdit = ({ variant }) => {
     edu_level: '',
     headDepartment: '0',
     chairman: '0',
+    level: '',
     teach_subject: '',
     teach_subject_name: '',
     teach_level: [],
@@ -147,6 +148,7 @@ const UserEdit = ({ variant }) => {
           edu_level: data.edu_level || '',
           headDepartment: data.headDepartment || '0',
           chairman: data.chairman || '0',
+          level: data.level || '',
           teach_subject: data.teach_subject || '',
           teach_subject_name: data.teach_subject_name || '',
           teach_level: data.teach_level ? data.teach_level.split(',') : [],
@@ -238,7 +240,7 @@ const UserEdit = ({ variant }) => {
       return;
     }
 
-    const level = levelFromPosition(form.position_id) || form.level || '';
+    const level = form.level === 'admin_school' ? 'admin_school' : (levelFromPosition(form.position_id) || form.level || '');
     let schoolValue = form.school;
     if (level === 'districdirector' || level === 'supervisor') {
       schoolValue = areaCode;
@@ -480,15 +482,33 @@ const UserEdit = ({ variant }) => {
                   </div>
 
                   {showHeadDepartment && (
-                    <div className="col-lg-4">
-                      <div className="mb-3 mt-3">
-                        <label htmlFor="headDepartment">หัวหน้ากลุ่มสาระ</label>
-                        <select name="headDepartment" id="headDepartment" className="custom-select select2bs4" value={form.headDepartment || '0'} onChange={handleChange} required>
-                          <option value="0">ไม่ได้เป็นหัวหน้ากลุ่มสาระ</option>
-                          <option value="1">เป็นหัวหน้ากลุ่มสาระ</option>
-                        </select>
+                    <>
+                      <div className="col-lg-4">
+                        <div className="mb-3 mt-3">
+                          <label htmlFor="headDepartment">หัวหน้ากลุ่มสาระ</label>
+                          <select name="headDepartment" id="headDepartment" className="custom-select select2bs4" value={form.headDepartment || '0'} onChange={handleChange} required>
+                            <option value="0">ไม่ได้เป็นหัวหน้ากลุ่มสาระ</option>
+                            <option value="1">เป็นหัวหน้ากลุ่มสาระ</option>
+                          </select>
+                        </div>
                       </div>
-                    </div>
+
+                      <div className="col-lg-4">
+                        <div className="mb-3 mt-3">
+                          <label htmlFor="school_admin_level">สิทธิ์ผู้ดูแลระบบระดับสถานศึกษา (School Admin)</label>
+                          <select
+                            name="school_admin_level"
+                            id="school_admin_level"
+                            className="custom-select select2bs4"
+                            value={form.level === 'admin_school' ? '1' : '0'}
+                            onChange={(e) => setForm(prev => ({ ...prev, level: e.target.value === '1' ? 'admin_school' : 'teacher' }))}
+                          >
+                            <option value="0">ผู้ใช้ทั่วไป (ครู)</option>
+                            <option value="1">ผู้ดูแลระบบระดับสถานศึกษา (School Admin)</option>
+                          </select>
+                        </div>
+                      </div>
+                    </>
                   )}
 
                   {showChairman && (

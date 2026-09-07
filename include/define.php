@@ -1,7 +1,11 @@
 <?php
 $result_cfg = $database->select("tbl_config", "*");
 foreach ($result_cfg as $r) {
-    define($r["config_name"], $r["config_value"]);
+    if ($r["config_name"] == "APP_NAME") {
+        define($r["config_name"], "ระบบนิเทศการจัดการเรียนรู้ (LMSS)");
+    } else {
+        define($r["config_name"], $r["config_value"]);
+    }
 }
 
 $arrayProvince = array();

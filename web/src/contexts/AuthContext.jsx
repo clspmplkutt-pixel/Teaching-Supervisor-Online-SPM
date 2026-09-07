@@ -156,8 +156,10 @@ export const AuthProvider = ({ children }) => {
                 if (table === 'tbl_Users' && data.level && data.level !== level) {
                     // Allow login as 'supervision' (ผู้นิเทศ) if the user has evaluator rights
                     const isAllowedEvaluatorLogin = (level === 'supervision' && is_evaluator);
+                    // Allow login as 'teacher' if user has level === 'admin_school'
+                    const isAllowedAdminSchoolTeacherLogin = (data.level === 'admin_school' && level === 'teacher');
                     
-                    if (!isAllowedEvaluatorLogin) {
+                    if (!isAllowedEvaluatorLogin && !isAllowedAdminSchoolTeacherLogin) {
                         console.error('❌ Role mismatch. User is', data.level, 'but tried to login as', level);
                         throw new Error('Invalid role selected for this user');
                     }
@@ -166,18 +168,20 @@ export const AuthProvider = ({ children }) => {
                 // Success!
                 console.log('✅ Login successful!');
                 
+                const currentRole = (data.level === 'admin_school' && level === 'teacher') ? 'teacher' : (data.level || level);
+
                 // Map legacy user data to session-like object
                 const userData = {
                     id: data.id,
                     email: email, // or data.email
                     user_metadata: {
                         name: data.name + ' ' + (data.lastname || ''),
-                        role: data.level || level,
+                        role: currentRole,
                         people_id: data.people_id || email,
                         school: data.school || null,
                         is_evaluator: is_evaluator
                     },
-                    level_id: data.level || level,
+                    level_id: currentRole,
                     is_evaluator: is_evaluator
                 };
                 setUser(userData);
