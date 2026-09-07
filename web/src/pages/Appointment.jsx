@@ -120,30 +120,80 @@ const Appointment = ({ readOnly = false }) => {
           console.warn('Failed to fetch evaluator nominations:', err);
         }
 
-        // 2. Fetch all confirmed users with levels of interest
-        const { data: committeeData } = await supabase
-          .from('tbl_Users')
-          .select('people_id, prefix, name, lastname, school, level')
-          .eq('register_isConfirm', '1')
-          .in('level', ['districdirector', 'supervisor', 'supervision', 'directorschool', 'teacher'])
-          .order('school', { ascending: true })
-          .order('name', { ascending: true });
+        const approvedPeopleIds = Array.from(approvedNomineeIds);
 
-        // 3. Filter users: keep non-teachers with target roles, and teachers ONLY if approved as evaluators
-        const filteredCommitteeData = (committeeData || []).filter((row) => {
-          if (['districdirector', 'supervisor', 'supervision', 'directorschool'].includes(row.level)) {
-            return true;
-          }
-          if (row.level === 'teacher') {
-            return approvedNomineeIds.has(row.people_id);
-          }
-          return false;
+        // Also include any currently appointed committee IDs from this plan so existing data is never lost
+        const existingCommitteeIds = [
+          planData.committee1,
+          planData.committee2,
+          planData.committee3,
+          planData.committee4,
+          planData.committee5,
+        ].filter(Boolean);
+
+        // 2. Fetch leaders (districdirector, supervisor, supervision, directorschool with school != '')
+        // AND fetch approved teachers & existing committees specifically
+        const targetSpecificIds = Array.from(new Set([...approvedPeopleIds, ...existingCommitteeIds]));
+
+        const [leadersRes, specificUsersRes] = await Promise.all([
+          supabase
+            .from('tbl_Users')
+            .select('people_id, prefix, name, lastname, school, level')
+            .eq('register_isConfirm', '1')
+            .in('level', ['districdirector', 'supervisor', 'supervision', 'directorschool'])
+            .neq('school', '')
+            .order('school', { ascending: true })
+            .order('name', { ascending: true }),
+          targetSpecificIds.length > 0
+            ? supabase
+                .from('tbl_Users')
+                .select('people_id, prefix, name, lastname, school, level')
+                .in('people_id', targetSpecificIds)
+            : Promise.resolve({ data: [] }),
+        ]);
+
+        const combinedUsers = [...(leadersRes.data || []), ...(specificUsersRes.data || [])];
+        const uniqueUsers = Array.from(new Map(combinedUsers.map((u) => [u.people_id, u])).values());
+
+        // Sort: 1. Supervisors/District Directors, 2. Approved Evaluators, 3. School Directors
+        uniqueUsers.sort((a, b) => {
+          const getPriority = (u) => {
+            if (u.level === 'supervisor' || u.level === 'supervision') return 1;
+            if (u.level === 'districdirector') return 2;
+            if (approvedPeopleIds.includes(u.people_id)) return 3;
+            if (u.level === 'directorschool') return 4;
+            return 5;
+          };
+          const pA = getPriority(a);
+          const pB = getPriority(b);
+          if (pA !== pB) return pA - pB;
+          const schoolA = schoolMap[a.school] || '';
+          const schoolB = schoolMap[b.school] || '';
+          if (schoolA !== schoolB) return schoolA.localeCompare(schoolB, 'th');
+          return (a.name || '').localeCompare(b.name || '', 'th');
         });
 
-        const options = filteredCommitteeData.map((row) => ({
-          value: row.people_id,
-          label: `${prefixMap[row.prefix] || ''}${row.name} ${row.lastname} (${schoolMap[row.school] || ''})`,
-        }));
+        const options = uniqueUsers.map((row) => {
+          const isApproved = approvedPeopleIds.includes(row.people_id);
+          let roleTag = '';
+          if (row.level === 'supervisor' || row.level === 'supervision') {
+            roleTag = '[ศึกษานิเทศก์] ';
+          } else if (row.level === 'districdirector') {
+            roleTag = '[ผู้บริหารเขตพื้นที่ฯ] ';
+          } else if (isApproved) {
+            roleTag = '[ผู้นิเทศที่ได้รับการอนุมัติ] ';
+          } else if (row.level === 'directorschool') {
+            roleTag = '[ผู้บริหารสถานศึกษา] ';
+          }
+
+          const schoolName = schoolMap[row.school] || '';
+          const schoolText = schoolName ? ` (${schoolName})` : '';
+
+          return {
+            value: row.people_id,
+            label: `${roleTag}${prefixMap[row.prefix] || ''}${row.name} ${row.lastname}${schoolText}`,
+          };
+        });
 
         if (mounted) {
           setPlan(planData);

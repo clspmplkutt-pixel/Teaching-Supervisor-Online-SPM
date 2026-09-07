@@ -422,9 +422,34 @@ if ($operation == $module . "_save") {
 
     var committee = [
         <?php
-        $data = $database->select("tbl_Users", "*", ["register_isConfirm" => "1", "ORDER" => ["school" => "ASC", "name" => "ASC"]]);
+        $approved_noms = $database->select("tbl_EvaluatorNominations", "nominee_people_id", ["status" => "approved"]);
+        $approved_ids = !empty($approved_noms) ? array_filter($approved_noms) : [];
+
+        $where = [
+            "AND" => [
+                "register_isConfirm" => "1",
+                "OR" => [
+                    "level" => ["districdirector", "supervisor", "supervision", "directorschool"],
+                    "people_id" => !empty($approved_ids) ? $approved_ids : ['-']
+                ]
+            ],
+            "ORDER" => ["school" => "ASC", "name" => "ASC"]
+        ];
+        $data = $database->select("tbl_Users", "*", $where);
         foreach ($data as $row) {
-            echo "{id: '" . $row['people_id'] . "', text: '" . $arrayPrefix[$row['prefix']] . $row['name'] . "  " . $row['lastname'] . "(" . $database->get("tbl_school", "school_name", ["school_id" => $row['school']]) . ")'},";
+            $roleTag = '';
+            if ($row['level'] == 'supervisor' || $row['level'] == 'supervision') {
+                $roleTag = '[ศึกษานิเทศก์] ';
+            } elseif ($row['level'] == 'districdirector') {
+                $roleTag = '[ผู้บริหารเขตพื้นที่ฯ] ';
+            } elseif (in_array($row['people_id'], $approved_ids)) {
+                $roleTag = '[ผู้นิเทศที่ได้รับการอนุมัติ] ';
+            } elseif ($row['level'] == 'directorschool') {
+                $roleTag = '[ผู้บริหารสถานศึกษา] ';
+            }
+            $school_name = $database->get("tbl_school", "school_name", ["school_id" => $row['school']]);
+            $school_text = !empty($school_name) ? " (" . $school_name . ")" : "";
+            echo "{id: '" . $row['people_id'] . "', text: '" . addslashes($roleTag . $arrayPrefix[$row['prefix']] . $row['name'] . "  " . $row['lastname'] . $school_text) . "'},";
         }
         ?>
     ];
