@@ -43,12 +43,26 @@ $limit_year = date("Y") - 18;
                                         $module_edit = "teacher_edit";
                                     } elseif ($data_user['level'] == "directorschool") {
                                         $module_edit = "directorschool_edit";
+                                    } elseif ($data_user['level'] == "supervisor" || $data_user['level'] == "supervision") {
+                                        $module_edit = "supervisor_edit";
+                                    } elseif ($data_user['level'] == "districdirector") {
+                                        $module_edit = "dd_edit";
+                                    } else {
+                                        $module_edit = "teacher_edit";
                                     }
                                     echo "<td>" . $data_user['level'] . "</td>";
-                                    if ($data_user['people_id'] == "") {
+                                    if (empty($data_user['people_id'])) {
                                         $error_text = "ไม่มีเลขประจำตัวประชาชน";
                                     } else {
-                                        $error_text = "ปีเกิดผิดพลาด " . $data_user['birthday'] . " ข้าราชการต้องอายุมากกว่า 18 ปี";
+                                        $bParts = explode('-', $data_user['birthday']);
+                                        $bYear = isset($bParts[0]) ? (int)$bParts[0] : 0;
+                                        if ($bYear >= 2400 && $bYear <= 2600) {
+                                            $cYear = $bYear - 543;
+                                            $cDate = $cYear . '-' . (isset($bParts[1]) ? $bParts[1] : '') . '-' . (isset($bParts[2]) ? $bParts[2] : '');
+                                            $error_text = "ระบุปีเกิดเป็น พ.ศ. (" . $data_user['birthday'] . ") ควรเป็น ค.ศ. (" . $cDate . ")";
+                                        } else {
+                                            $error_text = "ปีเกิดผิดพลาด " . $data_user['birthday'] . " ข้าราชการต้องอายุมากกว่า 18 ปี";
+                                        }
                                     }
 
                             ?>

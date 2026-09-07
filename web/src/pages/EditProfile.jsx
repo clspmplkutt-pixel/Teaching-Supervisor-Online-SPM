@@ -138,6 +138,18 @@ const EditProfile = () => {
 
     setSaving(true);
     try {
+      let cleanBirthday = form.birthday ? String(form.birthday).trim() : '';
+      if (cleanBirthday) {
+        const parts = cleanBirthday.split('-');
+        if (parts.length === 3) {
+          let y = parseInt(parts[0], 10);
+          if (y >= 2400 && y <= 2600) {
+            y -= 543;
+            cleanBirthday = `${y}-${parts[1]}-${parts[2]}`;
+          }
+        }
+      }
+
       const { error } = await supabase
         .from('tbl_Users')
         .update({
@@ -149,7 +161,7 @@ const EditProfile = () => {
           position_id: form.position_id,
           academic_id: form.academic_id,
           gender: form.gender,
-          birthday: form.birthday,
+          birthday: cleanBirthday,
           school: form.school,
           edu_level: form.edu_level,
           headDepartment: form.headDepartment,

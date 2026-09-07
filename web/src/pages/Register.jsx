@@ -186,10 +186,12 @@ const Register = () => {
                 setLoading(false);
                 return alert('กรุณาระบุวัน/เดือน/ปีเกิด');
             }
-            // Fix: Check if input year is already in Buddhist Era
+            // Fix: Check if input year is in Buddhist Era or Christian Era
             const dateParts = formData.birthday.split('-');
-            let year = parseInt(dateParts[0]);
+            let year = parseInt(dateParts[0], 10);
             const thaiYear = year < 2400 ? year + 543 : year;
+            const christianYear = year >= 2400 ? year - 543 : year;
+            const dbBirthday = `${christianYear}-${dateParts[1]}-${dateParts[2]}`;
             const pwdRaw = `${dateParts[2]}${dateParts[1]}${thaiYear}`; // DDMMYYYY (Thai Year)
 
             // Encryption Logic (Same as Login)
@@ -216,7 +218,7 @@ const Register = () => {
                 position_id: formData.position_id,
                 academic_id: formData.academic_id,
                 gender: formData.gender,
-                birthday: formData.birthday, // Store as YYYY-MM-DD
+                birthday: dbBirthday, // Store as YYYY-MM-DD in Christian Era (AD)
                 passwd: encryptedPass,
                 school: school,
                 edu_level: formData.edu_level,

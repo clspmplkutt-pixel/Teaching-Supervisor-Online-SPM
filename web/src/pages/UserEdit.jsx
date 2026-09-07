@@ -22,6 +22,19 @@ const levelFromPosition = (positionId) => {
   return '';
 };
 
+const normalizeBirthdayToAD = (val) => {
+  if (!val) return '';
+  const parts = String(val).trim().split('-');
+  if (parts.length === 3) {
+    let y = parseInt(parts[0], 10);
+    if (y >= 2400 && y <= 2600) {
+      y -= 543;
+      return `${y}-${parts[1]}-${parts[2]}`;
+    }
+  }
+  return String(val).trim();
+};
+
 const UserEdit = ({ variant }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -99,12 +112,22 @@ const UserEdit = ({ variant }) => {
       format: 'yyyy-mm-dd',
       autoclose: true,
       language: 'th-th',
-      thaiyear: true,
+      thaiyear: false,
     }).on('changeDate', function () {
       if (this.value) {
+        let val = this.value;
+        const bParts = val.split('-');
+        if (bParts.length === 3) {
+          let bYear = parseInt(bParts[0], 10);
+          if (bYear >= 2400 && bYear <= 2600) {
+            bYear -= 543;
+            val = `${bYear}-${bParts[1]}-${bParts[2]}`;
+            this.value = val;
+          }
+        }
         const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
         if (nativeInputValueSetter) {
-          nativeInputValueSetter.call(this, this.value);
+          nativeInputValueSetter.call(this, val);
         }
         this.dispatchEvent(new Event('input', { bubbles: true }));
       }
@@ -143,7 +166,7 @@ const UserEdit = ({ variant }) => {
           position_id: data.position_id || '',
           academic_id: data.academic_id || '',
           gender: data.gender || '',
-          birthday: data.birthday || '',
+          birthday: normalizeBirthdayToAD(data.birthday),
           school: data.school || '',
           edu_level: data.edu_level || '',
           headDepartment: data.headDepartment || '0',
@@ -254,7 +277,7 @@ const UserEdit = ({ variant }) => {
       position_id: form.position_id,
       academic_id: form.academic_id,
       gender: form.gender,
-      birthday: form.birthday,
+      birthday: normalizeBirthdayToAD(form.birthday),
       edu_level: form.edu_level,
       phone: form.phone,
       email: form.email,
