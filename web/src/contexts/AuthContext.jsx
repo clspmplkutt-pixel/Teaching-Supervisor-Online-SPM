@@ -28,8 +28,19 @@ export const AuthProvider = ({ children }) => {
                     console.warn("Supabase keys not configured. Running in Demo Mode.");
                 } else {
                     const { data: { session } } = await supabase.auth.getSession();
-                    if (mounted) {
-                        setUser(session?.user ?? null);
+                    if (session?.user) {
+                        if (mounted) setUser(session.user);
+                    } else {
+                        const savedUser = localStorage.getItem('lmss_user_session');
+                        if (savedUser) {
+                            try {
+                                if (mounted) setUser(JSON.parse(savedUser));
+                            } catch {
+                                localStorage.removeItem('lmss_user_session');
+                            }
+                        } else if (mounted) {
+                            setUser(null);
+                        }
                     }
                 }
 
@@ -50,7 +61,20 @@ export const AuthProvider = ({ children }) => {
         if (!isPlaceholder) {
             const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
                 if (mounted) {
-                    setUser(session?.user ?? null);
+                    if (session?.user) {
+                        setUser(session.user);
+                    } else {
+                        const savedUser = localStorage.getItem('lmss_user_session');
+                        if (savedUser) {
+                            try {
+                                setUser(JSON.parse(savedUser));
+                            } catch {
+                                setUser(null);
+                            }
+                        } else {
+                            setUser(null);
+                        }
+                    }
                     setLoading(false);
                 }
             });
@@ -184,6 +208,11 @@ export const AuthProvider = ({ children }) => {
                     level_id: currentRole,
                     is_evaluator: is_evaluator
                 };
+                try {
+                    localStorage.setItem('lmss_user_session', JSON.stringify(userData));
+                } catch (e) {
+                    console.warn('Could not save session to localStorage', e);
+                }
                 setUser(userData);
 
                 return data;
@@ -215,6 +244,10 @@ export const AuthProvider = ({ children }) => {
     };
 
     const logout = async () => {
+        try {
+            localStorage.removeItem('lmss_user_session');
+        } catch {}
+
         const storageUrl = String(supabase.storageUrl || '');
         const isPlaceholder = !storageUrl || storageUrl.includes('placeholder.supabase.co');
 
@@ -224,7 +257,10 @@ export const AuthProvider = ({ children }) => {
             return;
         }
 
-        await supabase.auth.signOut();
+        try {
+            await supabase.auth.signOut();
+        } catch {}
+        setUser(null);
         navigate('/login');
     };
 

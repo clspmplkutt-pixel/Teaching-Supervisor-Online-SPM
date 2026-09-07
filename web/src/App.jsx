@@ -100,15 +100,17 @@ import Log from './pages/Log';
 import ModulePlaceholder from './pages/ModulePlaceholder';
 
 import { AuthProvider } from './contexts/AuthContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
   return (
     <Router>
-      <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/" element={<AppLayout />}>
+      <ErrorBoundary>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/" element={<AppLayout />}>
             <Route index element={<InfoPage />} />
             <Route path="info" element={<InfoPage />} />
             <Route path="sendplan" element={<SendPlan />} />
@@ -211,6 +213,7 @@ function App() {
           </Route>
         </Routes>
       </AuthProvider>
+      </ErrorBoundary>
     </Router>
   );
 }

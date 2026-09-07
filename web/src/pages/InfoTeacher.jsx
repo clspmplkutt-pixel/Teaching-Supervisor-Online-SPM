@@ -7,6 +7,16 @@ import { useUserProfile } from '../hooks/useUserProfile';
 import useUserLookups from '../hooks/useUserLookups';
 import './TeacherDashboard.css';
 
+const PLAN_STATUS_NAMES = {
+  '1': 'รอผู้อำนวยการอนุมัติแผน',
+  '2': 'ผู้อำนวยการอนุมัติแล้ว (รอคลิป/บันทึก)',
+  '3': 'ไม่อนุมัติ / กรุณาแก้ไขแผน',
+  '4': 'แก้ไขแผนแล้ว รอ ผอ. ตรวจสอบ',
+  '5': 'ส่งคลิป/บันทึกแล้ว รอคกก. นิเทศ',
+  '6': 'คณะกรรมการกำลังดำเนินการประเมิน',
+  '7': 'คณะกรรมการประเมินเสร็จสิ้น',
+};
+
 const InfoTeacher = () => {
   const { user } = useAuth();
   const { profile, loading: profileLoading } = useUserProfile();
@@ -203,10 +213,10 @@ const InfoTeacher = () => {
     );
   }
 
-  const teacherFullName = `${lookups.prefix[profile?.prefix] || ''}${profile?.name || ''} ${profile?.lastname || ''}`;
-  const schoolName = lookups.school[profile?.school] || 'โรงเรียน';
-  const academicName = lookups.academic[profile?.academic_id] || 'ไม่มีวิทยฐานะ';
-  const subjectAreaName = lookups.teachSubject[profile?.teach_subject] || profile?.teach_subject_name || 'ทั่วไป';
+  const teacherFullName = `${lookups?.prefix?.[profile?.prefix] || ''}${profile?.name || ''} ${profile?.lastname || ''}`;
+  const schoolName = lookups?.school?.[profile?.school] || 'โรงเรียน';
+  const academicName = lookups?.academic?.[profile?.academic_id] || 'ไม่มีวิทยฐานะ';
+  const subjectAreaName = lookups?.teachSubject?.[profile?.teach_subject] || profile?.teach_subject_name || 'ทั่วไป';
 
   return (
     <div className="teacher-workspace-container">
@@ -439,7 +449,7 @@ const InfoTeacher = () => {
                           ปีการศึกษา {p.edu_year} (ภาคเรียนที่ {p.edu_term})
                         </span>
                         <span className="badge bg-light text-primary border me-2">
-                          {lookups.teachSubject[p.teach_subject_id] || 'กลุ่มสาระทั่วไป'}
+                          {lookups?.teachSubject?.[p.teach_subject_id] || 'กลุ่มสาระทั่วไป'}
                         </span>
                         <span className="badge bg-light text-secondary border">
                           รูปแบบ: {p.learning_model || 'Active Learning'}
@@ -471,7 +481,7 @@ const InfoTeacher = () => {
                           </span>
                         ) : (
                           <span className="badge bg-info text-dark px-3 py-2 fs-6">
-                            {lookups.status[String(p.plan_status)] || 'อยู่ระหว่างดำเนินการ'}
+                            {PLAN_STATUS_NAMES[String(p.plan_status)] || 'อยู่ระหว่างดำเนินการ'}
                           </span>
                         )}
                       </div>
@@ -513,7 +523,7 @@ const InfoTeacher = () => {
                           <span>
                             {[p.committee1, p.committee2, p.committee3].filter(Boolean).map((cid, i) => {
                               const cm = committeeProfiles[String(cid)];
-                              const cName = cm ? `${lookups.prefix[cm.prefix] || ''}${cm.name} ${cm.lastname}` : `กรรมการ ${i + 1}`;
+                              const cName = cm ? `${lookups?.prefix?.[cm.prefix] || ''}${cm.name} ${cm.lastname}` : `กรรมการ ${i + 1}`;
                               return (
                                 <span key={cid} className="badge bg-white text-dark border me-1">
                                   <i className="fa-solid fa-user-check text-primary me-1"></i> {cName}
@@ -601,7 +611,7 @@ const InfoTeacher = () => {
 
           <div className="mb-4">
             <p className="fs-6 mb-2">
-              เอกสารฉบับนี้ให้ไว้เพื่อรับรองว่า <strong>ครู{teacherFullName}</strong> ตำแหน่ง <strong>{lookups.position[profile?.position_id] || 'ครู'}</strong> วิทยฐานะ <strong>{academicName}</strong>
+              เอกสารฉบับนี้ให้ไว้เพื่อรับรองว่า <strong>ครู{teacherFullName}</strong> ตำแหน่ง <strong>{lookups?.position?.[profile?.position_id] || 'ครู'}</strong> วิทยฐานะ <strong>{academicName}</strong>
             </p>
             <p className="fs-6 mb-2">
               สังกัด <strong>โรงเรียน{schoolName}</strong> กลุ่มสาระการเรียนรู้ <strong>{subjectAreaName}</strong>
