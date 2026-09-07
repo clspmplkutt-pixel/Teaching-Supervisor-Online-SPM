@@ -199,7 +199,16 @@ const InfoTeacher = () => {
     );
   }
 
-  const teacherFullName = `${lookups?.prefix?.[profile?.prefix] || ''}${profile?.name || ''} ${profile?.lastname || ''}`;
+  const cleanTeacherTitle = (prefix, name, lastname) => {
+    const rawPrefix = lookups?.prefix?.[prefix] || '';
+    const cleanPrefix = rawPrefix.replace(/^(นาย|นางสาว|นาง)\s*/, '');
+    const cleanName = (name || '').trim().replace(/^(นาย|นางสาว|นาง)\s*/, '');
+    if (cleanPrefix) return `${cleanPrefix}${cleanName} ${lastname || ''}`.trim();
+    return `${cleanName} ${lastname || ''}`.trim();
+  };
+
+  const teacherDisplayName = cleanTeacherTitle(profile?.prefix, profile?.name, profile?.lastname);
+  const teacherFullName = `${lookups?.prefix?.[profile?.prefix] || ''}${profile?.name || ''} ${profile?.lastname || ''}`.trim();
   const schoolName = lookups?.school?.[profile?.school] || 'โรงเรียน';
   const academicName = lookups?.academic?.[profile?.academic_id] || 'ไม่มีวิทยฐานะ';
   const subjectAreaName = lookups?.teachSubject?.[profile?.teach_subject] || profile?.teach_subject_name || 'กลุ่มสาระการเรียนรู้';
@@ -226,7 +235,7 @@ const InfoTeacher = () => {
                   </span>
                 </div>
                 <h2 className="font-weight-bold mb-0 text-white" style={{ letterSpacing: '-0.02em' }}>
-                  สวัสดีครับ, ครู{teacherFullName}
+                  สวัสดีครับ, คุณครู{teacherDisplayName}
                 </h2>
               </div>
             </div>
@@ -544,9 +553,13 @@ const InfoTeacher = () => {
                 <div className="d-flex align-items-center justify-content-between flex-wrap gap-3 pt-3 border-top mt-3">
                   {/* Committee chips */}
                   <div className="d-flex align-items-center gap-2 flex-wrap">
-                    <span className="text-muted small font-weight-bold">คณะกรรมการ:</span>
+                    <span className="text-secondary small font-weight-bold">
+                      <i className="fa-solid fa-users text-primary opacity-75 me-1"></i> คณะกรรมการนิเทศ:
+                    </span>
                     {[p.committee1, p.committee2, p.committee3].filter(Boolean).length === 0 ? (
-                      <span className="text-muted small fst-italic">รอแต่งตั้งกรรมการ</span>
+                      <span className="badge bg-light text-muted border px-3 py-1 font-weight-normal" style={{ borderRadius: '8px', fontSize: '0.8rem' }}>
+                        <i className="fa-regular fa-clock me-1 text-warning"></i> อยู่ระหว่างรอแต่งตั้งคณะกรรมการ
+                      </span>
                     ) : (
                       [p.committee1, p.committee2, p.committee3].filter(Boolean).map((cid, i) => {
                         const cm = committeeProfiles[String(cid)];
@@ -568,10 +581,9 @@ const InfoTeacher = () => {
                         href={p.plan_file}
                         target="_blank"
                         rel="noreferrer"
-                        className="btn btn-sm btn-outline-secondary font-weight-bold px-3 py-2"
-                        style={{ borderRadius: '10px' }}
+                        className="btn-plan-action btn-plan-doc"
                       >
-                        <i className="fa-solid fa-file-lines me-1 text-primary"></i> แผนการสอน
+                        <i className="fa-solid fa-file-pdf me-1 text-danger"></i> เอกสารแผนการสอน
                       </a>
                     )}
 
@@ -580,10 +592,9 @@ const InfoTeacher = () => {
                         href={`https://www.youtube.com/watch?v=${p.plan_clip}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="btn btn-sm btn-outline-danger font-weight-bold px-3 py-2"
-                        style={{ borderRadius: '10px' }}
+                        className="btn-plan-action btn-plan-video"
                       >
-                        <i className="fa-brands fa-youtube me-1"></i> ดูคลิปสอน
+                        <i className="fa-brands fa-youtube me-1 text-danger"></i> วิดีโอการสอน
                       </a>
                     )}
 
@@ -593,7 +604,7 @@ const InfoTeacher = () => {
                         onClick={() => handlePrintCertificate(p)}
                         className="btn-pa-cert"
                       >
-                        <i className="fa-solid fa-print"></i> พิมพ์ใบรายงาน ว.PA
+                        <i className="fa-solid fa-certificate"></i> ใบรับรองผล ว.PA
                       </button>
                     )}
                   </div>

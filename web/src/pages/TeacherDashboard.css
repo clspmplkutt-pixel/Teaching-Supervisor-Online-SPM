@@ -475,8 +475,51 @@
 }
 
 /* ==========================================
-   6. PA CERTIFICATE GOLD BUTTON
+   6. PLAN ACTION BUTTONS & PA CERTIFICATE
    ========================================== */
+.btn-plan-action {
+  font-weight: 600;
+  font-size: 0.84rem;
+  padding: 8px 16px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none !important;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+
+.btn-plan-doc {
+  background: #f8fafc;
+  color: #334155 !important;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.btn-plan-doc:hover {
+  background: #ffffff;
+  border-color: #94a3b8;
+  color: #0f172a !important;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+
+.btn-plan-video {
+  background: #fff1f2;
+  color: #e11d48 !important;
+  border: 1px solid #fecdd3;
+  box-shadow: 0 2px 6px rgba(225, 29, 72, 0.08);
+}
+
+.btn-plan-video:hover {
+  background: #ffe4e6;
+  border-color: #fda4af;
+  color: #be123c !important;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(225, 29, 72, 0.16);
+}
+
 .btn-pa-cert {
   background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
   color: #ffffff !important;
