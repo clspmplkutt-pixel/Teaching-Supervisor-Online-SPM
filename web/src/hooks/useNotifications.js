@@ -27,15 +27,24 @@ const useNotifications = () => {
       if (!peopleId) return;
 
       try {
-        if (role === 'teacher' || role === 'directorschool') {
-          // ครู/ผอ: นับแผนที่ถูกอนุมัติ/ตีกลับ/ประเมินครบแล้ว (status 2,3,4,5)
-          // และยังไม่มี notify_read_at หรือยังอ่านไม่ครบ
+        if (role === 'teacher') {
+          // ครู: นับแผนที่ถูกตีกลับให้แก้ไข (status 3)
           const { count: c } = await supabase
             .from('tbl_sendplan')
             .select('planid', { count: 'exact', head: true })
             .eq('people_id', peopleId)
-            .in('plan_status', ['2', '3', '4', '5'])
-            .eq('notify_read', false);
+            .eq('plan_status', '3');
+
+          if (mounted) setCount(c || 0);
+        } else if (role === 'directorschool') {
+          // ผอ: นับแผนที่รอตรวจอนุมัติ (status 1 หรือ 4)
+          const school = user?.user_metadata?.school || user?.school || '';
+          let q = supabase
+            .from('tbl_sendplan')
+            .select('planid', { count: 'exact', head: true })
+            .in('plan_status', ['1', '4']);
+          if (school) q = q.eq('school_code', school);
+          const { count: c } = await q;
 
           if (mounted) setCount(c || 0);
         } else if (
