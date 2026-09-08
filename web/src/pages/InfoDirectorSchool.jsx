@@ -137,6 +137,8 @@ const InfoDirectorSchool = () => {
     return filteredPlans.filter((p) => Number(p.plan_status) === 7).length;
   }, [filteredPlans]);
 
+  const supervisionRate = totalPlansCount > 0 ? Math.round((completedPlansCount / totalPlansCount) * 100) : 0;
+
   // Average Score Calculation
   const averageSchoolScore = useMemo(() => {
     if (planScores.length === 0) return 0;
@@ -158,12 +160,12 @@ const InfoDirectorSchool = () => {
   }, [planScores]);
 
   const getQualityBadge = (score) => {
-    if (score >= 90) return { label: 'ดีเยี่ยม (Excellent)', color: 'bg-success text-white' };
-    if (score >= 80) return { label: 'ดีมาก (Very Good)', color: 'bg-primary text-white' };
-    if (score >= 70) return { label: 'ดี (Good)', color: 'bg-info text-dark' };
-    if (score >= 60) return { label: 'พอใช้ (Fair)', color: 'bg-warning text-dark' };
-    if (score > 0) return { label: 'ควรปรับปรุง', color: 'bg-danger text-white' };
-    return { label: 'รอดำเนินการนิเทศ', color: 'bg-secondary text-white' };
+    if (score >= 90) return { label: 'ดีเยี่ยม (Excellent)', color: 'text-success' };
+    if (score >= 80) return { label: 'ดีมาก (Very Good)', color: 'text-primary' };
+    if (score >= 70) return { label: 'ดี (Good)', color: 'text-info' };
+    if (score >= 60) return { label: 'พอใช้ (Fair)', color: 'text-warning' };
+    if (score > 0) return { label: 'ควรปรับปรุง', color: 'text-danger' };
+    return { label: 'รอดำเนินการนิเทศ', color: 'text-muted' };
   };
 
   // Department Breakdown (8 Learning Areas)
@@ -201,12 +203,12 @@ const InfoDirectorSchool = () => {
   // Academic Standing Breakdown
   const academicStandingStats = useMemo(() => {
     const counts = {
-      expertSpecial: 0, // เชี่ยวชาญพิเศษ (18)
-      expert: 0, // เชี่ยวชาญ (17)
-      special: 0, // ชำนาญการพิเศษ (16)
-      senior: 0, // ชำนาญการ (15)
-      practitioner: 0, // ครู คศ.1
-      assistant: 0, // ครูผู้ช่วย
+      expertSpecial: 0,
+      expert: 0,
+      special: 0,
+      senior: 0,
+      practitioner: 0,
+      assistant: 0,
       others: 0,
     };
 
@@ -225,7 +227,7 @@ const InfoDirectorSchool = () => {
     return counts;
   }, [personnel]);
 
-  // Retirement Calculation (Official Thai Fiscal Year: Sep 30 cutoff)
+  // Retirement Calculation
   const retirementStats = useMemo(() => {
     const currentYearAD = new Date().getFullYear();
     const currentYearBE = currentYearAD + 543;
@@ -244,7 +246,6 @@ const InfoDirectorSchool = () => {
       const birthMonth = parseInt(parts[1], 10);
       const birthDay = parseInt(parts[2], 10);
 
-      // Official rule: Born on or before Oct 1 retires at year + 60; Born after Oct 1 retires at year + 61
       let retireYearAD = birthYearAD + 60;
       if (birthMonth > 10 || (birthMonth === 10 && birthDay > 1)) {
         retireYearAD += 1;
@@ -279,19 +280,6 @@ const InfoDirectorSchool = () => {
     return personnel.filter((p) => approvedIds.has(String(p.people_id)));
   }, [personnel, evaluatorNominees]);
 
-  // Education Level Breakdown
-  const educationStats = useMemo(() => {
-    const counts = { bachelor: 0, master: 0, doctorate: 0, others: 0 };
-    personnel.forEach((p) => {
-      const edu = String(p.edu_level);
-      if (edu === '20' || edu.includes('เอก')) counts.doctorate++;
-      else if (edu === '18' || edu.includes('โท')) counts.master++;
-      else if (edu === '16' || edu.includes('ตรี')) counts.bachelor++;
-      else counts.others++;
-    });
-    return counts;
-  }, [personnel]);
-
   // ==========================================
   // DIMENSION 3: Learning Models & Media
   // ==========================================
@@ -309,8 +297,7 @@ const InfoDirectorSchool = () => {
       counts[model] = (counts[model] || 0) + 1;
     });
 
-    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-    return entries;
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
   }, [filteredPlans]);
 
   const clipStats = useMemo(() => {
@@ -326,12 +313,10 @@ const InfoDirectorSchool = () => {
   // ==========================================
   // DIMENSION 4: Actionable Lists
   // ==========================================
-  // Unsubmitted teachers
   const unsubmittedTeachers = useMemo(() => {
     return teachersOnly.filter((t) => !submittedPeopleIds.has(String(t.people_id).trim()));
   }, [teachersOnly, submittedPeopleIds]);
 
-  // Pending plans
   const pendingPlans = useMemo(() => {
     return filteredPlans.filter((p) => {
       const s = Number(p.plan_status);
@@ -339,12 +324,10 @@ const InfoDirectorSchool = () => {
     });
   }, [filteredPlans]);
 
-  // Completed supervision plans with scores
   const completedSupervisionList = useMemo(() => {
     return filteredPlans.filter((p) => Number(p.plan_status) === 7);
   }, [filteredPlans]);
 
-  // Searchable Personnel Directory
   const filteredDirectory = useMemo(() => {
     if (!searchDirectory.trim()) return personnel;
     const q = searchDirectory.trim().toLowerCase();
@@ -357,7 +340,6 @@ const InfoDirectorSchool = () => {
     });
   }, [personnel, searchDirectory, lookups]);
 
-  // Copy unsubmitted teachers to clipboard
   const handleCopyUnsubmitted = () => {
     if (unsubmittedTeachers.length === 0) return;
     const text = unsubmittedTeachers
@@ -373,6 +355,15 @@ const InfoDirectorSchool = () => {
     });
   };
 
+  const handleJumpToPending = (e) => {
+    e.preventDefault();
+    setActiveTab('pending');
+    const el = document.getElementById('action-center-section');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -381,234 +372,324 @@ const InfoDirectorSchool = () => {
 
   if (isLoading) {
     return (
-      <div className="text-center p-5">
-        <div className="spinner-border text-primary" style={{ width: '3rem', height: '3rem' }} role="status"></div>
-        <h5 className="mt-3 font-weight-bold text-secondary">กำลังประมวลผลสารสนเทศเพื่อการบริหารจัดการ...</h5>
-        <p className="text-muted">กำลังรวบรวมข้อมูลครู แผนการสอน และผลการนิเทศสถานศึกษา</p>
+      <div className="executive-dashboard-container">
+        {/* Shimmer Skeleton Hero */}
+        <div className="ed-skeleton ed-skeleton-hero"></div>
+        {/* Shimmer Skeleton KPIs */}
+        <div className="ed-kpi-grid">
+          <div className="ed-skeleton ed-skeleton-card"></div>
+          <div className="ed-skeleton ed-skeleton-card"></div>
+          <div className="ed-skeleton ed-skeleton-card"></div>
+          <div className="ed-skeleton ed-skeleton-card"></div>
+        </div>
       </div>
     );
   }
 
+  // SVG Ring Calculations
+  const ringCircumference = 125.66; // 2 * PI * 20
+  const subDashOffset = ringCircumference - (ringCircumference * Math.min(100, Math.max(0, submissionRate))) / 100;
+  const supDashOffset = ringCircumference - (ringCircumference * Math.min(100, Math.max(0, supervisionRate))) / 100;
+
   return (
     <div className="executive-dashboard-container">
-      {/* 1. Header & Controls */}
-      <div className="dashboard-hero">
-        <div className="row align-items-center">
-          <div className="col-lg-8 mb-3 mb-lg-0">
-            <span className="badge bg-warning text-dark mb-2 px-3 py-1 font-weight-bold">
-              <i className="fa-solid fa-chart-line me-1"></i> Executive Information System (EIS)
-            </span>
-            <h2 className="font-weight-bold mb-1">
+      {/* 1. AURORA HERO BANNER */}
+      <header className="ed-hero">
+        <div className="ed-hero-glow-1"></div>
+        <div className="ed-hero-glow-2"></div>
+
+        <div className="ed-hero-content">
+          <div className="ed-hero-info">
+            <div className="ed-hero-badge">
+              <i className="fa-solid fa-chart-line"></i> Executive Information System (EIS)
+            </div>
+            <h1 className="ed-hero-title">
               {schoolData?.school_name ? `โรงเรียน${schoolData.school_name}` : 'สารสนเทศสถานศึกษา'}
-            </h2>
-            <p className="mb-0 text-white-50">
-              ระบบสารสนเทศเพื่อการบริหารจัดการสถานศึกษาเชิงรุก (Data-Driven School Management) • ผู้อำนวยการ:{' '}
-              <strong className="text-white">
-                {(lookups.prefix[profile?.prefix] || '') + profile?.name + ' ' + (profile?.lastname || '')}
-              </strong>
+            </h1>
+            <p className="ed-hero-subtitle">
+              ระบบสารสนเทศเพื่อการบริหารจัดการสถานศึกษาเชิงรุก • ผู้อำนวยการ:{' '}
+              <strong>{(lookups.prefix[profile?.prefix] || '') + profile?.name + ' ' + (profile?.lastname || '')}</strong>
             </p>
           </div>
-          <div className="col-lg-4 text-lg-end no-print">
-            <div className="d-flex flex-wrap justify-content-lg-end gap-2">
-              <div className="input-group input-group-sm" style={{ width: 'auto' }}>
-                <span className="input-group-text bg-white text-dark font-weight-bold">ปีการศึกษา</span>
-                <select
-                  className="form-select form-select-sm"
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(e.target.value)}
-                >
-                  <option value="ALL">ทั้งหมดทุกปี</option>
-                  {academicYears.map((yr) => (
-                    <option key={yr} value={yr}>
-                      ปีการศึกษา {yr}
-                    </option>
-                  ))}
-                </select>
+
+          {/* Twin Donut Rings */}
+          <div className="ed-hero-rings">
+            {/* Ring 1: Submission Rate */}
+            <div className="ed-ring-item">
+              <div className="ed-ring-wrapper">
+                <svg viewBox="0 0 48 48">
+                  <circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="4" />
+                  <circle
+                    cx="24"
+                    cy="24"
+                    r="20"
+                    fill="none"
+                    stroke="#10b981"
+                    strokeWidth="4"
+                    strokeLinecap="round"
+                    strokeDasharray={ringCircumference}
+                    strokeDashoffset={subDashOffset}
+                  />
+                </svg>
+                <span className="ed-ring-val">{submissionRate}%</span>
               </div>
-              <button className="btn btn-sm btn-light font-weight-bold shadow-sm" onClick={handlePrint} title="พิมพ์รายงานสรุป">
-                <i className="fa-solid fa-print me-1 text-primary"></i> พิมพ์รายงาน
-              </button>
-              <button className="btn btn-sm btn-outline-light" onClick={loadDashboardData} title="รีเฟรชข้อมูล">
-                <i className="fa-solid fa-arrows-rotate"></i>
-              </button>
+              <div className="ed-ring-meta">
+                <span className="ed-ring-label">อัตราส่งแผน</span>
+                <span className="ed-ring-sub">{submittedTeachersCount}/{totalTeachersCount} คน</span>
+              </div>
+            </div>
+
+            {/* Ring 2: Supervision Completion */}
+            <div className="ed-ring-item">
+              <div className="ed-ring-wrapper">
+                <svg viewBox="0 0 48 48">
+                  <circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="4" />
+                  <circle
+                    cx="24"
+                    cy="24"
+                    r="20"
+                    fill="none"
+                    stroke="#3b82f6"
+                    strokeWidth="4"
+                    strokeLinecap="round"
+                    strokeDasharray={ringCircumference}
+                    strokeDashoffset={supDashOffset}
+                  />
+                </svg>
+                <span className="ed-ring-val">{supervisionRate}%</span>
+              </div>
+              <div className="ed-ring-meta">
+                <span className="ed-ring-label">นิเทศสำเร็จ</span>
+                <span className="ed-ring-sub">{completedPlansCount}/{totalPlansCount} แผน</span>
+              </div>
             </div>
           </div>
+
+          {/* Hero Controls */}
+          <div className="ed-hero-controls no-print">
+            {/* Year Switcher Pills */}
+            <div className="ed-year-pills" role="tablist">
+              <button
+                type="button"
+                className={`ed-year-pill ${selectedYear === 'ALL' ? 'active' : ''}`}
+                onClick={() => setSelectedYear('ALL')}
+              >
+                ทุกปี
+              </button>
+              {academicYears.map((yr) => (
+                <button
+                  key={yr}
+                  type="button"
+                  className={`ed-year-pill ${selectedYear === yr ? 'active' : ''}`}
+                  onClick={() => setSelectedYear(yr)}
+                >
+                  {yr}
+                </button>
+              ))}
+            </div>
+
+            {/* Quick Action: Pending Director Approval */}
+            {pendingDirectorCount > 0 && (
+              <a href="#action-center" className="ed-btn-quick-action" onClick={handleJumpToPending}>
+                <i className="fa-solid fa-bolt"></i>
+                <span>ตรวจอนุมัติแผนด่วน</span>
+                <span className="badge-counter">{pendingDirectorCount}</span>
+              </a>
+            )}
+
+            <button className="ed-btn-icon" onClick={handlePrint} title="พิมพ์รายงานผู้บริหาร">
+              <i className="fa-solid fa-print"></i>
+            </button>
+            <button className="ed-btn-icon" onClick={loadDashboardData} title="รีเฟรชข้อมูล">
+              <i className="fa-solid fa-arrows-rotate"></i>
+            </button>
+          </div>
         </div>
-      </div>
+      </header>
 
       {/* Print-only Formal Header */}
       <div className="print-only text-center mb-4">
-        <h3 className="font-weight-bold mb-1">รายงานสารสนเทศเพื่อการบริหารจัดการสถานศึกษา</h3>
+        <h3 className="fw-bold mb-1">รายงานสารสนเทศเพื่อการบริหารจัดการสถานศึกษา</h3>
         <h4>โรงเรียน{schoolData?.school_name || ''} สพม.อุบลราชธานี อำนาจเจริญ</h4>
         <p className="text-muted">ข้อมูล ณ วันที่ {new Date().toLocaleDateString('th-TH', { dateStyle: 'long' })}</p>
         <hr />
       </div>
 
       {/* ========================================================================= */}
-      {/* DIMENSION 1: สารสนเทศด้านการจัดการเรียนรู้และการนิเทศ (Academic & Supervision) */}
+      {/* DIMENSION 1: Academic & Supervision Metrics */}
       {/* ========================================================================= */}
-      <div className="d-flex align-items-center mb-3">
-        <span className="dimension-badge bg-primary text-white me-2">มิติที่ 1</span>
-        <h4 className="font-weight-bold m-0 text-dark">
-          <i className="fa-solid fa-chalkboard-user text-primary me-2"></i>
-          การจัดการเรียนรู้และการนิเทศ (Academic & Supervision)
-        </h4>
+      <div className="ed-section-header">
+        <div className="ed-section-left">
+          <span className="ed-dimension-badge ed-dim-1">มิติที่ 1</span>
+          <h2 className="ed-section-title">
+            <i className="fa-solid fa-chalkboard-user text-primary"></i>
+            การจัดการเรียนรู้และการนิเทศ (Academic & Supervision Pipeline)
+          </h2>
+        </div>
       </div>
 
-      {/* 4 Core KPI Cards */}
-      <div className="row g-3 mb-4">
-        <div className="col-sm-6 col-xl-3">
-          <div className="card kpi-card kpi-card-blue h-100 p-3">
-            <div className="d-flex justify-content-between">
-              <div>
-                <p className="mb-1 text-white-50 font-weight-bold">บุคลากรทั้งหมด</p>
-                <h2 className="font-weight-bold mb-0">{personnel.length} <span className="fs-6 fw-normal">คน</span></h2>
-                <small className="text-white-50">
-                  ครูผู้สอน {totalTeachersCount} คน • ชาย {maleCount} / หญิง {femaleCount}
-                </small>
-              </div>
+      {/* 4 Bento KPI Cards */}
+      <div className="ed-kpi-grid">
+        {/* KPI 1: Personnel */}
+        <div className="ed-kpi-card">
+          <div className="ed-kpi-header">
+            <div className="ed-kpi-icon blue">
+              <i className="fa-solid fa-users"></i>
             </div>
-            <i className="fa-solid fa-users kpi-icon-bg"></i>
+            <div className="ed-kpi-accent-dot"></div>
+          </div>
+          <div>
+            <div className="ed-kpi-title">บุคลากรทางการศึกษา</div>
+            <div className="ed-kpi-value-row">
+              <span className="ed-kpi-value">{personnel.length}</span>
+              <span className="ed-kpi-unit">คน</span>
+            </div>
+            <p className="ed-kpi-subtext">
+              ครูผู้สอน {totalTeachersCount} คน • ชาย {maleCount} / หญิง {femaleCount}
+            </p>
           </div>
         </div>
 
-        <div className="col-sm-6 col-xl-3">
-          <div className="card kpi-card kpi-card-green h-100 p-3">
-            <div className="d-flex justify-content-between">
-              <div>
-                <p className="mb-1 text-white-50 font-weight-bold">อัตราการส่งแผนการสอน</p>
-                <h2 className="font-weight-bold mb-0">{submissionRate}%</h2>
-                <small className="text-white-50">
-                  ส่งแล้ว {submittedTeachersCount} จาก {totalTeachersCount} คน ({totalPlansCount} แผน)
-                </small>
-              </div>
+        {/* KPI 2: Submission Rate */}
+        <div className="ed-kpi-card">
+          <div className="ed-kpi-header">
+            <div className="ed-kpi-icon green">
+              <i className="fa-solid fa-file-circle-check"></i>
             </div>
-            <i className="fa-solid fa-file-circle-check kpi-icon-bg"></i>
+            <div className="ed-kpi-accent-dot"></div>
+          </div>
+          <div>
+            <div className="ed-kpi-title">อัตราการส่งแผนการสอน</div>
+            <div className="ed-kpi-value-row">
+              <span className="ed-kpi-value">{submissionRate}%</span>
+            </div>
+            <p className="ed-kpi-subtext">
+              ส่งแล้ว {submittedTeachersCount} จาก {totalTeachersCount} คน ({totalPlansCount} แผน)
+            </p>
           </div>
         </div>
 
-        <div className="col-sm-6 col-xl-3">
-          <div className="card kpi-card kpi-card-orange h-100 p-3">
-            <div className="d-flex justify-content-between">
-              <div>
-                <p className="mb-1 text-white-50 font-weight-bold">รอ ผอ. ตรวจสอบ/อนุมัติ</p>
-                <h2 className="font-weight-bold mb-0">{pendingDirectorCount} <span className="fs-6 fw-normal">แผน</span></h2>
-                <small className="text-white-50">
-                  {pendingDirectorCount > 0 ? 'มีแผนการสอนรอรับการพิจารณา' : 'ตรวจสอบครบถ้วนทุกแผนแล้ว'}
-                </small>
-              </div>
+        {/* KPI 3: Pending Director */}
+        <div className="ed-kpi-card">
+          <div className="ed-kpi-header">
+            <div className="ed-kpi-icon amber">
+              <i className="fa-solid fa-clock-rotate-left"></i>
             </div>
-            <i className="fa-solid fa-clock-rotate-left kpi-icon-bg"></i>
+            <div className={`ed-kpi-accent-dot ${pendingDirectorCount > 0 ? 'has-pending' : ''}`}></div>
+          </div>
+          <div>
+            <div className="ed-kpi-title">รอ ผอ. ตรวจสอบ/อนุมัติ</div>
+            <div className="ed-kpi-value-row">
+              <span className="ed-kpi-value">{pendingDirectorCount}</span>
+              <span className="ed-kpi-unit">แผน</span>
+            </div>
+            <p className="ed-kpi-subtext">
+              {pendingDirectorCount > 0 ? '⚡ มีแผนการสอนรอรับการพิจารณา' : 'ตรวจสอบครบถ้วนทุกแผนแล้ว'}
+            </p>
           </div>
         </div>
 
-        <div className="col-sm-6 col-xl-3">
-          <div className="card kpi-card kpi-card-purple h-100 p-3">
-            <div className="d-flex justify-content-between">
-              <div>
-                <p className="mb-1 text-white-50 font-weight-bold">นิเทศเสร็จสิ้นแล้ว</p>
-                <h2 className="font-weight-bold mb-0">{completedPlansCount} <span className="fs-6 fw-normal">แผน</span></h2>
-                <small className="text-white-50">
-                  {averageSchoolScore > 0 ? (
-                    <span>คะแนนเฉลี่ย: <strong>{averageSchoolScore}/100</strong></span>
-                  ) : (
-                    'อยู่ระหว่างดำเนินการนิเทศ'
-                  )}
-                </small>
-              </div>
+        {/* KPI 4: Supervision Completed */}
+        <div className="ed-kpi-card">
+          <div className="ed-kpi-header">
+            <div className="ed-kpi-icon purple">
+              <i className="fa-solid fa-award"></i>
             </div>
-            <i className="fa-solid fa-award kpi-icon-bg"></i>
+            <div className="ed-kpi-accent-dot"></div>
+          </div>
+          <div>
+            <div className="ed-kpi-title">นิเทศเสร็จสิ้นสมบูรณ์</div>
+            <div className="ed-kpi-value-row">
+              <span className="ed-kpi-value">{completedPlansCount}</span>
+              <span className="ed-kpi-unit">แผน</span>
+            </div>
+            <p className="ed-kpi-subtext">
+              {averageSchoolScore > 0 ? (
+                <span>คะแนนเฉลี่ย: <strong className="text-primary">{averageSchoolScore}/100</strong></span>
+              ) : (
+                'อยู่ระหว่างดำเนินการนิเทศ'
+              )}
+            </p>
           </div>
         </div>
       </div>
 
       {/* Supervision Pipeline Progression Bar */}
-      <div className="card shadow-sm border-0 mb-4">
-        <div className="card-body p-3">
-          <h6 className="font-weight-bold text-secondary mb-3">
+      <div className="ed-pipeline-card">
+        <div className="ed-pipeline-header">
+          <h3 className="ed-pipeline-title">
             <i className="fa-solid fa-diagram-project text-primary me-2"></i>
             เส้นทางความก้าวหน้าการนิเทศแผนการสอน (Supervision Pipeline)
-          </h6>
-          <div className="row g-2 text-center">
-            <div className="col-6 col-md-3">
-              <div className="pipeline-step active">
-                <span className="badge bg-primary px-2 py-1 mb-1">ขั้นตอนที่ 1</span>
-                <div className="font-weight-bold text-dark fs-5">{totalPlansCount} แผน</div>
-                <small className="text-muted">ครูส่งแผนการสอน</small>
-              </div>
-            </div>
-            <div className="col-6 col-md-3">
-              <div className="pipeline-step active">
-                <span className="badge bg-info text-dark px-2 py-1 mb-1">ขั้นตอนที่ 2</span>
-                <div className="font-weight-bold text-dark fs-5">{approvedPlansCount} แผน</div>
-                <small className="text-muted">ผอ.อนุมัติให้ใช้แผน</small>
-              </div>
-            </div>
-            <div className="col-6 col-md-3">
-              <div className="pipeline-step active">
-                <span className="badge bg-warning text-dark px-2 py-1 mb-1">ขั้นตอนที่ 3</span>
-                <div className="font-weight-bold text-dark fs-5">{evaluatingPlansCount} แผน</div>
-                <small className="text-muted">คกก. กำลังประเมิน</small>
-              </div>
-            </div>
-            <div className="col-6 col-md-3">
-              <div className="pipeline-step active">
-                <span className="badge bg-success px-2 py-1 mb-1">ขั้นตอนที่ 4</span>
-                <div className="font-weight-bold text-dark fs-5">{completedPlansCount} แผน</div>
-                <small className="text-muted">นิเทศเสร็จสิ้นสมบูรณ์</small>
-              </div>
-            </div>
+          </h3>
+          <span className="text-muted small">ภาพรวมทั้งสถานศึกษา</span>
+        </div>
+        <div className="ed-pipeline-track">
+          <div className="ed-pipeline-node">
+            <span className="ed-node-tag bg-primary-subtle text-primary">ขั้นตอนที่ 1</span>
+            <div className="ed-node-val">{totalPlansCount}</div>
+            <div className="ed-node-label">ครูส่งแผนการสอน</div>
+          </div>
+          <div className="ed-pipeline-node">
+            <span className="ed-node-tag bg-info-subtle text-info-emphasis">ขั้นตอนที่ 2</span>
+            <div className="ed-node-val">{approvedPlansCount}</div>
+            <div className="ed-node-label">ผอ.อนุมัติให้ใช้แผน</div>
+          </div>
+          <div className="ed-pipeline-node">
+            <span className="ed-node-tag bg-warning-subtle text-warning-emphasis">ขั้นตอนที่ 3</span>
+            <div className="ed-node-val">{evaluatingPlansCount}</div>
+            <div className="ed-node-label">คกก. กำลังประเมิน</div>
+          </div>
+          <div className="ed-pipeline-node">
+            <span className="ed-node-tag bg-success-subtle text-success">ขั้นตอนที่ 4</span>
+            <div className="ed-node-val">{completedPlansCount}</div>
+            <div className="ed-node-label">นิเทศเสร็จสมบูรณ์</div>
           </div>
         </div>
       </div>
 
       {/* Department Breakdown Table */}
-      <div className="card shadow-sm border-0 mb-4">
-        <div className="card-header bg-white border-bottom d-flex align-items-center justify-content-between">
-          <h6 className="font-weight-bold m-0 text-dark">
-            <i className="fa-solid fa-layer-group text-primary me-2"></i>
+      <div className="ed-card">
+        <div className="ed-card-header">
+          <h3 className="ed-card-title">
+            <i className="fa-solid fa-layer-group text-primary"></i>
             สถิติการส่งแผนและผลการนิเทศ จำแนกตาม 8 กลุ่มสาระการเรียนรู้
-          </h6>
+          </h3>
           <span className="text-muted small">เปรียบเทียบอัตราการส่งแผนและการนิเทศ</span>
         </div>
-        <div className="card-body p-0">
+        <div className="p-0">
           <div className="table-responsive">
-            <table className="table table-hover table-striped align-middle m-0 table-custom">
+            <table className="ed-table">
               <thead>
                 <tr>
                   <th style={{ width: '50px' }} className="text-center">ที่</th>
                   <th>กลุ่มสาระการเรียนรู้</th>
-                  <th className="text-center" style={{ width: '100px' }}>จำนวนครู</th>
-                  <th className="text-center" style={{ width: '110px' }}>ครูที่ส่งแผน</th>
-                  <th style={{ width: '180px' }}>ความก้าวหน้าการส่ง</th>
+                  <th className="text-center" style={{ width: '110px' }}>จำนวนครู</th>
+                  <th className="text-center" style={{ width: '120px' }}>ครูที่ส่งแผน</th>
+                  <th style={{ width: '200px' }}>ความก้าวหน้าการส่ง</th>
                   <th className="text-center" style={{ width: '110px' }}>จำนวนแผน</th>
-                  <th className="text-center" style={{ width: '120px' }}>นิเทศเสร็จสิ้น</th>
+                  <th className="text-center" style={{ width: '130px' }}>นิเทศเสร็จสิ้น</th>
                 </tr>
               </thead>
               <tbody>
                 {departmentStats.map((dept, idx) => (
                   <tr key={dept.id}>
-                    <td className="text-center">{idx + 1}</td>
-                    <td className="font-weight-bold">{dept.name}</td>
+                    <td className="text-center text-muted">{idx + 1}</td>
+                    <td><strong>{dept.name}</strong></td>
                     <td className="text-center">{dept.teacherCount} คน</td>
-                    <td className="text-center font-weight-bold">
-                      <span className={dept.submittedTeachers === dept.teacherCount && dept.teacherCount > 0 ? 'text-success' : 'text-primary'}>
+                    <td className="text-center">
+                      <span className={dept.submittedTeachers === dept.teacherCount && dept.teacherCount > 0 ? 'text-success fw-bold' : 'text-primary fw-bold'}>
                         {dept.submittedTeachers} คน
                       </span>
                     </td>
                     <td>
-                      <div className="d-flex align-items-center gap-2">
-                        <div className="progress flex-grow-1 progress-thin">
+                      <div className="ed-progress-bar-wrap">
+                        <div className="ed-progress-track">
                           <div
-                            className={`progress-bar ${dept.rate === 100 ? 'bg-success' : dept.rate >= 50 ? 'bg-primary' : 'bg-warning'}`}
-                            role="progressbar"
+                            className={`ed-progress-fill ${dept.rate === 100 ? 'green' : dept.rate >= 50 ? 'blue' : 'amber'}`}
                             style={{ width: `${dept.rate}%` }}
-                            aria-valuenow={dept.rate}
-                            aria-valuemin="0"
-                            aria-valuemax="100"
                           ></div>
                         </div>
-                        <span className="small font-weight-bold">{dept.rate}%</span>
+                        <span className="small fw-bold">{dept.rate}%</span>
                       </div>
                     </td>
                     <td className="text-center">{dept.planCount} แผน</td>
@@ -631,96 +712,101 @@ const InfoDirectorSchool = () => {
       <div className="row g-4 mb-4">
         {/* DIMENSION 2: อัตรากำลังและพัฒนาการบุคลากร */}
         <div className="col-lg-6">
-          <div className="d-flex align-items-center mb-3">
-            <span className="dimension-badge bg-success text-white me-2">มิติที่ 2</span>
-            <h4 className="font-weight-bold m-0 text-dark">
-              <i className="fa-solid fa-id-card-clip text-success me-2"></i>
-              อัตรากำลังและพัฒนาการบุคลากร (HR Analytics)
-            </h4>
+          <div className="ed-section-header mt-0">
+            <div className="ed-section-left">
+              <span className="ed-dimension-badge ed-dim-2">มิติที่ 2</span>
+              <h2 className="ed-section-title">
+                <i className="fa-solid fa-id-card-clip text-success"></i>
+                อัตรากำลังและบุคลากร (HR Analytics)
+              </h2>
+            </div>
           </div>
 
-          <div className="card shadow-sm border-0 h-100">
-            <div className="card-body">
+          <div className="ed-card h-100 mb-0">
+            <div className="ed-card-body">
               {/* Academic Standing */}
-              <h6 className="font-weight-bold text-secondary mb-3">
-                <i className="fa-solid fa-ranking-star text-warning me-2"></i>
+              <h4 className="ed-card-title mb-3 fs-6">
+                <i className="fa-solid fa-ranking-star text-warning"></i>
                 สัดส่วนวิทยฐานะของครูในสถานศึกษา (ว.PA)
-              </h6>
-              <div className="mb-3">
-                <div className="d-flex justify-content-between small mb-1">
-                  <span>ชำนาญการพิเศษ (คศ.3): <strong>{academicStandingStats.special} คน</strong></span>
-                  <span className="text-muted">{personnel.length > 0 ? Math.round((academicStandingStats.special / personnel.length) * 100) : 0}%</span>
-                </div>
-                <div className="progress progress-thin mb-3">
-                  <div className="progress-bar bg-primary" style={{ width: `${(academicStandingStats.special / (personnel.length || 1)) * 100}%` }}></div>
-                </div>
-
-                <div className="d-flex justify-content-between small mb-1">
-                  <span>ชำนาญการ (คศ.2): <strong>{academicStandingStats.senior} คน</strong></span>
-                  <span className="text-muted">{personnel.length > 0 ? Math.round((academicStandingStats.senior / personnel.length) * 100) : 0}%</span>
-                </div>
-                <div className="progress progress-thin mb-3">
-                  <div className="progress-bar bg-info" style={{ width: `${(academicStandingStats.senior / (personnel.length || 1)) * 100}%` }}></div>
+              </h4>
+              <div className="mb-4">
+                <div className="ed-standing-item">
+                  <div className="ed-standing-row">
+                    <span className="ed-standing-name">ชำนาญการพิเศษ (คศ.3)</span>
+                    <span className="ed-standing-count">{academicStandingStats.special} คน ({personnel.length > 0 ? Math.round((academicStandingStats.special / personnel.length) * 100) : 0}%)</span>
+                  </div>
+                  <div className="ed-progress-track">
+                    <div className="ed-progress-fill blue" style={{ width: `${(academicStandingStats.special / (personnel.length || 1)) * 100}%` }}></div>
+                  </div>
                 </div>
 
-                <div className="d-flex justify-content-between small mb-1">
-                  <span>ครู (คศ.1): <strong>{academicStandingStats.practitioner} คน</strong></span>
-                  <span className="text-muted">{personnel.length > 0 ? Math.round((academicStandingStats.practitioner / personnel.length) * 100) : 0}%</span>
-                </div>
-                <div className="progress progress-thin mb-3">
-                  <div className="progress-bar bg-success" style={{ width: `${(academicStandingStats.practitioner / (personnel.length || 1)) * 100}%` }}></div>
+                <div className="ed-standing-item">
+                  <div className="ed-standing-row">
+                    <span className="ed-standing-name">ชำนาญการ (คศ.2)</span>
+                    <span className="ed-standing-count">{academicStandingStats.senior} คน ({personnel.length > 0 ? Math.round((academicStandingStats.senior / personnel.length) * 100) : 0}%)</span>
+                  </div>
+                  <div className="ed-progress-track">
+                    <div className="ed-progress-fill green" style={{ width: `${(academicStandingStats.senior / (personnel.length || 1)) * 100}%` }}></div>
+                  </div>
                 </div>
 
-                <div className="d-flex justify-content-between small mb-1">
-                  <span>ครูผู้ช่วย: <strong>{academicStandingStats.assistant} คน</strong></span>
-                  <span className="text-muted">{personnel.length > 0 ? Math.round((academicStandingStats.assistant / personnel.length) * 100) : 0}%</span>
+                <div className="ed-standing-item">
+                  <div className="ed-standing-row">
+                    <span className="ed-standing-name">ครู (คศ.1)</span>
+                    <span className="ed-standing-count">{academicStandingStats.practitioner} คน ({personnel.length > 0 ? Math.round((academicStandingStats.practitioner / personnel.length) * 100) : 0}%)</span>
+                  </div>
+                  <div className="ed-progress-track">
+                    <div className="ed-progress-fill amber" style={{ width: `${(academicStandingStats.practitioner / (personnel.length || 1)) * 100}%` }}></div>
+                  </div>
                 </div>
-                <div className="progress progress-thin">
-                  <div className="progress-bar bg-warning" style={{ width: `${(academicStandingStats.assistant / (personnel.length || 1)) * 100}%` }}></div>
+
+                <div className="ed-standing-item">
+                  <div className="ed-standing-row">
+                    <span className="ed-standing-name">ครูผู้ช่วย</span>
+                    <span className="ed-standing-count">{academicStandingStats.assistant} คน ({personnel.length > 0 ? Math.round((academicStandingStats.assistant / personnel.length) * 100) : 0}%)</span>
+                  </div>
+                  <div className="ed-progress-track">
+                    <div className="ed-progress-fill purple" style={{ width: `${(academicStandingStats.assistant / (personnel.length || 1)) * 100}%` }}></div>
+                  </div>
                 </div>
               </div>
 
-              <hr className="my-3" />
+              <hr className="my-3 border-light-subtle" />
 
               {/* Retirement Forecast */}
               <div className="d-flex justify-content-between align-items-center mb-2">
-                <h6 className="font-weight-bold text-secondary m-0">
-                  <i className="fa-solid fa-hourglass-half text-danger me-2"></i>
-                  การคาดการณ์การเกษียณอายุราชการ (1-5 ปีล่วงหน้า)
-                </h6>
-                <span className="badge bg-light text-dark border">ปีปัจจุบัน พ.ศ. {retirementStats.currentYearBE}</span>
+                <h4 className="ed-card-title fs-6 m-0">
+                  <i className="fa-solid fa-hourglass-half text-danger"></i>
+                  การคาดการณ์การเกษียณอายุราชการ (1-5 ปี)
+                </h4>
+                <span className="badge bg-light text-dark border">พ.ศ. {retirementStats.currentYearBE}</span>
               </div>
-              <div className="row g-2 mb-3 text-center">
-                <div className="col-4">
-                  <div className="p-2 border rounded bg-light">
-                    <span className="text-danger font-weight-bold d-block fs-5">{retirementStats.thisYear} คน</span>
-                    <small className="text-muted">เกษียณปีนี้ ({retirementStats.currentYearBE})</small>
-                  </div>
+
+              <div className="ed-retire-boxes">
+                <div className="ed-retire-box">
+                  <div className="ed-retire-val red">{retirementStats.thisYear}</div>
+                  <div className="ed-retire-label">เกษียณปีนี้ ({retirementStats.currentYearBE})</div>
                 </div>
-                <div className="col-4">
-                  <div className="p-2 border rounded bg-light">
-                    <span className="text-warning font-weight-bold d-block fs-5">{retirementStats.next1to3} คน</span>
-                    <small className="text-muted">เกษียณใน 1–3 ปี</small>
-                  </div>
+                <div className="ed-retire-box">
+                  <div className="ed-retire-val amber">{retirementStats.next1to3}</div>
+                  <div className="ed-retire-label">เกษียณใน 1–3 ปี</div>
                 </div>
-                <div className="col-4">
-                  <div className="p-2 border rounded bg-light">
-                    <span className="text-info font-weight-bold d-block fs-5">{retirementStats.next4to5} คน</span>
-                    <small className="text-muted">เกษียณใน 4–5 ปี</small>
-                  </div>
+                <div className="ed-retire-box">
+                  <div className="ed-retire-val blue">{retirementStats.next4to5}</div>
+                  <div className="ed-retire-label">เกษียณใน 4–5 ปี</div>
                 </div>
               </div>
 
-              {/* Upcoming Retirees Table */}
+              {/* Upcoming Retirees Mini Table */}
               {retirementStats.list.length > 0 && (
-                <div className="table-responsive" style={{ maxHeight: '160px', overflowY: 'auto' }}>
+                <div className="table-responsive" style={{ maxHeight: '150px', overflowY: 'auto' }}>
                   <table className="table table-sm table-bordered m-0 small">
                     <thead className="table-light">
                       <tr>
                         <th>ชื่อ - นามสกุล</th>
                         <th>กลุ่มสาระฯ</th>
-                        <th>เกษียณ พ.ศ.</th>
-                        <th>อีก (ปี)</th>
+                        <th className="text-center">เกษียณ</th>
+                        <th className="text-center">อีก</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -728,7 +814,7 @@ const InfoDirectorSchool = () => {
                         <tr key={r.id}>
                           <td>{r.name}</td>
                           <td>{r.subject}</td>
-                          <td className="text-center font-weight-bold text-danger">{r.retireYearBE}</td>
+                          <td className="text-center fw-bold text-danger">{r.retireYearBE}</td>
                           <td className="text-center">{r.yearsRemaining === 0 ? 'ปีนี้' : `${r.yearsRemaining} ปี`}</td>
                         </tr>
                       ))}
@@ -737,15 +823,15 @@ const InfoDirectorSchool = () => {
                 </div>
               )}
 
-              <hr className="my-3" />
+              <hr className="my-3 border-light-subtle" />
 
               {/* Certified Evaluators in school */}
               <div className="d-flex justify-content-between align-items-center">
                 <div>
-                  <h6 className="font-weight-bold m-0 text-dark">
-                    <i className="fa-solid fa-user-check text-success me-2"></i>
-                    ผู้นิเทศที่ได้รับการแต่งตั้งในโรงเรียน
-                  </h6>
+                  <h4 className="ed-card-title fs-6 m-0">
+                    <i className="fa-solid fa-user-check text-success"></i>
+                    ผู้นิเทศที่ได้รับการแต่งตั้งในสถานศึกษา
+                  </h4>
                   <small className="text-muted">ครูที่ผ่านการอนุมัติแต่งตั้งให้เป็นกรรมการนิเทศ</small>
                 </div>
                 <span className="badge bg-success fs-6 px-3 py-2">
@@ -756,23 +842,25 @@ const InfoDirectorSchool = () => {
           </div>
         </div>
 
-        {/* DIMENSION 3: นวัตกรรมและสื่อดิจิทัล */}
+        {/* DIMENSION 3: นวัตกรรมและสื่อการสอน */}
         <div className="col-lg-6">
-          <div className="d-flex align-items-center mb-3">
-            <span className="dimension-badge bg-info text-dark me-2">มิติที่ 3</span>
-            <h4 className="font-weight-bold m-0 text-dark">
-              <i className="fa-solid fa-lightbulb text-info me-2"></i>
-              นวัตกรรมและสื่อการสอน (Active Learning & Media)
-            </h4>
+          <div className="ed-section-header mt-0">
+            <div className="ed-section-left">
+              <span className="ed-dimension-badge ed-dim-3">มิติที่ 3</span>
+              <h2 className="ed-section-title">
+                <i className="fa-solid fa-lightbulb text-info"></i>
+                นวัตกรรมและสื่อการสอน (Active Learning & Media)
+              </h2>
+            </div>
           </div>
 
-          <div className="card shadow-sm border-0 h-100">
-            <div className="card-body">
+          <div className="ed-card h-100 mb-0">
+            <div className="ed-card-body">
               {/* Learning Models */}
-              <h6 className="font-weight-bold text-secondary mb-3">
-                <i className="fa-solid fa-cube text-primary me-2"></i>
+              <h4 className="ed-card-title mb-3 fs-6">
+                <i className="fa-solid fa-cube text-primary"></i>
                 รูปแบบการจัดการเรียนรู้เชิงรุกยอดนิยม (Learning Models)
-              </h6>
+              </h4>
               {learningModelStats.length === 0 ? (
                 <p className="text-muted small fst-italic">ยังไม่มีข้อมูลรูปแบบการจัดการเรียนรู้ในภาคเรียนนี้</p>
               ) : (
@@ -782,11 +870,11 @@ const InfoDirectorSchool = () => {
                     return (
                       <div key={model} className="mb-2">
                         <div className="d-flex justify-content-between small mb-1">
-                          <span className="font-weight-bold text-dark">{model}</span>
+                          <span className="fw-bold text-dark">{model}</span>
                           <span><strong>{count} แผน</strong> ({pct}%)</span>
                         </div>
-                        <div className="progress progress-thin">
-                          <div className="progress-bar bg-info" style={{ width: `${pct}%` }}></div>
+                        <div className="ed-progress-track">
+                          <div className="ed-progress-fill purple" style={{ width: `${pct}%` }}></div>
                         </div>
                       </div>
                     );
@@ -794,45 +882,47 @@ const InfoDirectorSchool = () => {
                 </div>
               )}
 
-              <hr className="my-3" />
+              <hr className="my-3 border-light-subtle" />
 
               {/* Digital Media & Clips */}
-              <h6 className="font-weight-bold text-secondary mb-3">
-                <i className="fa-solid fa-video text-danger me-2"></i>
-                การใช้คลิปวิดีโอการสอนและสื่อดิจิทัล (Digital Media Integration)
-              </h6>
+              <h4 className="ed-card-title mb-3 fs-6">
+                <i className="fa-solid fa-video text-danger"></i>
+                การใช้คลิปวิดีโอการสอนและสื่อดิจิทัล
+              </h4>
               <div className="row g-2 mb-3">
                 <div className="col-6">
                   <div className="p-3 border rounded text-center bg-light">
                     <i className="fa-brands fa-youtube text-danger fa-2x mb-2"></i>
-                    <h4 className="font-weight-bold text-dark mb-0">{clipStats.withClip} <span className="fs-6 fw-normal">แผน</span></h4>
-                    <small className="text-muted">มีคลิปการสอนประกอบแผน ({clipStats.rate}%)</small>
+                    <h4 className="fw-bold text-dark mb-0">{clipStats.withClip} <span className="fs-6 fw-normal">แผน</span></h4>
+                    <small className="text-muted">มีคลิปการสอนประกอบ ({clipStats.rate}%)</small>
                   </div>
                 </div>
                 <div className="col-6">
                   <div className="p-3 border rounded text-center bg-light">
                     <i className="fa-solid fa-file-pdf text-primary fa-2x mb-2"></i>
-                    <h4 className="font-weight-bold text-dark mb-0">{totalPlansCount} <span className="fs-6 fw-normal">แผน</span></h4>
+                    <h4 className="fw-bold text-dark mb-0">{totalPlansCount} <span className="fs-6 fw-normal">แผน</span></h4>
                     <small className="text-muted">มีไฟล์เอกสารแผนการสอน (100%)</small>
                   </div>
                 </div>
               </div>
 
-              <hr className="my-3" />
+              <hr className="my-3 border-light-subtle" />
 
               {/* Quality & Score summary */}
-              <h6 className="font-weight-bold text-secondary mb-2">
-                <i className="fa-solid fa-star text-warning me-2"></i>
+              <h4 className="ed-card-title mb-2 fs-6">
+                <i className="fa-solid fa-star text-warning"></i>
                 การประเมินคุณภาพภาพรวมของสถานศึกษา
-              </h6>
+              </h4>
               <div className="p-3 rounded bg-light d-flex align-items-center justify-content-between">
                 <div>
                   <span className="text-muted small d-block">ระดับคุณภาพการจัดการเรียนรู้</span>
-                  <strong className="fs-5">{getQualityBadge(averageSchoolScore).label}</strong>
+                  <strong className={`fs-5 ${getQualityBadge(averageSchoolScore).color}`}>
+                    {getQualityBadge(averageSchoolScore).label}
+                  </strong>
                 </div>
                 <div className="text-end">
                   <span className="text-muted small d-block">คะแนนประเมินเฉลี่ย</span>
-                  <span className="fs-4 font-weight-bold text-primary">{averageSchoolScore} / 100</span>
+                  <span className="fs-4 fw-bold text-primary">{averageSchoolScore} / 100</span>
                 </div>
               </div>
             </div>
@@ -843,53 +933,60 @@ const InfoDirectorSchool = () => {
       {/* ========================================================================= */}
       {/* DIMENSION 4: Actionable Insights & Drilldown Tables */}
       {/* ========================================================================= */}
-      <div className="d-flex align-items-center mb-3">
-        <span className="dimension-badge bg-warning text-dark me-2">มิติที่ 4</span>
-        <h4 className="font-weight-bold m-0 text-dark">
-          <i className="fa-solid fa-list-check text-warning me-2"></i>
-          เครื่องมือติดตามและอำนวยความสะดวกสำหรับผู้บริหาร (Actionable Insights)
-        </h4>
+      <div className="ed-section-header" id="action-center-section">
+        <div className="ed-section-left">
+          <span className="ed-dimension-badge ed-dim-4">มิติที่ 4</span>
+          <h2 className="ed-section-title">
+            <i className="fa-solid fa-list-check text-warning"></i>
+            ศูนย์ปฏิบัติการ & ติดตามเร่งด่วนสำหรับผู้บริหาร (Executive Action Center)
+          </h2>
+        </div>
       </div>
 
-      <div className="card shadow-sm border-0 mb-5">
-        <div className="card-header bg-white border-bottom p-2">
-          <ul className="nav nav-tabs custom-nav-tabs border-0 no-print" role="tablist">
-            <li className="nav-item">
-              <button
-                className={`nav-link ${activeTab === 'unsubmitted' ? 'active' : ''}`}
-                onClick={() => setActiveTab('unsubmitted')}
-              >
-                <i className="fa-solid fa-user-xmark text-danger me-1"></i> ครูที่ยังไม่ส่งแผน ({unsubmittedTeachers.length})
-              </button>
-            </li>
-            <li className="nav-item">
-              <button
-                className={`nav-link ${activeTab === 'pending' ? 'active' : ''}`}
-                onClick={() => setActiveTab('pending')}
-              >
-                <i className="fa-solid fa-clock text-warning me-1"></i> แผนที่รอดำเนินการ ({pendingPlans.length})
-              </button>
-            </li>
-            <li className="nav-item">
-              <button
-                className={`nav-link ${activeTab === 'completed' ? 'active' : ''}`}
-                onClick={() => setActiveTab('completed')}
-              >
-                <i className="fa-solid fa-circle-check text-success me-1"></i> ผลการนิเทศและข้อเสนอแนะ ({completedSupervisionList.length})
-              </button>
-            </li>
-            <li className="nav-item">
-              <button
-                className={`nav-link ${activeTab === 'directory' ? 'active' : ''}`}
-                onClick={() => setActiveTab('directory')}
-              >
-                <i className="fa-solid fa-address-book text-primary me-1"></i> ทำเนียบบุคลากรทั้งหมด ({personnel.length})
-              </button>
-            </li>
-          </ul>
+      <div className="ed-card mb-5">
+        <div className="ed-card-header bg-white border-bottom p-2">
+          {/* Tabs Navigation */}
+          <div className="ed-tabs-nav no-print" role="tablist">
+            <button
+              type="button"
+              className={`ed-tab-btn ${activeTab === 'unsubmitted' ? 'active' : ''}`}
+              onClick={() => setActiveTab('unsubmitted')}
+            >
+              <i className="fa-solid fa-user-xmark text-danger"></i>
+              <span>ครูที่ยังไม่ส่งแผน</span>
+              <span className="ed-tab-badge danger">{unsubmittedTeachers.length}</span>
+            </button>
+            <button
+              type="button"
+              className={`ed-tab-btn ${activeTab === 'pending' ? 'active' : ''}`}
+              onClick={() => setActiveTab('pending')}
+            >
+              <i className="fa-solid fa-clock text-warning"></i>
+              <span>แผนที่รอดำเนินการ</span>
+              <span className="ed-tab-badge warning">{pendingPlans.length}</span>
+            </button>
+            <button
+              type="button"
+              className={`ed-tab-btn ${activeTab === 'completed' ? 'active' : ''}`}
+              onClick={() => setActiveTab('completed')}
+            >
+              <i className="fa-solid fa-circle-check text-success"></i>
+              <span>ผลการนิเทศเสร็จสิ้น</span>
+              <span className="ed-tab-badge success">{completedSupervisionList.length}</span>
+            </button>
+            <button
+              type="button"
+              className={`ed-tab-btn ${activeTab === 'directory' ? 'active' : ''}`}
+              onClick={() => setActiveTab('directory')}
+            >
+              <i className="fa-solid fa-address-book text-primary"></i>
+              <span>ทำเนียบบุคลากร</span>
+              <span className="ed-tab-badge primary">{personnel.length}</span>
+            </button>
+          </div>
         </div>
 
-        <div className="card-body">
+        <div className="ed-card-body">
           {/* TAB 1: ครูที่ยังไม่ส่งแผน */}
           {activeTab === 'unsubmitted' && (
             <div>
@@ -898,8 +995,8 @@ const InfoDirectorSchool = () => {
                   รายชื่อครูผู้สอนที่ยังไม่มีประวัติการส่งแผนการสอนในภาคเรียนนี้ ({unsubmittedTeachers.length} คน)
                 </p>
                 {unsubmittedTeachers.length > 0 && (
-                  <button className="btn btn-sm btn-outline-secondary" onClick={handleCopyUnsubmitted}>
-                    <i className="fa-regular fa-copy me-1"></i> คัดลอกรายชื่อส่งกลุ่มไลน์
+                  <button type="button" className="ed-btn ed-btn-outline" onClick={handleCopyUnsubmitted}>
+                    <i className="fa-regular fa-copy text-primary"></i> คัดลอกรายชื่อส่งกลุ่มไลน์
                   </button>
                 )}
               </div>
@@ -907,12 +1004,12 @@ const InfoDirectorSchool = () => {
               {unsubmittedTeachers.length === 0 ? (
                 <div className="text-center py-5">
                   <i className="fa-solid fa-circle-check text-success fa-3x mb-3"></i>
-                  <h5 className="font-weight-bold text-success">ครูทุกคนส่งแผนการสอนครบถ้วน 100%!</h5>
+                  <h4 className="fw-bold text-success">ครูทุกคนส่งแผนการสอนครบถ้วน 100%!</h4>
                   <p className="text-muted mb-0">ไม่มีครูค้างส่งแผนการสอนในภาคเรียนนี้</p>
                 </div>
               ) : (
                 <div className="table-responsive">
-                  <table className="table table-hover table-striped align-middle table-bordered table-custom">
+                  <table className="ed-table">
                     <thead>
                       <tr>
                         <th style={{ width: '50px' }} className="text-center">ที่</th>
@@ -927,20 +1024,20 @@ const InfoDirectorSchool = () => {
                         const name = (lookups.prefix[t.prefix] || '') + t.name + ' ' + t.lastname;
                         return (
                           <tr key={t.id || t.people_id}>
-                            <td className="text-center">{idx + 1}</td>
-                            <td className="font-weight-bold">{name}</td>
+                            <td className="text-center text-muted">{idx + 1}</td>
+                            <td><strong>{name}</strong></td>
                             <td>{lookups.teachSubject[t.teach_subject] || t.teach_subject_name || '-'}</td>
                             <td>{lookups.position[t.position_id] || t.level || 'ครู'} ({lookups.academic[t.academic_id] || 'ไม่มีวิทยฐานะ'})</td>
                             <td>
                               {t.phone ? (
-                                <a href={`tel:${t.phone}`} className="btn btn-xs btn-outline-primary me-2">
-                                  <i className="fa-solid fa-phone me-1"></i> {t.phone}
+                                <a href={`tel:${t.phone}`} className="ed-btn ed-btn-outline me-2 py-1">
+                                  <i className="fa-solid fa-phone text-primary"></i> {t.phone}
                                 </a>
                               ) : (
                                 <span className="text-muted small">- ไม่มีเบอร์ -</span>
                               )}
                               {t.email && (
-                                <a href={`mailto:${t.email}`} className="btn btn-xs btn-outline-secondary" title={t.email}>
+                                <a href={`mailto:${t.email}`} className="ed-btn ed-btn-icon py-1" title={t.email}>
                                   <i className="fa-solid fa-envelope"></i>
                                 </a>
                               )}
@@ -964,12 +1061,12 @@ const InfoDirectorSchool = () => {
               {pendingPlans.length === 0 ? (
                 <div className="text-center py-5">
                   <i className="fa-solid fa-circle-check text-success fa-3x mb-3"></i>
-                  <h5 className="font-weight-bold text-success">ไม่มีแผนค้างดำเนินการ!</h5>
+                  <h4 className="fw-bold text-success">ไม่มีแผนค้างดำเนินการ!</h4>
                   <p className="text-muted mb-0">แผนการสอนทั้งหมดได้รับการตรวจสอบและแต่งตั้งกรรมการเรียบร้อยแล้ว</p>
                 </div>
               ) : (
                 <div className="table-responsive">
-                  <table className="table table-hover table-striped align-middle table-bordered table-custom">
+                  <table className="ed-table">
                     <thead>
                       <tr>
                         <th style={{ width: '50px' }} className="text-center">ที่</th>
@@ -983,7 +1080,7 @@ const InfoDirectorSchool = () => {
                     <tbody>
                       {pendingPlans.map((p, idx) => (
                         <tr key={p.planid}>
-                          <td className="text-center">{idx + 1}</td>
+                          <td className="text-center text-muted">{idx + 1}</td>
                           <td>
                             <strong>{p.subject_name}</strong>
                             <small className="text-muted d-block">{p.subject_code}</small>
@@ -1001,16 +1098,16 @@ const InfoDirectorSchool = () => {
                           </td>
                           <td className="text-center">
                             {p.plan_status === 1 || p.plan_status === '1' ? (
-                              <Link to={`/Plan_Check?planid=${p.planid}`} className="btn btn-sm btn-primary">
-                                <i className="fa-solid fa-file-signature me-1"></i> ตรวจแผน
+                              <Link to={`/Plan_Check?planid=${p.planid}`} className="ed-btn ed-btn-primary">
+                                <i className="fa-solid fa-file-signature"></i> ตรวจแผน
                               </Link>
                             ) : !p.committee1 ? (
-                              <Link to={`/appointment?planid=${p.planid}`} className="btn btn-sm btn-warning">
-                                <i className="fa-solid fa-user-plus me-1"></i> แต่งตั้ง
+                              <Link to={`/appointment?planid=${p.planid}`} className="ed-btn ed-btn-warning">
+                                <i className="fa-solid fa-user-plus"></i> แต่งตั้ง
                               </Link>
                             ) : (
-                              <Link to={`/view_scoring?planid=${p.planid}`} className="btn btn-sm btn-outline-info">
-                                <i className="fa-solid fa-eye me-1"></i> ดูสถานะ
+                              <Link to={`/view_scoring?planid=${p.planid}`} className="ed-btn ed-btn-outline">
+                                <i className="fa-solid fa-eye text-info"></i> ดูสถานะ
                               </Link>
                             )}
                           </td>
@@ -1023,7 +1120,7 @@ const InfoDirectorSchool = () => {
             </div>
           )}
 
-          {/* TAB 3: ผลการนิเทศและข้อเสนอแนะ */}
+          {/* TAB 3: ผลการนิเทศเสร็จสิ้น */}
           {activeTab === 'completed' && (
             <div>
               <p className="text-muted small mb-3">
@@ -1032,12 +1129,12 @@ const InfoDirectorSchool = () => {
               {completedSupervisionList.length === 0 ? (
                 <div className="text-center py-5">
                   <i className="fa-solid fa-clock-rotate-left text-muted fa-3x mb-3"></i>
-                  <h5 className="text-secondary font-weight-bold">ยังไม่มีแผนที่นิเทศเสร็จสิ้นสมบูรณ์</h5>
+                  <h4 className="text-secondary fw-bold">ยังไม่มีแผนที่นิเทศเสร็จสิ้นสมบูรณ์</h4>
                   <p className="text-muted mb-0">เมื่อกรรมการบันทึกผลการนิเทศครบถ้วน ระบบจะสรุปผลสัมฤทธิ์ที่นี่</p>
                 </div>
               ) : (
                 <div className="table-responsive">
-                  <table className="table table-hover table-striped align-middle table-bordered table-custom">
+                  <table className="ed-table">
                     <thead>
                       <tr>
                         <th style={{ width: '50px' }} className="text-center">ที่</th>
@@ -1051,7 +1148,7 @@ const InfoDirectorSchool = () => {
                     <tbody>
                       {completedSupervisionList.map((p, idx) => (
                         <tr key={p.planid}>
-                          <td className="text-center">{idx + 1}</td>
+                          <td className="text-center text-muted">{idx + 1}</td>
                           <td>
                             <strong>{p.subject_name}</strong> ({p.subject_code})
                             <small className="text-muted d-block">{p.subject_name_plan}</small>
@@ -1066,17 +1163,17 @@ const InfoDirectorSchool = () => {
                                 href={`https://www.youtube.com/watch?v=${p.plan_clip}`}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="btn btn-xs btn-outline-danger"
+                                className="ed-btn ed-btn-outline py-1"
                               >
-                                <i className="fa-brands fa-youtube me-1"></i> ดูคลิป
+                                <i className="fa-brands fa-youtube text-danger"></i> คลิป
                               </a>
                             ) : (
                               <span className="text-muted small">- ไม่มีคลิป -</span>
                             )}
                           </td>
                           <td className="text-center">
-                            <Link to={`/view_scoring?planid=${p.planid}`} className="btn btn-sm btn-success">
-                              <i className="fa-solid fa-chart-simple me-1"></i> ดูคะแนน
+                            <Link to={`/view_scoring?planid=${p.planid}`} className="ed-btn ed-btn-success">
+                              <i className="fa-solid fa-chart-simple"></i> ดูคะแนน
                             </Link>
                           </td>
                         </tr>
@@ -1101,13 +1198,13 @@ const InfoDirectorSchool = () => {
                     <input
                       type="text"
                       className="form-control"
-                      placeholder="ค้นหาชื่อ, กลุ่มสาระ, ตำแหน่ง, วิทยฐานะ..."
+                      placeholder="ค้นหาชื่อ, กลุ่มสาระฯ, ตำแหน่ง, วิทยฐานะ..."
                       value={searchDirectory}
                       onChange={(e) => setSearchDirectory(e.target.value)}
                     />
                     {searchDirectory && (
                       <button className="btn btn-outline-secondary" onClick={() => setSearchDirectory('')}>
-                        <i className="fa-solid fa-times"></i>
+                        <i className="fa-solid fa-xmark"></i>
                       </button>
                     )}
                   </div>
@@ -1115,57 +1212,39 @@ const InfoDirectorSchool = () => {
               </div>
 
               <div className="table-responsive">
-                <table className="table table-hover table-striped align-middle table-bordered table-custom">
+                <table className="ed-table">
                   <thead>
                     <tr>
                       <th style={{ width: '50px' }} className="text-center">ที่</th>
                       <th>ชื่อ - นามสกุล</th>
+                      <th>กลุ่มสาระการเรียนรู้</th>
                       <th>ตำแหน่ง</th>
                       <th>วิทยฐานะ</th>
-                      <th>กลุ่มสาระฯ</th>
-                      <th className="text-center">หัวหน้ากลุ่ม</th>
-                      <th className="text-center">ปีเกษียณ</th>
-                      <th className="text-center">สถานะส่งแผน</th>
+                      <th>การศึกษา</th>
+                      <th className="text-center">สถานะ</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredDirectory.map((p, idx) => {
                       const name = (lookups.prefix[p.prefix] || '') + p.name + ' ' + p.lastname;
-                      const hasSubmitted = submittedPeopleIds.has(String(p.people_id));
-
-                      let retireText = '-';
-                      if (p.birthday) {
-                        const bParts = String(p.birthday).split('-');
-                        if (bParts.length === 3) {
-                          const y = parseInt(bParts[0], 10);
-                          const m = parseInt(bParts[1], 10);
-                          const d = parseInt(bParts[2], 10);
-                          let rAD = y + 60;
-                          if (m > 10 || (m === 10 && d > 1)) rAD += 1;
-                          retireText = `${rAD + 543}`;
-                        }
-                      }
-
+                      const hasSubmitted = submittedPeopleIds.has(String(p.people_id).trim());
                       return (
                         <tr key={p.id || p.people_id}>
-                          <td className="text-center">{idx + 1}</td>
-                          <td className="font-weight-bold">{name}</td>
-                          <td>{lookups.position[p.position_id] || p.level || 'ครู'}</td>
+                          <td className="text-center text-muted">{idx + 1}</td>
+                          <td><strong>{name}</strong></td>
+                          <td>{lookups.teachSubject[p.teach_subject] || p.teach_subject_name || '-'}</td>
+                          <td>{lookups.position[p.position_id] || p.level || '-'}</td>
                           <td>{lookups.academic[p.academic_id] || '-'}</td>
-                          <td>{lookups.teachSubject[p.teach_subject] || '-'}</td>
-                          <td className="text-center">
-                            {p.headDepartment === '1' || p.headDepartment === 1 ? (
-                              <i className="fa-solid fa-circle-check text-success" title="หัวหน้ากลุ่มสาระฯ"></i>
-                            ) : (
-                              '-'
-                            )}
-                          </td>
-                          <td className="text-center font-weight-bold text-secondary">{retireText}</td>
+                          <td>{lookups.eduLevel[p.edu_level] || '-'}</td>
                           <td className="text-center">
                             {hasSubmitted ? (
-                              <span className="badge bg-success">ส่งแล้ว</span>
+                              <span className="badge bg-success-subtle text-success">
+                                <i className="fa-solid fa-check me-1"></i> ส่งแผนแล้ว
+                              </span>
                             ) : (
-                              <span className="badge bg-danger">ยังไม่ส่ง</span>
+                              <span className="badge bg-danger-subtle text-danger">
+                                <i className="fa-solid fa-xmark me-1"></i> ยังไม่ส่ง
+                              </span>
                             )}
                           </td>
                         </tr>
@@ -1176,26 +1255,6 @@ const InfoDirectorSchool = () => {
               </div>
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Print Signature Box */}
-      <div className="print-only mt-5 pt-4">
-        <div className="row">
-          <div className="col-6 text-center">
-            <p>รายงานข้อมูลโดย</p>
-            <br /><br />
-            <p>( ................................................................ )</p>
-            <p>หัวหน้าฝ่ายบริหารงานวิชาการ</p>
-          </div>
-          <div className="col-6 text-center">
-            <p>รับรองความถูกต้องของรายงาน</p>
-            <br /><br />
-            <p>
-              ( {(lookups.prefix[profile?.prefix] || '') + profile?.name + ' ' + (profile?.lastname || '')} )
-            </p>
-            <p>ผู้อำนวยการโรงเรียน{schoolData?.school_name || ''}</p>
-          </div>
         </div>
       </div>
     </div>
