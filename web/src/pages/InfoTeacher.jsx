@@ -1,48 +1,151 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
-import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../hooks/useUserProfile';
 import useUserLookups from '../hooks/useUserLookups';
 import './TeacherDashboard.css';
 
+const CertificateModal = lazy(() => import('../components/CertificateModal'));
+
 const PLAN_STATUS_NAMES = {
-  '1': 'รอผู้อำนวยการอนุมัติแผน',
-  '2': 'ผู้อำนวยการอนุมัติแล้ว (รอคลิป/บันทึก)',
-  '3': 'ไม่อนุมัติ / กรุณาแก้ไขแผน',
-  '4': 'แก้ไขแผนแล้ว รอ ผอ. ตรวจสอบ',
-  '5': 'ส่งคลิป/บันทึกแล้ว รอคกก. นิเทศ',
-  '6': 'คณะกรรมการกำลังดำเนินการประเมิน',
-  '7': 'คณะกรรมการประเมินเสร็จสิ้น',
+  '1': 'รอ ผอ. อนุมัติแผน',
+  '2': 'ผอ. อนุมัติแล้ว • รอคลิป',
+  '3': 'ไม่อนุมัติ • กรุณาแก้ไข',
+  '4': 'แก้ไขแล้ว • รอตรวจ',
+  '5': 'ส่งคลิปแล้ว • รอนิเทศ',
+  '6': 'คกก. กำลังประเมิน',
+  '7': 'ประเมินเสร็จสิ้น',
 };
 
+const TIMELINE_STEPS = [
+  { key: 1, label: 'ส่งแผน', icon: 'fa-file-arrow-up' },
+  { key: 2, label: 'ผอ. อนุมัติ', icon: 'fa-user-check' },
+  { key: 3, label: 'คลิป/บันทึก', icon: 'fa-video' },
+  { key: 4, label: 'คกก. นิเทศ', icon: 'fa-list-check' },
+  { key: 5, label: 'สำเร็จ', icon: 'fa-award' },
+];
+
+const getTimelineStep = (status) => {
+  const s = Number(status);
+  if (s === 1 || s === 4) return 1;
+  if (s === 2) return 2;
+  if (s === 5 || s === 6) return 3;
+  if (s === 7) return 5;
+  return 1;
+};
+
+const getQualityBadge = (score) => {
+  if (score >= 90) return { label: 'ดีเยี่ยม', eng: 'Excellent', color: '#059669', bg: '#ecfdf5', icon: 'fa-trophy' };
+  if (score >= 80) return { label: 'ดีมาก', eng: 'Very Good', color: '#2563eb', bg: '#eff6ff', icon: 'fa-star' };
+  if (score >= 70) return { label: 'ดี', eng: 'Good', color: '#0891b2', bg: '#ecfeff', icon: 'fa-thumbs-up' };
+  if (score >= 60) return { label: 'พอใช้', eng: 'Fair', color: '#d97706', bg: '#fffbeb', icon: 'fa-check' };
+  if (score > 0) return { label: 'ควรปรับปรุง', eng: 'Needs Work', color: '#dc2626', bg: '#fef2f2', icon: 'fa-triangle-exclamation' };
+  return null;
+};
+
+/* ─── Skeleton Loader ─── */
+const SkeletonLoader = () => (
+  <div className="teacher-workspace-container" style={{ opacity: 0.6 }}>
+    <div className="skeleton-hero" />
+    <div className="row g-3 mb-4">
+      {[1, 2, 3, 4].map((i) => (
+        <div key={i} className="col-6 col-xl-3"><div className="skeleton-card" /></div>
+      ))}
+    </div>
+    {[1, 2].map((i) => (
+      <div key={i} className="skeleton-plan-card" />
+    ))}
+  </div>
+);
+
+/* ─── Donut Progress Ring ─── */
+const ProgressRing = ({ value, size = 64, strokeWidth = 6, color = '#10b981' }) => {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (value / 100) * circumference;
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="progress-ring-svg">
+      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth={strokeWidth} />
+      <circle
+        cx={size / 2} cy={size / 2} r={radius}
+        fill="none" stroke={color} strokeWidth={strokeWidth}
+        strokeDasharray={circumference} strokeDashoffset={offset}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        style={{ transition: 'stroke-dashoffset 1s cubic-bezier(0.16, 1, 0.3, 1)' }}
+      />
+      <text x="50%" y="50%" textAnchor="middle" dy="0.35em" fill="#fff" fontSize={size * 0.22} fontWeight="800">
+        {Math.round(value)}%
+      </text>
+    </svg>
+  );
+};
+
+/* ─── Compact Step Badge ─── */
+const StepBadge = ({ currentStep, totalSteps = 5 }) => {
+  const stepInfo = TIMELINE_STEPS[currentStep - 1] || TIMELINE_STEPS[0];
+  const isComplete = currentStep >= totalSteps;
+
+  return (
+    <div
+      className={`step-badge-compact ${isComplete ? 'step-complete' : 'step-active'}`}
+      aria-label={`ขั้นตอนที่ ${currentStep} จาก ${totalSteps}: ${stepInfo.label}`}
+      role="progressbar"
+      aria-valuenow={currentStep}
+      aria-valuemin={1}
+      aria-valuemax={totalSteps}
+    >
+      <div className="step-badge-dots">
+        {TIMELINE_STEPS.map((s, i) => (
+          <div
+            key={s.key}
+            className={`step-dot ${i + 1 <= currentStep ? 'filled' : ''} ${i + 1 === currentStep ? 'current' : ''}`}
+          />
+        ))}
+      </div>
+      <span className="step-badge-label">
+        <i className={`fa-solid ${stepInfo.icon}`}></i>
+        {isComplete ? 'สำเร็จ' : `${currentStep}/${totalSteps} • ${stepInfo.label}`}
+      </span>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN COMPONENT
+   ═══════════════════════════════════════════════════════════════════════════ */
 const InfoTeacher = () => {
   const { user } = useAuth();
   const { profile, loading: profileLoading } = useUserProfile();
   const { lookups, loading: lookupsLoading } = useUserLookups();
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [plans, setPlans] = useState([]);
   const [scores, setScores] = useState([]);
   const [committeeProfiles, setCommitteeProfiles] = useState({});
   const [selectedYear, setSelectedYear] = useState('ALL');
   const [selectedPlanForCert, setSelectedPlanForCert] = useState(null);
+  const [expandedCards, setExpandedCards] = useState({});
+  const [activeTab, setActiveTab] = useState('active'); // 'active' | 'completed'
 
   const teacherPeopleId = profile?.people_id || user?.user_metadata?.people_id || user?.email || '';
 
+  const toggleCardExpand = (planid) => {
+    setExpandedCards((prev) => ({ ...prev, [planid]: !prev[planid] }));
+  };
+
+  /* ─── Data Loading ─── */
   const loadTeacherData = async () => {
-    if (!teacherPeopleId) {
-      setLoading(false);
-      return;
-    }
+    if (!teacherPeopleId) { setLoading(false); return; }
 
     setLoading(true);
+    setLoadError(null);
     try {
-      // 1. Fetch Teacher's plans
       const { data: myPlans, error: plansErr } = await supabase
-        .from('tbl_sendplan')
-        .select('*')
+        .from('tbl_sendplan').select('*')
         .eq('people_id', teacherPeopleId)
         .order('plan_senddate', { ascending: false });
 
@@ -50,26 +153,19 @@ const InfoTeacher = () => {
       const planList = myPlans || [];
       setPlans(planList);
 
-      // 2. Fetch Scores for Teacher's plans
       const planIds = planList.map((p) => String(p.planid));
       if (planIds.length > 0) {
         const { data: scoreData, error: scoreErr } = await supabase
-          .from('tbl_sendplan_score')
-          .select('*')
-          .in('planid', planIds);
+          .from('tbl_sendplan_score').select('*').in('planid', planIds);
         if (!scoreErr) setScores(scoreData || []);
       } else {
         setScores([]);
       }
 
-      // 3. Fetch Committee profiles (names & academics)
       const committeeIds = new Set();
       planList.forEach((p) => {
-        if (p.committee1) committeeIds.add(String(p.committee1).trim());
-        if (p.committee2) committeeIds.add(String(p.committee2).trim());
-        if (p.committee3) committeeIds.add(String(p.committee3).trim());
-        if (p.committee4) committeeIds.add(String(p.committee4).trim());
-        if (p.committee5) committeeIds.add(String(p.committee5).trim());
+        [p.committee1, p.committee2, p.committee3, p.committee4, p.committee5]
+          .filter(Boolean).forEach((c) => committeeIds.add(String(c).trim()));
       });
 
       if (committeeIds.size > 0) {
@@ -79,55 +175,41 @@ const InfoTeacher = () => {
           .in('people_id', Array.from(committeeIds));
 
         const cMap = {};
-        (cUsers || []).forEach((u) => {
-          cMap[String(u.people_id)] = u;
-        });
+        (cUsers || []).forEach((u) => { cMap[String(u.people_id)] = u; });
         setCommitteeProfiles(cMap);
       }
     } catch (err) {
       console.error('InfoTeacher load error:', err);
+      setLoadError(err.message || 'เกิดข้อผิดพลาดในการโหลดข้อมูล');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!profileLoading && teacherPeopleId) {
-      loadTeacherData();
-    }
+    if (!profileLoading && teacherPeopleId) loadTeacherData();
   }, [profileLoading, teacherPeopleId]);
 
-  // Academic Years list
+  /* ─── Computed Values ─── */
   const academicYears = useMemo(() => {
     const set = new Set();
-    plans.forEach((p) => {
-      if (p.edu_year) set.add(String(p.edu_year).trim());
-    });
+    plans.forEach((p) => { if (p.edu_year) set.add(String(p.edu_year).trim()); });
     return Array.from(set).sort().reverse();
   }, [plans]);
 
-  // Filtered Plans by Year
   const filteredPlans = useMemo(() => {
     if (selectedYear === 'ALL') return plans;
     return plans.filter((p) => String(p.edu_year).trim() === String(selectedYear).trim());
   }, [plans, selectedYear]);
 
-  // KPI Metrics
+  const activePlans = useMemo(() => filteredPlans.filter((p) => Number(p.plan_status) !== 7), [filteredPlans]);
+  const completedPlans = useMemo(() => filteredPlans.filter((p) => Number(p.plan_status) === 7), [filteredPlans]);
+
   const totalPlansCount = filteredPlans.length;
+  const approvedCount = useMemo(() => filteredPlans.filter((p) => p.plan_approve === '1' || p.plan_approve === 1 || Number(p.plan_status) >= 2).length, [filteredPlans]);
+  const evaluatingCount = useMemo(() => filteredPlans.filter((p) => [5, 6].includes(Number(p.plan_status))).length, [filteredPlans]);
+  const completedCount = completedPlans.length;
 
-  const approvedCount = useMemo(() => {
-    return filteredPlans.filter((p) => p.plan_approve === '1' || p.plan_approve === 1 || Number(p.plan_status) >= 2).length;
-  }, [filteredPlans]);
-
-  const evaluatingCount = useMemo(() => {
-    return filteredPlans.filter((p) => Number(p.plan_status) === 5 || Number(p.plan_status) === 6).length;
-  }, [filteredPlans]);
-
-  const completedCount = useMemo(() => {
-    return filteredPlans.filter((p) => Number(p.plan_status) === 7).length;
-  }, [filteredPlans]);
-
-  // Map scores by plan (Scale to 100%)
   const planScoreMap = useMemo(() => {
     const map = {};
     scores.forEach((s) => {
@@ -136,11 +218,9 @@ const InfoTeacher = () => {
       map[pid].total += Number(s.score) || 0;
       map[pid].count += 1;
     });
-
     const result = {};
     Object.keys(map).forEach((pid) => {
       const item = map[pid];
-      // Max score is 4 per criterion in the 4-level rubrics
       const maxScore = item.count * 4;
       const percentage = maxScore > 0 ? (item.total / maxScore) * 100 : 0;
       result[pid] = Math.min(100, Math.round(percentage * 10) / 10);
@@ -148,7 +228,6 @@ const InfoTeacher = () => {
     return result;
   }, [scores]);
 
-  // Overall Average Score
   const overallAvgScore = useMemo(() => {
     const pids = Object.keys(planScoreMap);
     if (pids.length === 0) return 0;
@@ -156,49 +235,32 @@ const InfoTeacher = () => {
     return Math.round((sum / pids.length) * 10) / 10;
   }, [planScoreMap]);
 
-  const getQualityBadge = (score) => {
-    if (score >= 90) return { label: 'ดีเยี่ยม (Excellent)', color: 'bg-success text-white', icon: 'fa-trophy' };
-    if (score >= 80) return { label: 'ดีมาก (Very Good)', color: 'bg-primary text-white', icon: 'fa-star' };
-    if (score >= 70) return { label: 'ดี (Good)', color: 'bg-info text-dark', icon: 'fa-thumbs-up' };
-    if (score >= 60) return { label: 'พอใช้ (Fair)', color: 'bg-warning text-dark', icon: 'fa-check' };
-    if (score > 0) return { label: 'ควรปรับปรุง', color: 'bg-danger text-white', icon: 'fa-triangle-exclamation' };
-    return { label: 'รอดำเนินการประเมิน', color: 'bg-secondary text-white', icon: 'fa-clock' };
-  };
+  const completionPercent = useMemo(() => {
+    if (totalPlansCount === 0) return 0;
+    return Math.round((completedCount / totalPlansCount) * 100);
+  }, [completedCount, totalPlansCount]);
 
-  // Plans requiring urgent action
-  const revisionPlans = useMemo(() => {
-    return filteredPlans.filter((p) => Number(p.plan_status) === 3);
+  // To-Do Items: urgent actions needed
+  const todoItems = useMemo(() => {
+    const items = [];
+    filteredPlans.forEach((p) => {
+      const s = Number(p.plan_status);
+      if (s === 3) {
+        items.push({ type: 'revision', plan: p, priority: 1, icon: 'fa-pen-to-square', color: '#dc2626', bgColor: '#fef2f2', borderColor: '#fecdd3', label: 'แก้ไขแผนการสอน', desc: p.plan_ds_comment || 'กรุณาปรับปรุงรายละเอียดตามข้อเสนอแนะ', link: '/statusplan' });
+      } else if (s === 2) {
+        items.push({ type: 'clip', plan: p, priority: 2, icon: 'fa-cloud-arrow-up', color: '#d97706', bgColor: '#fffbeb', borderColor: '#fde68a', label: 'แนบคลิปวิดีโอ/บันทึก', desc: 'ผอ. อนุมัติแล้ว — แนบคลิป YouTube เพื่อให้ คกก. ประเมิน', link: '/send_clip' });
+      } else if (s === 1) {
+        items.push({ type: 'pending', plan: p, priority: 3, icon: 'fa-clock', color: '#6366f1', bgColor: '#eef2ff', borderColor: '#c7d2fe', label: 'รอ ผอ. ตรวจสอบ', desc: 'แผนถูกส่งเรียบร้อยแล้ว — รอผู้อำนวยการพิจารณาอนุมัติ', link: null });
+      }
+    });
+    return items.sort((a, b) => a.priority - b.priority);
   }, [filteredPlans]);
 
-  const pendingClipPlans = useMemo(() => {
-    return filteredPlans.filter((p) => Number(p.plan_status) === 2);
-  }, [filteredPlans]);
-
-  const handlePrintCertificate = (plan) => {
-    setSelectedPlanForCert(plan);
-  };
-
-  const getTimelineStep = (status) => {
-    const s = Number(status);
-    if (s === 1 || s === 4) return 1;
-    if (s === 2) return 2;
-    if (s === 5 || s === 6) return 3;
-    if (s === 7) return 4;
-    return 1;
-  };
-
+  /* ─── Loading State ─── */
   const isLoading = profileLoading || lookupsLoading || loading;
+  if (isLoading) return <SkeletonLoader />;
 
-  if (isLoading) {
-    return (
-      <div className="text-center p-5 my-5">
-        <div className="spinner-grow text-primary" style={{ width: '3.5rem', height: '3.5rem' }} role="status"></div>
-        <h4 className="mt-4 font-weight-bold text-dark">กำลังโหลดศูนย์การจัดการเรียนรู้ของครู...</h4>
-        <p className="text-muted">กำลังรวบรวมแผนการจัดการเรียนรู้ ผลการนิเทศ และประวัติเอกสาร ว.PA</p>
-      </div>
-    );
-  }
-
+  /* ─── Display Names ─── */
   const cleanTeacherTitle = (prefix, name, lastname) => {
     const rawPrefix = lookups?.prefix?.[prefix] || '';
     const cleanPrefix = rawPrefix.replace(/^(นาย|นางสาว|นาง)\s*/, '');
@@ -206,530 +268,380 @@ const InfoTeacher = () => {
     if (cleanPrefix) return `${cleanPrefix}${cleanName} ${lastname || ''}`.trim();
     return `${cleanName} ${lastname || ''}`.trim();
   };
-
   const teacherDisplayName = cleanTeacherTitle(profile?.prefix, profile?.name, profile?.lastname);
   const teacherFullName = `${lookups?.prefix?.[profile?.prefix] || ''}${profile?.name || ''} ${profile?.lastname || ''}`.trim();
   const schoolName = lookups?.school?.[profile?.school] || 'โรงเรียน';
   const academicName = lookups?.academic?.[profile?.academic_id] || 'ไม่มีวิทยฐานะ';
   const subjectAreaName = lookups?.teachSubject?.[profile?.teach_subject] || profile?.teach_subject_name || 'กลุ่มสาระการเรียนรู้';
 
+  const currentPlans = activeTab === 'active' ? activePlans : completedPlans;
+
+  /* ─── Greeting by Time ─── */
+  const getGreeting = () => {
+    const h = new Date().getHours();
+    if (h < 12) return 'สวัสดีตอนเช้า';
+    if (h < 17) return 'สวัสดีตอนบ่าย';
+    return 'สวัสดีตอนเย็น';
+  };
+
+  /* ═══════════════════════════════════════════════════════
+     RENDER
+     ═══════════════════════════════════════════════════════ */
   return (
     <div className="teacher-workspace-container">
-      {/* ========================================================================= */}
-      {/* 1. HERO BANNER: AURORA GLASSMORPHISM                                      */}
-      {/* ========================================================================= */}
-      <div className="teacher-hero-ultra no-print">
-        <div className="row align-items-center g-3">
-          <div className="col-lg-8">
-            <div className="d-flex align-items-center gap-3 mb-2">
-              <div className="teacher-avatar-ring">
-                <i className="fa-solid fa-chalkboard-user"></i>
-              </div>
-              <div>
-                <div className="d-flex flex-wrap align-items-center gap-2 mb-1">
-                  <span className="hero-pill-badge">
-                    <i className="fa-solid fa-award text-warning"></i> Teacher Workspace
-                  </span>
-                  <span className="hero-pill-badge">
-                    <i className="fa-solid fa-school text-info"></i> {schoolName}
-                  </span>
-                </div>
-                <h2 className="font-weight-bold mb-0 text-white" style={{ letterSpacing: '-0.02em' }}>
-                  สวัสดีครับ, คุณครู{teacherDisplayName}
-                </h2>
-              </div>
-            </div>
-            <p className="text-white-50 mt-2 mb-0" style={{ fontSize: '0.95rem' }}>
-              วิทยฐานะ: <span className="text-white font-weight-bold">{academicName}</span> • กลุ่มสาระการเรียนรู้: <span className="text-white font-weight-bold">{subjectAreaName}</span>
-            </p>
-          </div>
 
-          <div className="col-lg-4 text-lg-end">
-            <div className="d-flex flex-column align-items-lg-end gap-3">
-              {/* Year Segmented Switcher */}
-              <div className="year-pills-container">
+      {/* ─── COMPACT HERO ─── */}
+      <div className="tw-hero no-print">
+        <div className="tw-hero-content">
+          <div className="tw-hero-left">
+            <div className="tw-hero-avatar">
+              <i className="fa-solid fa-chalkboard-user"></i>
+            </div>
+            <div className="tw-hero-info">
+              <div className="tw-hero-badges">
+                <span className="tw-hero-badge">
+                  <i className="fa-solid fa-school"></i> {schoolName}
+                </span>
+                <span className="tw-hero-badge accent">
+                  <i className="fa-solid fa-graduation-cap"></i> {academicName}
+                </span>
+              </div>
+              <h2 className="tw-hero-title">{getGreeting()}, คุณครู{teacherDisplayName}</h2>
+              <p className="tw-hero-subtitle">{subjectAreaName} • {totalPlansCount > 0 ? `${totalPlansCount} แผนในระบบ` : 'ยังไม่มีแผนในระบบ'}</p>
+            </div>
+          </div>
+          <div className="tw-hero-right">
+            {totalPlansCount > 0 && (
+              <ProgressRing value={completionPercent} size={68} color="#34d399" />
+            )}
+            <div className="tw-hero-actions">
+              <div className="tw-year-switcher">
                 <button
                   type="button"
                   onClick={() => setSelectedYear('ALL')}
-                  className={`year-pill-btn ${selectedYear === 'ALL' ? 'active' : ''}`}
-                >
-                  ทุกปี
-                </button>
+                  className={`tw-year-btn ${selectedYear === 'ALL' ? 'active' : ''}`}
+                  aria-label="แสดงทุกปีการศึกษา"
+                >ทุกปี</button>
                 {academicYears.map((yr) => (
                   <button
-                    key={yr}
-                    type="button"
+                    key={yr} type="button"
                     onClick={() => setSelectedYear(yr)}
-                    className={`year-pill-btn ${selectedYear === yr ? 'active' : ''}`}
-                  >
-                    ปี {yr}
-                  </button>
+                    className={`tw-year-btn ${selectedYear === yr ? 'active' : ''}`}
+                    aria-label={`แสดงปีการศึกษา ${yr}`}
+                  >{yr}</button>
                 ))}
               </div>
-
-              {/* Action Button */}
-              <Link to="/sendplan" className="btn-hero-primary">
-                <i className="fa-solid fa-plus-circle"></i> ส่งแผนการสอนใหม่
+              <Link to="/sendplan" className="tw-btn-primary" aria-label="ส่งแผนการสอนใหม่">
+                <i className="fa-solid fa-plus"></i> ส่งแผนใหม่
               </Link>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* 2. BENTO STATS KPI CARDS                                                  */}
-      {/* ========================================================================= */}
-      <div className="row g-3 mb-4 no-print">
-        {/* Card 1: Total Plans */}
-        <div className="col-sm-6 col-xl-3">
-          <div className="bento-kpi-card">
-            <div>
-              <div className="kpi-icon-box kpi-icon-indigo">
-                <i className="fa-solid fa-folder-open"></i>
-              </div>
-              <p className="kpi-label-text">แผนการสอนทั้งหมด</p>
-              <div className="d-flex align-items-baseline">
-                <span className="kpi-value-text">{totalPlansCount}</span>
-                <span className="kpi-unit-text">แผน</span>
-              </div>
-            </div>
-            <div>
-              <span className="kpi-sub-badge indigo">
-                <i className="fa-solid fa-clock-rotate-left"></i> บันทึกในระบบ
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 2: Approved by Director */}
-        <div className="col-sm-6 col-xl-3">
-          <div className="bento-kpi-card">
-            <div>
-              <div className="kpi-icon-box kpi-icon-emerald">
-                <i className="fa-solid fa-circle-check"></i>
-              </div>
-              <p className="kpi-label-text">ผอ. อนุมัติแผนแล้ว</p>
-              <div className="d-flex align-items-baseline">
-                <span className="kpi-value-text">{approvedCount}</span>
-                <span className="kpi-unit-text">แผน</span>
-              </div>
-            </div>
-            <div>
-              <span className="kpi-sub-badge emerald">
-                <i className="fa-solid fa-video"></i> พร้อมแนบคลิปสอน
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 3: In Progress / Evaluating */}
-        <div className="col-sm-6 col-xl-3">
-          <div className="bento-kpi-card">
-            <div>
-              <div className="kpi-icon-box kpi-icon-amber">
-                <i className="fa-solid fa-hourglass-half"></i>
-              </div>
-              <p className="kpi-label-text">อยู่ระหว่างการนิเทศ</p>
-              <div className="d-flex align-items-baseline">
-                <span className="kpi-value-text">{evaluatingCount}</span>
-                <span className="kpi-unit-text">แผน</span>
-              </div>
-            </div>
-            <div>
-              <span className="kpi-sub-badge amber">
-                <i className="fa-solid fa-users-viewfinder"></i> คกก. กำลังประเมิน
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: Completed & Score */}
-        <div className="col-sm-6 col-xl-3">
-          <div className="bento-kpi-card">
-            <div>
-              <div className="kpi-icon-box kpi-icon-purple">
-                <i className="fa-solid fa-award"></i>
-              </div>
-              <p className="kpi-label-text">นิเทศเสร็จสมบูรณ์</p>
-              <div className="d-flex align-items-baseline">
-                <span className="kpi-value-text">{completedCount}</span>
-                <span className="kpi-unit-text">แผน</span>
-              </div>
-            </div>
-            <div>
-              <span className="kpi-sub-badge purple">
-                <i className="fa-solid fa-star"></i> {overallAvgScore > 0 ? `เฉลี่ย ${overallAvgScore}/100` : 'พร้อมพิมพ์ ว.PA'}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 3. URGENT ACTIONS / TO-DO BENTO                                           */}
-      {/* ========================================================================= */}
-      {revisionPlans.length > 0 && (
-        <div className="no-print">
-          {revisionPlans.map((rp) => (
-            <div key={rp.planid} className="alert-bento-card alert-bento-danger">
-              <div className="d-flex align-items-center gap-3">
-                <div className="bg-danger text-white rounded-circle d-flex align-items-center justify-content-center" style={{ width: '42px', height: '42px', flexShrink: 0 }}>
-                  <i className="fa-solid fa-triangle-exclamation fs-5"></i>
-                </div>
-                <div>
-                  <h6 className="font-weight-bold text-danger mb-1">
-                    ผู้อำนวยการแจ้งให้แก้ไขแผนการสอน: <u>{rp.subject_name} ({rp.subject_code})</u>
-                  </h6>
-                  <p className="mb-0 text-dark small">
-                    <strong>ข้อเสนอแนะของ ผอ.:</strong> "{rp.plan_ds_comment || 'กรุณาปรับปรุงรายละเอียดตามข้อเสนอแนะ'}"
-                  </p>
-                </div>
-              </div>
-              <Link to="/statusplan" className="btn btn-sm btn-danger font-weight-bold px-3 py-2 text-nowrap" style={{ borderRadius: '10px' }}>
-                <i className="fa-solid fa-pen-to-square me-1"></i> แก้ไขแผนนี้
-              </Link>
-            </div>
-          ))}
+      {/* ─── ERROR RECOVERY ─── */}
+      {loadError && (
+        <div className="tw-error-banner no-print">
+          <i className="fa-solid fa-circle-exclamation"></i>
+          <span>{loadError}</span>
+          <button type="button" onClick={loadTeacherData} className="tw-btn-retry">
+            <i className="fa-solid fa-rotate-right"></i> ลองอีกครั้ง
+          </button>
         </div>
       )}
 
-      {pendingClipPlans.length > 0 && (
-        <div className="no-print">
-          {pendingClipPlans.map((pc) => (
-            <div key={pc.planid} className="alert-bento-card alert-bento-warning">
-              <div className="d-flex align-items-center gap-3">
-                <div className="bg-warning text-dark rounded-circle d-flex align-items-center justify-content-center" style={{ width: '42px', height: '42px', flexShrink: 0 }}>
-                  <i className="fa-solid fa-video fs-5"></i>
-                </div>
-                <div>
-                  <h6 className="font-weight-bold text-dark mb-1">
-                    ผอ. อนุมัติแผนแล้ว! กรุณาแนบคลิปวิดีโอ & บันทึกหลังสอน: <u>{pc.subject_name} ({pc.subject_code})</u>
-                  </h6>
-                  <p className="mb-0 text-muted small">
-                    แนบคลิป YouTube เพื่อให้คณะกรรมการสามารถเข้าตรวจนิเทศและบันทึกคะแนนประเมินได้
-                  </p>
-                </div>
-              </div>
-              <Link to="/send_clip" className="btn btn-sm btn-warning font-weight-bold px-3 py-2 text-nowrap" style={{ borderRadius: '10px' }}>
-                <i className="fa-solid fa-cloud-arrow-up me-1"></i> แนบคลิป/บันทึก
-              </Link>
+      {/* ─── KPI CARDS (Show only when data exists) ─── */}
+      {totalPlansCount > 0 && (
+        <div className="tw-kpi-grid no-print">
+          <div className="tw-kpi-card tw-kpi-highlight">
+            <div className="tw-kpi-icon" style={{ background: 'linear-gradient(135deg, #6366f1, #818cf8)' }}>
+              <i className="fa-solid fa-bullseye"></i>
             </div>
-          ))}
+            <div className="tw-kpi-body">
+              <span className="tw-kpi-value">{todoItems.length}</span>
+              <span className="tw-kpi-label">สิ่งที่ต้องทำ</span>
+            </div>
+            {todoItems.length > 0 && <span className="tw-kpi-ping"></span>}
+          </div>
+          <div className="tw-kpi-card">
+            <div className="tw-kpi-icon" style={{ background: 'linear-gradient(135deg, #10b981, #34d399)' }}>
+              <i className="fa-solid fa-circle-check"></i>
+            </div>
+            <div className="tw-kpi-body">
+              <span className="tw-kpi-value">{approvedCount}<span className="tw-kpi-unit">/{totalPlansCount}</span></span>
+              <span className="tw-kpi-label">อนุมัติแล้ว</span>
+            </div>
+          </div>
+          <div className="tw-kpi-card">
+            <div className="tw-kpi-icon" style={{ background: 'linear-gradient(135deg, #f59e0b, #fbbf24)' }}>
+              <i className="fa-solid fa-spinner"></i>
+            </div>
+            <div className="tw-kpi-body">
+              <span className="tw-kpi-value">{evaluatingCount}</span>
+              <span className="tw-kpi-label">กำลังนิเทศ</span>
+            </div>
+          </div>
+          <div className="tw-kpi-card">
+            <div className="tw-kpi-icon" style={{ background: 'linear-gradient(135deg, #8b5cf6, #a78bfa)' }}>
+              <i className="fa-solid fa-trophy"></i>
+            </div>
+            <div className="tw-kpi-body">
+              <span className="tw-kpi-value">{overallAvgScore > 0 ? overallAvgScore : '—'}</span>
+              <span className="tw-kpi-label">{overallAvgScore > 0 ? 'คะแนนเฉลี่ย' : 'รอคะแนน'}</span>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 4. PLANS STREAM & INTERACTIVE TIMELINE                                     */}
-      {/* ========================================================================= */}
-      <div className="d-flex align-items-center justify-content-between mb-3 no-print">
-        <div>
-          <h4 className="font-weight-bold m-0 text-dark" style={{ letterSpacing: '-0.02em' }}>
-            <i className="fa-solid fa-list-check text-primary me-2"></i>
-            แผนการจัดการเรียนรู้และการประเมิน ว.PA
-          </h4>
-          <p className="text-muted small mb-0">ติดตามความก้าวหน้าการนิเทศและพิมพ์เอกสารรับรองรายแผน</p>
+      {/* ─── TODAY'S TO-DO (Unified Urgent Actions) ─── */}
+      {todoItems.length > 0 && (
+        <div className="tw-todo-section no-print">
+          <div className="tw-section-header">
+            <h3 className="tw-section-title">
+              <i className="fa-solid fa-bell" style={{ color: '#f59e0b' }}></i>
+              สิ่งที่ต้องทำ
+              <span className="tw-todo-count">{todoItems.length}</span>
+            </h3>
+          </div>
+          <div className="tw-todo-list">
+            {todoItems.map((item) => (
+              <div
+                key={`${item.type}-${item.plan.planid}`}
+                className="tw-todo-card"
+                style={{ borderLeftColor: item.color }}
+              >
+                <div className="tw-todo-icon" style={{ background: item.bgColor, color: item.color }}>
+                  <i className={`fa-solid ${item.icon}`}></i>
+                </div>
+                <div className="tw-todo-body">
+                  <div className="tw-todo-title">
+                    <strong>{item.label}</strong>
+                    <span className="tw-todo-subject">{item.plan.subject_name} ({item.plan.subject_code})</span>
+                  </div>
+                  <p className="tw-todo-desc">{item.desc}</p>
+                </div>
+                {item.link && (
+                  <Link to={item.link} className="tw-todo-action" style={{ background: item.color }} aria-label={item.label}>
+                    <i className="fa-solid fa-arrow-right"></i>
+                  </Link>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
-        <span className="badge bg-white text-secondary border px-3 py-2" style={{ borderRadius: '10px' }}>
-          ทั้งหมด {filteredPlans.length} รายการ
-        </span>
-      </div>
+      )}
 
-      {filteredPlans.length === 0 ? (
-        <div className="plan-stream-card text-center py-5 no-print">
-          <i className="fa-solid fa-folder-open text-muted fa-3x mb-3" style={{ opacity: 0.4 }}></i>
-          <h5 className="font-weight-bold text-dark mb-1">ยังไม่มีข้อมูลแผนการจัดการเรียนรู้ในปีการศึกษานี้</h5>
-          <p className="text-muted mb-4 small">คุณครูสามารถเริ่มต้นส่งแผนการสอนเข้าสู่ระบบเพื่อขอรับการนิเทศได้ทันที</p>
-          <Link to="/sendplan" className="btn btn-primary font-weight-bold px-4 py-2" style={{ borderRadius: '12px' }}>
-            <i className="fa-solid fa-plus-circle me-1"></i> ส่งแผนการจัดการเรียนรู้ใหม่
-          </Link>
+      {/* ─── PLAN STREAM (Tabbed) ─── */}
+      <div className="tw-plans-section no-print">
+        <div className="tw-section-header">
+          <h3 className="tw-section-title">
+            <i className="fa-solid fa-list-check" style={{ color: '#6366f1' }}></i>
+            แผนการจัดการเรียนรู้
+          </h3>
+          <div className="tw-tab-switcher">
+            <button
+              type="button"
+              className={`tw-tab-btn ${activeTab === 'active' ? 'active' : ''}`}
+              onClick={() => setActiveTab('active')}
+            >
+              <i className="fa-solid fa-spinner"></i> กำลังดำเนินการ
+              {activePlans.length > 0 && <span className="tw-tab-count">{activePlans.length}</span>}
+            </button>
+            <button
+              type="button"
+              className={`tw-tab-btn ${activeTab === 'completed' ? 'active' : ''}`}
+              onClick={() => setActiveTab('completed')}
+            >
+              <i className="fa-solid fa-circle-check"></i> เสร็จสิ้นแล้ว
+              {completedPlans.length > 0 && <span className="tw-tab-count completed">{completedPlans.length}</span>}
+            </button>
+          </div>
         </div>
-      ) : (
-        <div className="no-print">
-          {filteredPlans.map((p) => {
-            const currentStep = getTimelineStep(p.plan_status);
-            const planScore = planScoreMap[String(p.planid)];
-            const quality = planScore ? getQualityBadge(planScore) : null;
-            const hasClip = p.plan_clip && String(p.plan_clip).trim() !== '';
 
-            return (
-              <div key={p.planid} className="plan-stream-card">
-                {/* Header Row: Subject, Tags, Actions */}
-                <div className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
-                  <div>
-                    <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
-                      <span className="subject-tag-pill blue">
-                        <i className="fa-solid fa-calendar-days"></i> ปี {p.edu_year} (เทอม {p.edu_term})
-                      </span>
-                      <span className="subject-tag-pill emerald">
-                        <i className="fa-solid fa-book-open"></i> {lookups?.teachSubject?.[p.teach_subject_id] || 'ทั่วไป'}
-                      </span>
-                      {p.learning_model && (
-                        <span className="subject-tag-pill purple">
-                          <i className="fa-solid fa-shapes"></i> {p.learning_model}
-                        </span>
+        {/* Welcome / Onboarding Empty State */}
+        {totalPlansCount === 0 && (
+          <div className="tw-empty-state">
+            <div className="tw-empty-illustration">
+              <i className="fa-solid fa-book-open-reader"></i>
+            </div>
+            <h4>ยินดีต้อนรับสู่ Teacher Workspace!</h4>
+            <p>ยังไม่มีแผนการจัดการเรียนรู้ในระบบ — เริ่มต้นส่งแผนใหม่เพื่อขอรับการนิเทศ ว.PA ได้ทันทีครับ</p>
+            <Link to="/sendplan" className="tw-btn-primary large">
+              <i className="fa-solid fa-plus-circle"></i> ส่งแผนการจัดการเรียนรู้
+            </Link>
+          </div>
+        )}
+
+        {/* Tab-filtered Empty */}
+        {totalPlansCount > 0 && currentPlans.length === 0 && (
+          <div className="tw-empty-tab">
+            <i className={`fa-solid ${activeTab === 'completed' ? 'fa-party-horn' : 'fa-inbox'}`}></i>
+            <p>{activeTab === 'completed' ? 'ยังไม่มีแผนที่นิเทศเสร็จสิ้น' : 'ทุกแผนดำเนินการเสร็จสิ้นแล้ว 🎉'}</p>
+          </div>
+        )}
+
+        {/* Plan Cards */}
+        {currentPlans.map((p) => {
+          const currentStep = getTimelineStep(p.plan_status);
+          const planScore = planScoreMap[String(p.planid)];
+          const quality = planScore ? getQualityBadge(planScore) : null;
+          const hasClip = p.plan_clip && String(p.plan_clip).trim() !== '';
+          const isExpanded = expandedCards[p.planid] || false;
+          const committees = [p.committee1, p.committee2, p.committee3].filter(Boolean);
+
+          return (
+            <div
+              key={p.planid}
+              className={`tw-plan-card ${isExpanded ? 'expanded' : ''} ${Number(p.plan_status) === 3 ? 'tw-card-danger' : ''}`}
+              role="article"
+              aria-label={`แผน ${p.subject_name}`}
+            >
+              {/* Card Header — Clickable to expand */}
+              <div className="tw-card-header" onClick={() => toggleCardExpand(p.planid)} style={{ cursor: 'pointer' }}>
+                <div className="tw-card-left">
+                  <div className="tw-card-tags">
+                    <span className="tw-tag blue">
+                      <i className="fa-solid fa-calendar-days"></i> {p.edu_year}/{p.edu_term}
+                    </span>
+                    <span className="tw-tag green">
+                      <i className="fa-solid fa-book"></i> {lookups?.teachSubject?.[p.teach_subject_id] || 'ทั่วไป'}
+                    </span>
+                  </div>
+                  <h4 className="tw-card-title">
+                    {p.subject_name}
+                    <span className="tw-card-code">({p.subject_code})</span>
+                  </h4>
+                  <p className="tw-card-subtitle">
+                    {p.subject_name_plan || p.subject_content || ''}
+                    {p.teach_date && <> • <i className="fa-regular fa-clock"></i> {p.teach_date}</>}
+                  </p>
+                </div>
+                <div className="tw-card-right">
+                  {/* Score or Status Badge */}
+                  {Number(p.plan_status) === 7 && quality ? (
+                    <div className="tw-score-badge" style={{ background: quality.bg, color: quality.color, border: `1px solid ${quality.color}22` }}>
+                      <i className={`fa-solid ${quality.icon}`}></i>
+                      <span className="tw-score-value">{planScore}</span>
+                      <span className="tw-score-unit">/100</span>
+                    </div>
+                  ) : (
+                    <StepBadge currentStep={currentStep} />
+                  )}
+                  <button
+                    type="button"
+                    className="tw-expand-btn"
+                    onClick={(e) => { e.stopPropagation(); toggleCardExpand(p.planid); }}
+                    aria-label={isExpanded ? 'ย่อรายละเอียด' : 'แสดงรายละเอียด'}
+                    aria-expanded={isExpanded}
+                  >
+                    <i className={`fa-solid fa-chevron-${isExpanded ? 'up' : 'down'}`}></i>
+                  </button>
+                </div>
+              </div>
+
+              {/* Expanded Content */}
+              {isExpanded && (
+                <div className="tw-card-expanded">
+
+                  {/* Full Timeline */}
+                  <div className="tw-timeline">
+                    <div className="tw-timeline-track">
+                      <div className="tw-timeline-fill" style={{ width: `${Math.min(100, ((currentStep - 1) / 4) * 100)}%` }}></div>
+                    </div>
+                    {TIMELINE_STEPS.map((step, i) => (
+                      <div
+                        key={step.key}
+                        className={`tw-timeline-node ${i + 1 < currentStep ? 'done' : ''} ${i + 1 === currentStep ? 'current' : ''}`}
+                        aria-label={`${step.label}: ${i + 1 < currentStep ? 'เสร็จแล้ว' : i + 1 === currentStep ? 'กำลังดำเนินการ' : 'ยังไม่ถึง'}`}
+                      >
+                        <div className="tw-node-circle">
+                          <i className={`fa-solid ${step.icon}`}></i>
+                        </div>
+                        <span className="tw-node-label">{step.label}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Status Description */}
+                  <div className="tw-status-desc">
+                    <i className="fa-solid fa-circle-info"></i>
+                    สถานะปัจจุบัน: <strong>{PLAN_STATUS_NAMES[String(p.plan_status)] || 'อยู่ระหว่างดำเนินการ'}</strong>
+                  </div>
+
+                  {/* Committee Members */}
+                  <div className="tw-card-meta">
+                    <div className="tw-meta-group">
+                      <span className="tw-meta-label"><i className="fa-solid fa-users"></i> คณะกรรมการนิเทศ:</span>
+                      {committees.length === 0 ? (
+                        <span className="tw-meta-empty">รอแต่งตั้งคณะกรรมการ</span>
+                      ) : (
+                        <div className="tw-committee-list">
+                          {committees.map((cid, i) => {
+                            const cm = committeeProfiles[String(cid)];
+                            const cName = cm ? `${lookups?.prefix?.[cm.prefix] || ''}${cm.name} ${cm.lastname}` : `กรรมการ ${i + 1}`;
+                            return (
+                              <div key={cid} className="tw-committee-chip">
+                                <div className="tw-chip-avatar">{i + 1}</div>
+                                <span>{cName}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
-                    <h5 className="font-weight-bold text-dark mb-1" style={{ fontSize: '1.2rem' }}>
-                      {p.subject_name} ({p.subject_code})
-                      <span className="text-muted fw-normal ms-2">• {p.subject_name_plan || p.subject_content}</span>
-                    </h5>
-                    <div className="text-muted small">
-                      <i className="fa-regular fa-clock me-1"></i>
-                      วันที่สอน: <strong>{p.teach_date || '-'}</strong> ({p.teach_timestart || ''} - {p.teach_timeend || ''}) • {p.teach_minute || 50} นาที
-                    </div>
                   </div>
 
-                  {/* Status / Score Badge */}
-                  <div className="text-end">
-                    {Number(p.plan_status) === 7 ? (
-                      <div className="d-flex flex-column align-items-end gap-1">
-                        <span className={`badge px-3 py-2 ${quality ? quality.color : 'bg-success'}`} style={{ borderRadius: '10px', fontSize: '0.9rem' }}>
-                          <i className={`fa-solid ${quality?.icon || 'fa-star'} me-1`}></i> {quality ? quality.label : 'ผ่านการประเมิน'}
-                        </span>
-                        {planScore && (
-                          <div className="font-weight-bold text-primary" style={{ fontSize: '1.1rem' }}>
-                            {planScore} <span className="small text-muted">/ 100 คะแนน</span>
-                          </div>
-                        )}
-                      </div>
-                    ) : Number(p.plan_status) === 3 ? (
-                      <span className="badge bg-danger px-3 py-2" style={{ borderRadius: '10px', fontSize: '0.88rem' }}>
-                        <i className="fa-solid fa-circle-xmark me-1"></i> ให้แก้ไขแผน
-                      </span>
-                    ) : (
-                      <span className="badge bg-light text-dark border px-3 py-2" style={{ borderRadius: '10px', fontSize: '0.88rem' }}>
-                        <i className="fa-solid fa-circle-notch fa-spin text-primary me-1"></i> {PLAN_STATUS_NAMES[String(p.plan_status)] || 'อยู่ระหว่างดำเนินการ'}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Modern Progress Timeline */}
-                <div className="timeline-modern-wrapper">
-                  <div className="timeline-modern-bar">
-                    <div
-                      className="timeline-modern-progress"
-                      style={{ width: currentStep === 1 ? '10%' : currentStep === 2 ? '40%' : currentStep === 3 ? '70%' : '100%' }}
-                    ></div>
-                  </div>
-
-                  <div className={`timeline-step-node ${currentStep >= 1 ? 'completed' : 'active'}`}>
-                    <div className="timeline-circle">
-                      <i className="fa-solid fa-file-arrow-up"></i>
-                    </div>
-                    <span className="timeline-step-label">1. ส่งแผน</span>
-                  </div>
-
-                  <div className={`timeline-step-node ${currentStep >= 2 ? 'completed' : currentStep === 1 ? 'active' : ''}`}>
-                    <div className="timeline-circle">
-                      <i className="fa-solid fa-user-check"></i>
-                    </div>
-                    <span className="timeline-step-label">2. ผอ. อนุมัติ</span>
-                  </div>
-
-                  <div className={`timeline-step-node ${currentStep >= 3 ? 'completed' : currentStep === 2 ? 'active' : ''}`}>
-                    <div className="timeline-circle">
-                      <i className="fa-solid fa-video"></i>
-                    </div>
-                    <span className="timeline-step-label">3. คลิป/บันทึก</span>
-                  </div>
-
-                  <div className={`timeline-step-node ${currentStep >= 4 ? 'completed' : currentStep === 3 ? 'active' : ''}`}>
-                    <div className="timeline-circle">
-                      <i className="fa-solid fa-list-check"></i>
-                    </div>
-                    <span className="timeline-step-label">4. คกก. นิเทศ</span>
-                  </div>
-
-                  <div className={`timeline-step-node ${currentStep >= 4 ? 'completed' : ''}`}>
-                    <div className="timeline-circle">
-                      <i className="fa-solid fa-award"></i>
-                    </div>
-                    <span className="timeline-step-label">5. สำเร็จ</span>
-                  </div>
-                </div>
-
-                {/* Footer Meta Row: Committee Members & Quick Actions */}
-                <div className="d-flex align-items-center justify-content-between flex-wrap gap-3 pt-3 border-top mt-3">
-                  {/* Committee chips */}
-                  <div className="d-flex align-items-center gap-2 flex-wrap">
-                    <span className="text-secondary small font-weight-bold">
-                      <i className="fa-solid fa-users text-primary opacity-75 me-1"></i> คณะกรรมการนิเทศ:
-                    </span>
-                    {[p.committee1, p.committee2, p.committee3].filter(Boolean).length === 0 ? (
-                      <span className="badge bg-light text-muted border px-3 py-1 font-weight-normal" style={{ borderRadius: '8px', fontSize: '0.8rem' }}>
-                        <i className="fa-regular fa-clock me-1 text-warning"></i> อยู่ระหว่างรอแต่งตั้งคณะกรรมการ
-                      </span>
-                    ) : (
-                      [p.committee1, p.committee2, p.committee3].filter(Boolean).map((cid, i) => {
-                        const cm = committeeProfiles[String(cid)];
-                        const cName = cm ? `${lookups?.prefix?.[cm.prefix] || ''}${cm.name} ${cm.lastname}` : `กรรมการ ${i + 1}`;
-                        return (
-                          <div key={cid} className="committee-chip">
-                            <div className="committee-avatar-micro">{i + 1}</div>
-                            <span>{cName}</span>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-
-                  {/* Actions: Video / File / PA Cert */}
-                  <div className="d-flex align-items-center gap-2">
+                  {/* Action Buttons */}
+                  <div className="tw-card-actions">
                     {p.plan_file && (
-                      <a
-                        href={p.plan_file}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn-plan-action btn-plan-doc"
-                      >
-                        <i className="fa-solid fa-file-pdf me-1 text-danger"></i> เอกสารแผนการสอน
+                      <a href={p.plan_file} target="_blank" rel="noreferrer" className="tw-action-btn doc" aria-label="เปิดเอกสารแผนการสอน">
+                        <i className="fa-solid fa-file-pdf"></i> เอกสารแผน
                       </a>
                     )}
-
                     {hasClip && (
-                      <a
-                        href={`https://www.youtube.com/watch?v=${p.plan_clip}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn-plan-action btn-plan-video"
-                      >
-                        <i className="fa-brands fa-youtube me-1 text-danger"></i> วิดีโอการสอน
+                      <a href={`https://www.youtube.com/watch?v=${p.plan_clip}`} target="_blank" rel="noreferrer" className="tw-action-btn video" aria-label="ดูวิดีโอการสอน">
+                        <i className="fa-brands fa-youtube"></i> วิดีโอการสอน
                       </a>
                     )}
-
                     {Number(p.plan_status) === 7 && (
-                      <button
-                        type="button"
-                        onClick={() => handlePrintCertificate(p)}
-                        className="btn-pa-cert"
-                      >
+                      <button type="button" onClick={() => setSelectedPlanForCert(p)} className="tw-action-btn cert" aria-label="พิมพ์ใบรับรองผล ว.PA">
                         <i className="fa-solid fa-certificate"></i> ใบรับรองผล ว.PA
                       </button>
                     )}
+                    {Number(p.plan_status) === 3 && (
+                      <Link to="/statusplan" className="tw-action-btn danger" aria-label="แก้ไขแผนการสอน">
+                        <i className="fa-solid fa-pen-to-square"></i> แก้ไขแผน
+                      </Link>
+                    )}
+                    {Number(p.plan_status) === 2 && (
+                      <Link to="/send_clip" className="tw-action-btn warning" aria-label="แนบคลิปวิดีโอ">
+                        <i className="fa-solid fa-cloud-arrow-up"></i> แนบคลิป
+                      </Link>
+                    )}
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              )}
+            </div>
+          );
+        })}
+      </div>
 
-      {/* ========================================================================= */}
-      {/* 5. OFFICIAL PRINTABLE ว.PA CERTIFICATE MODAL                               */}
-      {/* ========================================================================= */}
+      {/* ─── CERTIFICATE MODAL (Lazy) ─── */}
       {selectedPlanForCert && (
-        <div className="certificate-modal-overlay">
-          <div className="certificate-paper">
-            {/* Modal Actions Bar (No Print) */}
-            <div className="d-flex justify-content-between align-items-center mb-4 no-print border-bottom pb-3">
-              <div>
-                <h5 className="font-weight-bold m-0 text-dark">
-                  <i className="fa-solid fa-certificate text-warning me-2"></i>
-                  ใบรายงานผลการนิเทศการจัดการเรียนรู้ (แบบรายงาน ว.PA)
-                </h5>
-                <small className="text-muted">เอกสารรับรองสำหรับแนบประกอบการประเมินวิทยฐานะ</small>
-              </div>
-              <div className="d-flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="btn btn-primary font-weight-bold px-3 py-2"
-                  style={{ borderRadius: '10px' }}
-                >
-                  <i className="fa-solid fa-print me-1"></i> พิมพ์เอกสาร (Print A4)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedPlanForCert(null)}
-                  className="btn btn-light border font-weight-bold px-3 py-2"
-                  style={{ borderRadius: '10px' }}
-                >
-                  <i className="fa-solid fa-xmark me-1"></i> ปิดหน้าต่าง
-                </button>
-              </div>
-            </div>
-
-            {/* Official Certificate Formatted View */}
-            <div className="certificate-double-border">
-              {/* Garuda Emblem */}
-              <img src="/images/obec.png" alt="Emblem" className="garuda-emblem" />
-
-              <div className="text-center mb-4">
-                <h4 className="font-weight-bold mb-1" style={{ fontSize: '1.4rem' }}>
-                  ใบรายงานผลการนิเทศการจัดการเรียนรู้
-                </h4>
-                <p className="mb-0 text-secondary" style={{ fontSize: '1.05rem' }}>
-                  ตามข้อตกลงในการพัฒนางาน (Performance Agreement: PA)
-                </p>
-                <p className="text-muted small">สำนักงานเขตพื้นที่การศึกษามัธยมศึกษา</p>
-              </div>
-
-              <div className="mb-4" style={{ lineHeight: '1.9', fontSize: '1rem' }}>
-                <p className="mb-2">
-                  เอกสารฉบับนี้ให้ไว้เพื่อรับรองว่า <strong>ครู{teacherFullName}</strong> ตำแหน่ง <strong>{lookups?.position?.[profile?.position_id] || 'ครู'}</strong> วิทยฐานะ <strong>{academicName}</strong>
-                </p>
-                <p className="mb-2">
-                  สังกัด <strong>โรงเรียน{schoolName}</strong> กลุ่มสาระการเรียนรู้ <strong>{subjectAreaName}</strong>
-                </p>
-                <p className="mb-2">
-                  ได้รับการนิเทศติดตามการจัดการเรียนรู้ รายวิชา <strong>{selectedPlanForCert.subject_name}</strong> รหัสวิชา <strong>{selectedPlanForCert.subject_code}</strong>
-                </p>
-                <p className="mb-2">
-                  หน่วยการเรียนรู้/เรื่อง: <strong>{selectedPlanForCert.subject_name_plan || selectedPlanForCert.subject_content}</strong>
-                </p>
-                <p className="mb-2">
-                  รูปแบบการจัดการเรียนรู้: <strong>{selectedPlanForCert.learning_model || 'Active Learning'}</strong> • ปีการศึกษา <strong>{selectedPlanForCert.edu_year}</strong> ภาคเรียนที่ <strong>{selectedPlanForCert.edu_term}</strong>
-                </p>
-              </div>
-
-              {/* Score Highlight Box */}
-              <div className="p-3 border rounded mb-4 text-center" style={{ background: '#f8fafc', borderColor: '#cbd5e1' }}>
-                <p className="mb-1 text-secondary font-weight-bold">ผลการประเมินการจัดการเรียนรู้โดยคณะกรรมการ</p>
-                <h2 className="font-weight-bold text-primary mb-1">
-                  {planScoreMap[String(selectedPlanForCert.planid)] || 100} / 100 คะแนน
-                </h2>
-                <span className="badge bg-success px-3 py-2 fs-6">
-                  ระดับคุณภาพ: ดีเยี่ยม (Excellent)
-                </span>
-              </div>
-
-              {/* Committee Listing */}
-              <div className="mb-4 small">
-                <p className="font-weight-bold mb-1">คณะกรรมการผู้ตรวจนิเทศและประเมินผล:</p>
-                <ol className="ps-3 mb-0">
-                  {[selectedPlanForCert.committee1, selectedPlanForCert.committee2, selectedPlanForCert.committee3].filter(Boolean).map((cid, i) => {
-                    const cm = committeeProfiles[String(cid)];
-                    return (
-                      <li key={cid} className="mb-1">
-                        {cm ? `${lookups?.prefix?.[cm.prefix] || ''}${cm.name} ${cm.lastname}` : `กรรมการนิเทศ ${i + 1}`}
-                        {cm?.academic_id && ` (${lookups?.academic?.[cm.academic_id] || ''})`}
-                      </li>
-                    );
-                  })}
-                </ol>
-              </div>
-
-              {/* Signatures */}
-              <div className="row text-center mt-5 pt-3">
-                <div className="col-6">
-                  <p className="mb-4">ลงชื่อ..........................................................</p>
-                  <p className="mb-1 font-weight-bold">
-                    (..........................................................)
-                  </p>
-                  <p className="text-muted small">ประธานคณะกรรมการนิเทศ</p>
-                </div>
-                <div className="col-6">
-                  <p className="mb-4">ลงชื่อ..........................................................</p>
-                  <p className="mb-1 font-weight-bold">
-                    (..........................................................)
-                  </p>
-                  <p className="text-muted small">ผู้อำนวยการโรงเรียน{schoolName}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <Suspense fallback={<div className="certificate-modal-overlay"><div className="spinner-border text-light"></div></div>}>
+          <CertificateModal
+            plan={selectedPlanForCert}
+            teacherFullName={teacherFullName}
+            schoolName={schoolName}
+            academicName={academicName}
+            subjectAreaName={subjectAreaName}
+            planScoreMap={planScoreMap}
+            committeeProfiles={committeeProfiles}
+            lookups={lookups}
+            profile={profile}
+            onClose={() => setSelectedPlanForCert(null)}
+          />
+        </Suspense>
       )}
     </div>
   );
