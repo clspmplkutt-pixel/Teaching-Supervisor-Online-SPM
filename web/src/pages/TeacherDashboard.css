@@ -1214,3 +1214,305 @@
     padding: 20mm;
   }
 }
+
+/* ==========================================
+   11. EDIT / DELETE CLIP BUTTONS
+   ========================================== */
+.tw-action-btn.edit-clip {
+  background: linear-gradient(135deg, #6366f1, #818cf8);
+  color: #fff;
+  border: none;
+}
+
+.tw-action-btn.edit-clip:hover {
+  background: linear-gradient(135deg, #4f46e5, #6366f1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+}
+
+.tw-action-btn.delete-clip {
+  background: linear-gradient(135deg, #ef4444, #f87171);
+  color: #fff;
+  border: none;
+}
+
+.tw-action-btn.delete-clip:hover {
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+}
+
+/* ==========================================
+   12. EDIT CLIP MODAL — Glassmorphic Overlay
+   ========================================== */
+.tw-clip-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 16px;
+  animation: tw-modal-fade-in 0.25s ease-out;
+}
+
+@keyframes tw-modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes tw-modal-slide-up {
+  from { opacity: 0; transform: translateY(24px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.tw-clip-modal {
+  background: var(--tw-surface, #ffffff);
+  border-radius: 20px;
+  width: 100%;
+  max-width: 560px;
+  box-shadow:
+    0 24px 64px -16px rgba(15, 23, 42, 0.25),
+    0 0 0 1px rgba(148, 163, 184, 0.1);
+  animation: tw-modal-slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+/* Modal Header */
+.tw-clip-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--tw-border, #e2e8f0);
+  background: linear-gradient(135deg, #f8faff 0%, #eef2ff 100%);
+}
+
+.tw-clip-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.tw-clip-modal-title > i {
+  font-size: 1.3rem;
+  color: #6366f1;
+  background: linear-gradient(135deg, #eef2ff, #e0e7ff);
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.tw-clip-modal-title h3 {
+  font-family: var(--tw-font-display, 'Plus Jakarta Sans', sans-serif);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--tw-text, #1e293b);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.tw-clip-modal-title p {
+  font-size: 0.82rem;
+  color: var(--tw-text-secondary, #64748b);
+  margin: 2px 0 0;
+}
+
+.tw-clip-modal-close {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: rgba(148, 163, 184, 0.12);
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--tw-text-secondary, #64748b);
+  font-size: 1.1rem;
+  transition: var(--tw-transition, all 0.3s ease);
+  flex-shrink: 0;
+}
+
+.tw-clip-modal-close:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  transform: rotate(90deg);
+}
+
+/* Modal Body */
+.tw-clip-modal-body {
+  padding: 20px 24px;
+}
+
+.tw-clip-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--tw-text, #1e293b);
+  margin-bottom: 8px;
+}
+
+.tw-clip-label i {
+  color: #dc2626;
+  font-size: 1rem;
+}
+
+.tw-clip-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid var(--tw-border, #e2e8f0);
+  border-radius: 12px;
+  font-family: var(--tw-font-sans, 'Prompt', sans-serif);
+  font-size: 0.9rem;
+  color: var(--tw-text, #1e293b);
+  background: var(--tw-surface, #ffffff);
+  transition: var(--tw-transition, all 0.3s ease);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.tw-clip-input:focus {
+  border-color: #818cf8;
+  box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.15);
+}
+
+.tw-clip-input::placeholder {
+  color: var(--tw-text-muted, #94a3b8);
+}
+
+/* YouTube Preview */
+.tw-clip-preview {
+  margin-top: 16px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0f172a;
+  box-shadow: 0 8px 24px -6px rgba(15, 23, 42, 0.2);
+  animation: tw-modal-slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tw-clip-preview iframe {
+  display: block;
+}
+
+/* Hint / Warning */
+.tw-clip-hint {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  color: #92400e;
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tw-clip-hint i {
+  color: #d97706;
+  flex-shrink: 0;
+}
+
+/* Modal Footer */
+.tw-clip-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--tw-border, #e2e8f0);
+  background: var(--tw-surface-hover, #f8fafc);
+}
+
+.tw-clip-btn {
+  padding: 10px 22px;
+  border: none;
+  border-radius: 10px;
+  font-family: var(--tw-font-sans, 'Prompt', sans-serif);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: var(--tw-transition, all 0.3s ease);
+}
+
+.tw-clip-btn.cancel {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--tw-text-secondary, #64748b);
+}
+
+.tw-clip-btn.cancel:hover {
+  background: rgba(148, 163, 184, 0.22);
+  color: var(--tw-text, #1e293b);
+}
+
+.tw-clip-btn.save {
+  background: linear-gradient(135deg, #6366f1, #818cf8);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.tw-clip-btn.save:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4f46e5, #6366f1);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+}
+
+.tw-clip-btn.save:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Mobile Responsive */
+@media (max-width: 576px) {
+  .tw-clip-modal {
+    max-width: 100%;
+    border-radius: 16px;
+  }
+
+  .tw-clip-modal-header {
+    padding: 16px 16px 12px;
+  }
+
+  .tw-clip-modal-body {
+    padding: 16px;
+  }
+
+  .tw-clip-modal-footer {
+    padding: 12px 16px 16px;
+    flex-direction: column;
+  }
+
+  .tw-clip-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .tw-clip-preview iframe {
+    height: 200px;
+  }
+
+  .tw-clip-modal-title > i {
+    width: 38px;
+    height: 38px;
+    font-size: 1.1rem;
+    border-radius: 10px;
+  }
+
+  .tw-clip-modal-title h3 {
+    font-size: 1rem;
+  }
+}

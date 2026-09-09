@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useMemo, lazy, Suspense } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
+import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../hooks/useUserProfile';
@@ -129,6 +130,8 @@ const InfoTeacher = () => {
   const [selectedYear, setSelectedYear] = useState('ALL');
   const [selectedPlanForCert, setSelectedPlanForCert] = useState(null);
   const [expandedCards, setExpandedCards] = useState({});
+  const [editClipModal, setEditClipModal] = useState({ open: false, plan: null });
+  const [editClipUrl, setEditClipUrl] = useState('');
   const [activeTab, setActiveTab] = useState('active'); // 'active' | 'completed'
 
   const teacherPeopleId = profile?.people_id || user?.user_metadata?.people_id || user?.email || '';
@@ -137,8 +140,23 @@ const InfoTeacher = () => {
     setExpandedCards((prev) => ({ ...prev, [planid]: !prev[planid] }));
   };
 
+  /* ─── Extract YouTube Video ID ─── */
+  const extractVideoId = useCallback((url) => {
+    if (!url) return '';
+    const match = url.match(/(?:v=|be\/|embed\/)([A-Za-z0-9_-]{6,})/);
+    return match ? match[1] : url.trim();
+  }, []);
+
+  const editClipVideoId = useMemo(() => extractVideoId(editClipUrl), [editClipUrl, extractVideoId]);
+
+  /* ─── Open Edit Clip Modal ─── */
+  const openEditClipModal = useCallback((plan) => {
+    setEditClipUrl(plan.plan_clip ? `https://www.youtube.com/watch?v=${plan.plan_clip}` : '');
+    setEditClipModal({ open: true, plan });
+  }, []);
+
   /* ─── Data Loading ─── */
-  const loadTeacherData = async () => {
+  const loadTeacherData = useCallback(async () => {
     if (!teacherPeopleId) { setLoading(false); return; }
 
     setLoading(true);
@@ -184,11 +202,81 @@ const InfoTeacher = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [teacherPeopleId]);
+
+  /* ─── Save Edited Clip ─── */
+  const handleSaveClip = useCallback(async () => {
+    const plan = editClipModal.plan;
+    if (!plan) return;
+
+    const clipId = extractVideoId(editClipUrl);
+    if (!clipId) {
+      Swal.fire({ icon: 'warning', title: 'กรุณากรอกลิงก์ YouTube', text: 'วาง URL ของ YouTube เพื่ออัปเดตคลิปการสอน', confirmButtonColor: '#6366f1' });
+      return;
+    }
+
+    const result = await Swal.fire({
+      icon: 'question',
+      title: 'ยืนยันแก้ไขคลิป?',
+      text: 'คลิปเดิมจะถูกแทนที่ด้วยลิงก์ใหม่',
+      showCancelButton: true,
+      confirmButtonText: 'ยืนยัน',
+      cancelButtonText: 'ยกเลิก',
+      confirmButtonColor: '#6366f1',
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('tbl_sendplan')
+        .update({ plan_clip: clipId })
+        .eq('planid', plan.planid);
+
+      if (error) throw error;
+
+      Swal.fire({ icon: 'success', title: 'แก้ไขสำเร็จ', text: 'คลิปการสอนถูกอัปเดตเรียบร้อยแล้ว', timer: 2000, showConfirmButton: false });
+      setEditClipModal({ open: false, plan: null });
+      loadTeacherData();
+    } catch (err) {
+      console.error('Edit clip error:', err);
+      Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: 'ไม่สามารถแก้ไขคลิปได้ กรุณาลองอีกครั้ง' });
+    }
+  }, [editClipModal, editClipUrl, extractVideoId, loadTeacherData]);
+
+  /* ─── Delete Clip ─── */
+  const handleDeleteClip = useCallback(async (plan) => {
+    const result = await Swal.fire({
+      icon: 'warning',
+      title: 'ลบคลิปการสอน?',
+      html: `<p>คลิปวิดีโอของแผน <strong>${plan.subject_name}</strong> จะถูกลบ</p><p style="color:#64748b;font-size:0.9em">สถานะจะกลับเป็น "รอส่งคลิป" เพื่อให้คุณส่งคลิปใหม่ได้</p>`,
+      showCancelButton: true,
+      confirmButtonText: 'ลบคลิป',
+      cancelButtonText: 'ยกเลิก',
+      confirmButtonColor: '#dc2626',
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('tbl_sendplan')
+        .update({ plan_clip: null, plan_status: '2' })
+        .eq('planid', plan.planid);
+
+      if (error) throw error;
+
+      Swal.fire({ icon: 'success', title: 'ลบคลิปสำเร็จ', text: 'คุณสามารถส่งคลิปใหม่ได้แล้ว', timer: 2000, showConfirmButton: false });
+      loadTeacherData();
+    } catch (err) {
+      console.error('Delete clip error:', err);
+      Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: 'ไม่สามารถลบคลิปได้ กรุณาลองอีกครั้ง' });
+    }
+  }, [loadTeacherData]);
 
   useEffect(() => {
     if (!profileLoading && teacherPeopleId) loadTeacherData();
-  }, [profileLoading, teacherPeopleId]);
+  }, [profileLoading, teacherPeopleId, loadTeacherData]);
 
   /* ─── Computed Values ─── */
   const academicYears = useMemo(() => {
@@ -603,6 +691,27 @@ const InfoTeacher = () => {
                         <i className="fa-brands fa-youtube"></i> วิดีโอการสอน
                       </a>
                     )}
+                    {/* ─── Edit/Delete Clip (Status 5 only) ─── */}
+                    {Number(p.plan_status) === 5 && hasClip && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); openEditClipModal(p); }}
+                          className="tw-action-btn edit-clip"
+                          aria-label="แก้ไขคลิปวิดีโอ"
+                        >
+                          <i className="fa-solid fa-pen-to-square"></i> แก้ไขคลิป
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteClip(p); }}
+                          className="tw-action-btn delete-clip"
+                          aria-label="ลบคลิปวิดีโอ"
+                        >
+                          <i className="fa-solid fa-trash-can"></i> ลบคลิป
+                        </button>
+                      </>
+                    )}
                     {Number(p.plan_status) === 7 && (
                       <button type="button" onClick={() => setSelectedPlanForCert(p)} className="tw-action-btn cert" aria-label="พิมพ์ใบรับรองผล ว.PA">
                         <i className="fa-solid fa-certificate"></i> ใบรับรองผล ว.PA
@@ -625,6 +734,87 @@ const InfoTeacher = () => {
           );
         })}
       </div>
+
+      {/* ─── EDIT CLIP MODAL ─── */}
+      {editClipModal.open && (
+        <div className="tw-clip-modal-overlay" onClick={() => setEditClipModal({ open: false, plan: null })}>
+          <div className="tw-clip-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="tw-clip-modal-header">
+              <div className="tw-clip-modal-title">
+                <i className="fa-solid fa-pen-to-square"></i>
+                <div>
+                  <h3>แก้ไขคลิปการสอน</h3>
+                  <p>{editClipModal.plan?.subject_name} ({editClipModal.plan?.subject_code})</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="tw-clip-modal-close"
+                onClick={() => setEditClipModal({ open: false, plan: null })}
+                aria-label="ปิด"
+              >
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <div className="tw-clip-modal-body">
+              <label className="tw-clip-label" htmlFor="edit-clip-url">
+                <i className="fa-brands fa-youtube"></i> ลิงก์ YouTube
+              </label>
+              <input
+                id="edit-clip-url"
+                type="text"
+                className="tw-clip-input"
+                placeholder="วาง URL เช่น https://www.youtube.com/watch?v=..."
+                value={editClipUrl}
+                onChange={(e) => setEditClipUrl(e.target.value)}
+                autoFocus
+              />
+
+              {/* YouTube Preview */}
+              {editClipVideoId && (
+                <div className="tw-clip-preview">
+                  <iframe
+                    width="100%"
+                    height="280"
+                    src={`https://www.youtube.com/embed/${editClipVideoId}`}
+                    title="YouTube Preview"
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    style={{ borderRadius: '12px' }}
+                  ></iframe>
+                </div>
+              )}
+
+              {!editClipVideoId && editClipUrl && (
+                <div className="tw-clip-hint">
+                  <i className="fa-solid fa-triangle-exclamation"></i>
+                  ไม่สามารถแสดง Preview ได้ — กรุณาตรวจสอบ URL อีกครั้ง
+                </div>
+              )}
+            </div>
+
+            <div className="tw-clip-modal-footer">
+              <button
+                type="button"
+                className="tw-clip-btn cancel"
+                onClick={() => setEditClipModal({ open: false, plan: null })}
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                className="tw-clip-btn save"
+                onClick={handleSaveClip}
+                disabled={!editClipVideoId}
+              >
+                <i className="fa-solid fa-check"></i> บันทึกการแก้ไข
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── CERTIFICATE MODAL (Lazy) ─── */}
       {selectedPlanForCert && (
