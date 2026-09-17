@@ -182,8 +182,10 @@ export const AuthProvider = ({ children }) => {
                     const isAllowedEvaluatorLogin = (level === 'supervision' && is_evaluator);
                     // Allow login as 'teacher' if user has level === 'admin_school'
                     const isAllowedAdminSchoolTeacherLogin = (data.level === 'admin_school' && level === 'teacher');
+                    // Allow login as 'headdepartment' if user is a teacher with headDepartment flag
+                    const isAllowedHeadDeptLogin = (data.level === 'teacher' && level === 'headdepartment' && String(data.headDepartment) === '1');
                     
-                    if (!isAllowedEvaluatorLogin && !isAllowedAdminSchoolTeacherLogin) {
+                    if (!isAllowedEvaluatorLogin && !isAllowedAdminSchoolTeacherLogin && !isAllowedHeadDeptLogin) {
                         console.error('❌ Role mismatch. User is', data.level, 'but tried to login as', level);
                         throw new Error('Invalid role selected for this user');
                     }
@@ -192,7 +194,10 @@ export const AuthProvider = ({ children }) => {
                 // Success!
                 console.log('✅ Login successful!');
                 
-                const currentRole = (data.level === 'admin_school' && level === 'teacher') ? 'teacher' : (data.level || level);
+                // Determine the effective role for this session
+                const currentRole = (data.level === 'admin_school' && level === 'teacher') ? 'teacher'
+                    : (data.level === 'teacher' && level === 'headdepartment' && String(data.headDepartment) === '1') ? 'headdepartment'
+                    : (data.level || level);
 
                 // Map legacy user data to session-like object
                 const userData = {
