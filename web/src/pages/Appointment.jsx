@@ -15,6 +15,8 @@ const Appointment = ({ readOnly = false }) => {
   const navigate = useNavigate();
   const query = useQuery();
   const planid = query.get('planid') || '';
+  const fromParam = query.get('from');
+  const returnUrl = fromParam ? (fromParam.startsWith('/') ? fromParam : `/${fromParam}`) : '/Plan_Check';
   const { profile, loading: profileLoading } = useUserProfile();
 
   const [loading, setLoading] = useState(true);
@@ -367,7 +369,7 @@ const Appointment = ({ readOnly = false }) => {
       if (error) throw error;
 
       Swal.fire('สำเร็จ', 'บันทึกเรียบร้อย', 'success');
-      navigate('/statusplan');
+      navigate(returnUrl);
     } catch (err) {
       console.error(err);
       Swal.fire('Error', 'ไม่สามารถบันทึกได้', 'error');
@@ -605,7 +607,7 @@ const Appointment = ({ readOnly = false }) => {
                 {!readOnly && (
                   <button type="submit" className="btn btn-success" id="btn_submit"><i className="fa-regular fa-paper-plane"></i> แต่งตั้งกรรมการ</button>
                 )}
-                <Link to="/statusplan" className="btn btn-danger ml-2"><i className="fa-solid fa-ban"></i> ยกเลิก</Link>
+                <Link to={returnUrl} className="btn btn-danger ml-2"><i className="fa-solid fa-ban"></i> ยกเลิก</Link>
               </div>
             </div>
           </div>

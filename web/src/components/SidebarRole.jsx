@@ -4,6 +4,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { roleModules, moduleLabels, moduleIcons } from '../config/roleModules';
 import useNotifications from '../hooks/useNotifications';
 
+const getRoleBadgeModule = (roleId) => {
+  // Plan_Check คือเมนู "ตรวจแผนการสอน" ที่มี badge แสดงจำนวนแผนค้างตรวจ
+  return 'Plan_Check';
+};
+
 const humanizeModule = (moduleName) => {
   const fromMap = moduleLabels[moduleName];
   if (fromMap) return fromMap;
@@ -35,6 +40,7 @@ const SidebarRole = () => {
   const location = useLocation();
   const roleId = getRoleId(user);
   const notifCount = useNotifications();
+  const badgeModule = getRoleBadgeModule(roleId);
 
   let modules = [...(roleModules[roleId] || [])];
   
@@ -85,7 +91,7 @@ const SidebarRole = () => {
                 <i className={`${moduleIcons[moduleName] || 'nav-icon far fa-circle'}`}></i>
                 <p>
                   {humanizeModule(moduleName) || moduleName}
-                  {moduleName === 'Plan_Check' && notifCount > 0 && (
+                  {moduleName === badgeModule && notifCount > 0 && (
                     <span className="badge badge-danger right ml-1" style={{ fontSize: '10px' }}>
                       {notifCount > 99 ? '99+' : notifCount}
                     </span>

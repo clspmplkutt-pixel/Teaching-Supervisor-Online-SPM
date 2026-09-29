@@ -1098,11 +1098,11 @@ const InfoDirectorSchool = () => {
                           </td>
                           <td className="text-center">
                             {p.plan_status === 1 || p.plan_status === '1' ? (
-                              <Link to={`/Plan_Check?planid=${p.planid}`} className="ed-btn ed-btn-primary">
-                                <i className="fa-solid fa-file-signature"></i> ตรวจแผน
+                              <Link to={`/appointment?planid=${p.planid}&from=info`} className="ed-btn ed-btn-primary">
+                                <i className="fa-solid fa-file-signature"></i> ตรวจ/อนุมัติแผน
                               </Link>
                             ) : !p.committee1 ? (
-                              <Link to={`/appointment?planid=${p.planid}`} className="ed-btn ed-btn-warning">
+                              <Link to={`/appointment?planid=${p.planid}&from=info`} className="ed-btn ed-btn-warning">
                                 <i className="fa-solid fa-user-plus"></i> แต่งตั้ง
                               </Link>
                             ) : (

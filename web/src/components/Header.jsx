@@ -13,11 +13,18 @@ const thai_date_full = (date) => {
     return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear() + 543}`;
 };
 
+const getRoleId = (user) =>
+    user?.level_id || user?.user_metadata?.role || user?.role || 'teacher';
+
 const Header = () => {
     const { user, logout } = useAuth();
     const notifCount = useNotifications();
     const userName = user?.user_metadata?.name || 'Guest';
     const userRole = user?.user_metadata?.role || 'User';
+    const roleId = getRoleId(user);
+
+    // ครู → ไปหน้าสถานะแผน, ผอ. และกรรมการ → ไปหน้าตรวจแผนการสอน
+    const notifLink = roleId === 'teacher' ? '/statusplan' : '/Plan_Check';
 
     return (
         <nav className="main-header navbar navbar-expand navbar-white navbar-light">
@@ -45,7 +52,7 @@ const Header = () => {
                 {/* 🔔 Notification Bell */}
                 {notifCount > 0 && (
                     <li className="nav-item">
-                        <Link to="/" className="nav-link" title={`มี ${notifCount} รายการรอดำเนินการ`}>
+                        <Link to={notifLink} className="nav-link" title={`มี ${notifCount} รายการรอดำเนินการ`}>
                             <i className="fas fa-bell text-warning"></i>
                             <span
                                 className="badge badge-danger navbar-badge"

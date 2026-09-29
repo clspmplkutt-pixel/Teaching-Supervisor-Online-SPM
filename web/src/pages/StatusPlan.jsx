@@ -93,11 +93,12 @@ const StatusPlan = () => {
         let schoolCode = profile?.school || '';
 
         if (roleId === 'directorschool') {
+          // ดึงแผนที่ status = 1 (ส่งแผน/รอ ผอ. อนุมัติ) หรือ 4 (แก้ไขแผน/รอ ผอ. อนุมัติ)
           plans = (await supabase
             .from('tbl_sendplan')
             .select('*')
             .eq('school_code', profile?.school)
-            .eq('plan_status', '1')).data || [];
+            .in('plan_status', ['1', '4'])).data || [];
         } else {
           const peopleId = profile?.people_id || user?.email || '';
           // ดึงแผนของครูคนนี้ก่อนเพื่อรู้ school_code
