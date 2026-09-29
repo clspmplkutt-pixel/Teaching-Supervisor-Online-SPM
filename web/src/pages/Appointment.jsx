@@ -36,6 +36,8 @@ const Appointment = ({ readOnly = false }) => {
   });
 
   const [committeeOptions, setCommitteeOptions] = useState([]);
+  const [committeeGroups, setCommitteeGroups] = useState([]);
+  const [scoredCommittees, setScoredCommittees] = useState(new Set());
 
   const [form, setForm] = useState({
     plan_approve: '',
@@ -157,25 +159,22 @@ const Appointment = ({ readOnly = false }) => {
         const combinedUsers = [...(leadersRes.data || []), ...(specificUsersRes.data || [])];
         const uniqueUsers = Array.from(new Map(combinedUsers.map((u) => [u.people_id, u])).values());
 
-        // Sort: 1. Supervisors/District Directors, 2. Approved Evaluators, 3. School Directors
-        uniqueUsers.sort((a, b) => {
-          const getPriority = (u) => {
-            if (u.level === 'supervisor' || u.level === 'supervision') return 1;
-            if (u.level === 'districdirector') return 2;
-            if (approvedPeopleIds.includes(u.people_id)) return 3;
-            if (u.level === 'directorschool') return 4;
-            return 5;
-          };
-          const pA = getPriority(a);
-          const pB = getPriority(b);
-          if (pA !== pB) return pA - pB;
-          const schoolA = schoolMap[a.school] || '';
-          const schoolB = schoolMap[b.school] || '';
-          if (schoolA !== schoolB) return schoolA.localeCompare(schoolB, 'th');
-          return (a.name || '').localeCompare(b.name || '', 'th');
-        });
+        // Check if any committee has already scored this plan
+        let scoredSet = new Set();
+        try {
+          const { data: scoresRes } = await supabase
+            .from('tbl_sendplan_score')
+            .select('supervision')
+            .eq('planid', planid);
+          scoredSet = new Set((scoresRes || []).map((s) => s.supervision));
+        } catch (scoreErr) {
+          console.warn('Failed to load scores for plan:', scoreErr);
+        }
 
-        const options = uniqueUsers.map((row) => {
+        const currentSchoolCode = planData.school_code || teacherRes.data?.school || profile?.school || '';
+        const currentSchoolName = schoolMap[currentSchoolCode] || '';
+
+        const toOption = (row, showSchool = false) => {
           const isApproved = approvedPeopleIds.includes(row.people_id);
           let roleTag = '';
           if (row.level === 'supervisor' || row.level === 'supervision') {
@@ -188,14 +187,71 @@ const Appointment = ({ readOnly = false }) => {
             roleTag = '[ผู้บริหารสถานศึกษา] ';
           }
 
-          const schoolName = schoolMap[row.school] || '';
-          const schoolText = schoolName ? ` (${schoolName})` : '';
+          const sName = schoolMap[row.school] || '';
+          const sText = showSchool && sName ? ` (${sName})` : '';
 
           return {
             value: row.people_id,
-            label: `${roleTag}${prefixMap[row.prefix] || ''}${row.name} ${row.lastname}${schoolText}`,
+            label: `${roleTag}${prefixMap[row.prefix] || ''}${row.name} ${row.lastname}${sText}`,
+            school: row.school,
+            schoolName: sName,
           };
+        };
+
+        // 1. Same school evaluators (Current School first)
+        const sameSchoolUsers = uniqueUsers
+          .filter((u) => u.school === currentSchoolCode)
+          .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+
+        // 2. District / Supervisors
+        const districtUsers = uniqueUsers
+          .filter(
+            (u) =>
+              u.school !== currentSchoolCode &&
+              ['supervisor', 'supervision', 'districdirector'].includes(u.level)
+          )
+          .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+
+        // 3. Other schools grouped by school name
+        const otherSchoolMap = {};
+        uniqueUsers
+          .filter(
+            (u) =>
+              u.school !== currentSchoolCode &&
+              !['supervisor', 'supervision', 'districdirector'].includes(u.level)
+          )
+          .forEach((u) => {
+            const sName = schoolMap[u.school] || 'สถานศึกษาอื่น';
+            if (!otherSchoolMap[sName]) otherSchoolMap[sName] = [];
+            otherSchoolMap[sName].push(u);
+          });
+
+        const groups = [];
+
+        if (sameSchoolUsers.length > 0) {
+          groups.push({
+            label: `🏫 ภายในสถานศึกษา (${currentSchoolName || 'โรงเรียนนี้'}) [${sameSchoolUsers.length} ท่าน]`,
+            options: sameSchoolUsers.map((u) => toOption(u, false)),
+          });
+        }
+
+        if (districtUsers.length > 0) {
+          groups.push({
+            label: `🏛️ สำนักงานเขตพื้นที่ฯ / ศึกษานิเทศก์ [${districtUsers.length} ท่าน]`,
+            options: districtUsers.map((u) => toOption(u, true)),
+          });
+        }
+
+        const sortedOtherSchools = Object.keys(otherSchoolMap).sort((a, b) => a.localeCompare(b, 'th'));
+        sortedOtherSchools.forEach((sName) => {
+          const sUsers = otherSchoolMap[sName].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+          groups.push({
+            label: `🏫 โรงเรียน${sName.replace(/^โรงเรียน/, '')} [${sUsers.length} ท่าน]`,
+            options: sUsers.map((u) => toOption(u, false)),
+          });
         });
+
+        const flatOptions = groups.flatMap((g) => g.options);
 
         if (mounted) {
           setPlan(planData);
@@ -212,7 +268,9 @@ const Appointment = ({ readOnly = false }) => {
             desirable: desirableMap,
             indicator: indicatorMap,
           });
-          setCommitteeOptions(options);
+          setCommitteeOptions(flatOptions);
+          setCommitteeGroups(groups);
+          setScoredCommittees(scoredSet);
           setForm((prev) => ({
             ...prev,
             plan_approve: planData.plan_approve || '',
@@ -254,6 +312,10 @@ const Appointment = ({ readOnly = false }) => {
           placeholder: `ค้นหากรรมการท่านที่ ${num}...`,
           allowClear: true,
         });
+        // Set initial value if available
+        if (form[`committee${num}`]) {
+          $el.val(form[`committee${num}`]).trigger('change.select2');
+        }
         // sync Select2 value → React state
         $el.on('change.select2commit', function () {
           const val = $(this).val() || '';
@@ -274,7 +336,7 @@ const Appointment = ({ readOnly = false }) => {
       });
       select2InitRef.current = false;
     };
-  }, [loading, committeeOptions.length]);
+  }, [loading, committeeGroups.length]);
 
   // sync React form state → Select2 UI เมื่อ form.committeeX เปลี่ยน
   useEffect(() => {
@@ -282,7 +344,10 @@ const Appointment = ({ readOnly = false }) => {
     if (!$ || !select2InitRef.current) return;
     [1, 2, 3, 4, 5].forEach((num) => {
       const $el = $(`#committee${num}`);
-      if ($el.length) $el.val(form[`committee${num}`] || '').trigger('change.select2');
+      const currentVal = form[`committee${num}`] || '';
+      if ($el.length && $el.val() !== currentVal) {
+        $el.val(currentVal).trigger('change.select2');
+      }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.committee1, form.committee2, form.committee3, form.committee4, form.committee5]);
@@ -368,7 +433,8 @@ const Appointment = ({ readOnly = false }) => {
 
       if (error) throw error;
 
-      Swal.fire('สำเร็จ', 'บันทึกเรียบร้อย', 'success');
+      const isEdit = plan?.plan_status === '2' || plan?.plan_approve === '1';
+      Swal.fire('สำเร็จ', isEdit ? 'บันทึกการแก้ไขคณะกรรมการนิเทศเรียบร้อยแล้ว' : 'บันทึกการแต่งตั้งกรรมการเรียบร้อย', 'success');
       navigate(returnUrl);
     } catch (err) {
       console.error(err);
@@ -559,26 +625,66 @@ const Appointment = ({ readOnly = false }) => {
           </div>
         </div>
 
+        {/* Banner เมื่อแผนได้รับการอนุมัติแล้ว */}
+        {(plan?.plan_status === '2' || plan?.plan_approve === '1') && (
+          <div className="alert alert-info border-0 shadow-sm mb-3" style={{ borderRadius: '10px' }}>
+            <div className="d-flex align-items-center">
+              <i className="fa-solid fa-circle-info fa-2x mr-3 text-info"></i>
+              <div>
+                <h6 className="fw-bold mb-1">
+                  <i className="fa-solid fa-check-circle text-success mr-1"></i> แผนการจัดการเรียนรู้นี้ได้รับการอนุมัติแล้ว
+                </h6>
+                <p className="mb-0 small">
+                  ท่านสามารถปรับเปลี่ยนหรือแต่งตั้งคณะกรรมการนิเทศเพิ่มเติมได้ โดยเลือกชื่อกรรมการใหม่จากรายชื่อที่<strong>จัดกลุ่มตามโรงเรียน</strong> แล้วกด <strong>"บันทึกการแก้ไขกรรมการ"</strong> ด้านล่าง
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="row">
           <div className="col-lg-12">
             <div className="card card-pink">
               <div className="card-header">
-                <h4 className="card-title"><strong>แต่งตั้งกรรมการ</strong></h4>
+                <h4 className="card-title">
+                  <strong>
+                    <i className="fa-solid fa-users mr-1"></i>
+                    {plan?.plan_status === '2' || plan?.plan_approve === '1' ? 'แต่งตั้ง / แก้ไขคณะกรรมการนิเทศ' : 'แต่งตั้งกรรมการ'}
+                  </strong>
+                </h4>
               </div>
               <div className="card-body">
+                <p className="text-muted small mb-3">
+                  <i className="fa-solid fa-circle-question text-primary mr-1"></i>
+                  รายชื่อกรรมการถูกจัดกลุ่มโดยแสดง <strong>บุคลากรภายในโรงเรียนเดียวกันไว้ที่ด้านบนสุด</strong> และตามด้วยศึกษานิเทศก์/เขตพื้นที่ฯ และโรงเรียนอื่นตามลำดับ (พิมพ์ชื่อหรือชื่อโรงเรียนในช่องค้นหาได้)
+                </p>
                 <div className="row">
                   {[1, 2, 3, 4, 5].map((num) => {
                     const field = `committee${num}`;
                     const isDisabled = readOnly || form.plan_approve !== '1' || (num > 1 && !form[`committee${num - 1}`]);
+                    const currentPerson = form[field];
+                    const isScored = currentPerson && scoredCommittees.has(currentPerson);
+                    const isPlanApproved = plan?.plan_status === '2' || plan?.plan_approve === '1';
+
                     return (
                       <div className="col-lg-4" key={field}>
-                        <div className="mb-3 mt-3">
+                        <div className="mb-3 mt-1">
                           <div className="form-group">
-                            <label htmlFor={field}>
+                            <label htmlFor={field} className="d-flex align-items-center flex-wrap">
                               <strong>กรรมการท่านที่ {num} :</strong>
-                              {form[field] && (
+                              {currentPerson && (
                                 <span className="badge badge-success ml-2" style={{ fontSize: '11px' }}>
                                   <i className="fas fa-check mr-1"></i>เลือกแล้ว
+                                </span>
+                              )}
+                              {isScored && (
+                                <span className="badge badge-primary ml-1" style={{ fontSize: '11px' }} title="กรรมการท่านนี้ได้ทำการบันทึกคะแนนแล้ว">
+                                  <i className="fas fa-clipboard-check mr-1"></i>ประเมินแล้ว
+                                </span>
+                              )}
+                              {currentPerson && !isScored && isPlanApproved && (
+                                <span className="badge badge-secondary ml-1" style={{ fontSize: '11px' }} title="ยังไม่ได้รับการประเมิน สามารถเปลี่ยนได้">
+                                  <i className="fas fa-clock mr-1"></i>ยังไม่ประเมิน
                                 </span>
                               )}
                             </label>
@@ -590,10 +696,14 @@ const Appointment = ({ readOnly = false }) => {
                               defaultValue={form[field] || ''}
                             >
                               <option value=""></option>
-                              {committeeOptions.map((opt) => (
-                                <option key={`${field}-${opt.value}`} value={opt.value}>
-                                  {opt.label}
-                                </option>
+                              {committeeGroups.map((group, gIdx) => (
+                                <optgroup key={`${field}-g-${gIdx}`} label={group.label}>
+                                  {group.options.map((opt) => (
+                                    <option key={`${field}-${opt.value}`} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </optgroup>
                               ))}
                             </select>
                           </div>
@@ -605,7 +715,14 @@ const Appointment = ({ readOnly = false }) => {
               </div>
               <div className="card-footer text-center">
                 {!readOnly && (
-                  <button type="submit" className="btn btn-success" id="btn_submit"><i className="fa-regular fa-paper-plane"></i> แต่งตั้งกรรมการ</button>
+                  <button
+                    type="submit"
+                    className={`btn ${plan?.plan_status === '2' || plan?.plan_approve === '1' ? 'btn-warning text-dark font-weight-bold' : 'btn-success'}`}
+                    id="btn_submit"
+                  >
+                    <i className={`${plan?.plan_status === '2' || plan?.plan_approve === '1' ? 'fa-solid fa-floppy-disk' : 'fa-regular fa-paper-plane'} mr-1`}></i>
+                    {plan?.plan_status === '2' || plan?.plan_approve === '1' ? 'บันทึกการแก้ไขกรรมการ' : 'แต่งตั้งกรรมการ'}
+                  </button>
                 )}
                 <Link to={returnUrl} className="btn btn-danger ml-2"><i className="fa-solid fa-ban"></i> ยกเลิก</Link>
               </div>

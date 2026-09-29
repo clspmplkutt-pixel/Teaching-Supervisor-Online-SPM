@@ -510,7 +510,7 @@ const PlanCheck = () => {
                       <th>วิชา (รหัสวิชา)</th>
                       <th>ชื่อแผนการจัดการเรียนรู้</th>
                       <th className="text-center">ไฟล์แผน</th>
-                      <th className="text-center">ผลการประเมิน</th>
+                      <th className="text-center">คณะกรรมการ / ดำเนินการ</th>
                       <th className="text-center">สถานะ</th>
                     </tr>
                   </thead>
@@ -522,34 +522,50 @@ const PlanCheck = () => {
                         </td>
                       </tr>
                     ) : (
-                      filteredApprovedDirector.map((row, idx) => (
-                        <tr key={row.planid}>
-                          <td className="text-center text-muted fw-semibold">{idx + 1}</td>
-                          <td>
-                            <strong>{teacherMap[row.people_id] || row.people_id || '-'}</strong>
-                          </td>
-                          <td>{lookups.teachSubjectShort[row.teach_subject_id] || '-'}</td>
-                          <td>{row.subject_name} ({row.subject_code})</td>
-                          <td>{row.subject_name_plan || '-'}</td>
-                          <td className="text-center">
-                            {row.plan_file && (
-                              <a href={row.plan_file} target="_blank" rel="noreferrer" className="btn btn-outline-danger btn-sm p-1 px-2">
-                                <i className="fa-regular fa-file-pdf fa-lg"></i>
-                              </a>
-                            )}
-                          </td>
-                          <td className="text-center">
-                            <Link to={`/view_scoring?planid=${row.planid}`} className="btn btn-outline-info btn-sm">
-                              <i className="fa-solid fa-eye mr-1"></i> ดูคะแนนนิเทศ
-                            </Link>
-                          </td>
-                          <td className="text-center">
-                            <span className="badge badge-success p-2">
-                              {lookups.status[String(row.plan_status)] || 'อนุมัติแล้ว'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))
+                      filteredApprovedDirector.map((row, idx) => {
+                        const comms = [row.committee1, row.committee2, row.committee3, row.committee4, row.committee5].filter(Boolean);
+                        return (
+                          <tr key={row.planid}>
+                            <td className="text-center text-muted fw-semibold">{idx + 1}</td>
+                            <td>
+                              <strong>{teacherMap[row.people_id] || row.people_id || '-'}</strong>
+                            </td>
+                            <td>{lookups.teachSubjectShort[row.teach_subject_id] || '-'}</td>
+                            <td>{row.subject_name} ({row.subject_code})</td>
+                            <td>{row.subject_name_plan || '-'}</td>
+                            <td className="text-center">
+                              {row.plan_file && (
+                                <a href={row.plan_file} target="_blank" rel="noreferrer" className="btn btn-outline-danger btn-sm p-1 px-2" title="เปิดดูแผน PDF">
+                                  <i className="fa-regular fa-file-pdf fa-lg"></i>
+                                </a>
+                              )}
+                            </td>
+                            <td className="text-center">
+                              <div className="d-flex flex-column flex-sm-row justify-content-center align-items-center gap-1" style={{ gap: '6px' }}>
+                                <Link
+                                  to={`/appointment?planid=${row.planid}&from=Plan_Check`}
+                                  className="btn btn-warning btn-sm text-dark font-weight-bold shadow-sm"
+                                  title="แก้ไขหรือเปลี่ยนรายชื่อคณะกรรมการนิเทศ"
+                                >
+                                  <i className="fa-solid fa-user-pen mr-1"></i> แก้ไขกรรมการ ({comms.length})
+                                </Link>
+                                <Link
+                                  to={`/view_scoring?planid=${row.planid}`}
+                                  className="btn btn-outline-info btn-sm shadow-sm"
+                                  title="ดูคะแนนและผลการประเมิน"
+                                >
+                                  <i className="fa-solid fa-chart-line mr-1"></i> ดูคะแนนนิเทศ
+                                </Link>
+                              </div>
+                            </td>
+                            <td className="text-center">
+                              <span className="badge badge-success p-2">
+                                {lookups.status[String(row.plan_status)] || 'อนุมัติแล้ว'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>

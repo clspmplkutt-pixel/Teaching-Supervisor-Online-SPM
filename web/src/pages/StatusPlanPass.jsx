@@ -121,9 +121,16 @@ const StatusPlanPass = () => {
                         {String(row.plan_status) === '3' && <span className="badge badge-danger">ไม่ผ่าน</span>}
                       </td>
                       <td>
-                        <Link to={`/view_appointment?planid=${row.planid}`} className="btn btn-info">
-                          <i className="fa-solid fa-circle-info"></i> ดูข้อมูล
-                        </Link>
+                        <div className="d-flex align-items-center gap-1">
+                          <Link to={`/view_appointment?planid=${row.planid}`} className="btn btn-info btn-sm">
+                            <i className="fa-solid fa-circle-info"></i> ดูข้อมูล
+                          </Link>
+                          {(profile?.level === 'directorschool' || profile?.level_id === 'directorschool') && String(row.plan_status) === '2' && (
+                            <Link to={`/appointment?planid=${row.planid}&from=statusplan_pass`} className="btn btn-warning btn-sm text-dark font-weight-bold ml-1" title="แก้ไขหรือเปลี่ยนรายชื่อคณะกรรมการนิเทศ">
+                              <i className="fa-solid fa-user-pen"></i> แก้ไขกรรมการ
+                            </Link>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
