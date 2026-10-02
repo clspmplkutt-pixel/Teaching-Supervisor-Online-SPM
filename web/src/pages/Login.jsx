@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { decryptLegacyPassword } from '../utils/legacyCrypto';
+import { encryptLegacyPassword } from '../utils/legacyCrypto';
 import Swal from 'sweetalert2';
 
 const Login = () => {
@@ -20,14 +20,14 @@ const Login = () => {
     const [showForgotModal, setShowForgotModal] = useState(false);
     const [forgotId, setForgotId] = useState('');
     const [forgotDob, setForgotDob] = useState('');
-    const [forgotInfo, setForgotInfo] = useState(null);
+    const [forgotResult, setForgotResult] = useState(null); // { success: true, name, school } or null
     const [forgotError, setForgotError] = useState('');
     const [forgotLoading, setForgotLoading] = useState(false);
 
     const handleForgotSubmit = async (e) => {
         e.preventDefault();
         setForgotError('');
-        setForgotInfo(null);
+        setForgotResult(null);
         setForgotLoading(true);
 
         try {
@@ -40,17 +40,15 @@ const Login = () => {
             if (error) throw error;
 
             if (!user) {
-                setForgotError('ไม่พบข้อมูลผู้ใช้งานนี้ในระบบ หรือพิมพ์เลขประจำตัวผิด');
+                setForgotError('ไม่พบข้อมูลผู้ใช้งานนี้ในระบบ กรุณาตรวจสอบเลขประจำตัวประชาชน');
             } else {
                 const checkBirthdayMatch = (dbDate, inputDate) => {
                     if (!dbDate || !inputDate) return false;
                     
-                    // Normalize: trim whitespace and handle potential '/' separators
                     const normalizeDate = (d) => d.trim().replace(/\//g, '-');
                     const dbNorm = normalizeDate(dbDate);
                     const inNorm = normalizeDate(inputDate);
                     
-                    // Direct match
                     if (dbNorm === inNorm) return true;
                     
                     const dbParts = dbNorm.split('-');
@@ -67,44 +65,46 @@ const Login = () => {
                     
                     if (dbM !== inM || dbD !== inD) return false;
                     
-                    // Tolerance for Buddhist Era vs Christian Era (543 years shift)
                     return dbY === inY || Math.abs(dbY - inY) === 543;
                 };
 
                 if (!checkBirthdayMatch(user.birthday, forgotDob)) {
                     setForgotError('วัน/เดือน/ปีเกิด ไม่ตรงกับข้อมูลในระบบ');
                 } else {
-                let schoolName = 'ไม่ระบุ';
-                if (user.school) {
-                    const { data: sData } = await supabase.from('tbl_school').select('school_name').eq('school_id', user.school).maybeSingle();
-                    if (sData) schoolName = sData.school_name;
-                }
-                
-                let positionName = 'ไม่ระบุ';
-                if (user.position_id) {
-                    const { data: pData } = await supabase.from('tbl_system_PersonPositionType').select('position_name').eq('position_id', user.position_id).maybeSingle();
-                    if (pData) positionName = pData.position_name;
-                }
+                    // Reset password to YYYYMMDD (Christian Era) automatically
+                    const birthday = String(user.birthday || '').replace(/-/g, '');
+                    const encrypted = encryptLegacyPassword(birthday);
+                    
+                    const { error: updateError } = await supabase
+                        .from('tbl_Users')
+                        .update({ passwd: encrypted })
+                        .eq('people_id', forgotId);
+                    
+                    if (updateError) throw updateError;
 
-                let prefixName = '';
-                if (user.prefix) {
-                    const { data: preData } = await supabase.from('tbl_system_prefix').select('prefix').eq('prefix_id', user.prefix).maybeSingle();
-                    if (preData) prefixName = preData.prefix;
-                }
+                    let prefixName = '';
+                    if (user.prefix) {
+                        const { data: preData } = await supabase.from('tbl_system_prefix').select('prefix').eq('prefix_id', user.prefix).maybeSingle();
+                        if (preData) prefixName = preData.prefix;
+                    }
 
-                const decryptedPass = decryptLegacyPassword(user.passwd);
+                    let schoolName = 'ไม่ระบุ';
+                    if (user.school) {
+                        const { data: sData } = await supabase.from('tbl_school').select('school_name').eq('school_id', user.school).maybeSingle();
+                        if (sData) schoolName = sData.school_name;
+                    }
 
-                setForgotInfo({
-                    name: `${prefixName}${user.name} ${user.lastname}`,
-                    position: positionName,
-                    school: schoolName,
-                    password: decryptedPass || 'ไม่สามารถถอดรหัสได้ (กรุณาติดต่อแอดมินเพื่อรีเซ็ต)'
-                });
+                    setForgotResult({
+                        success: true,
+                        name: `${prefixName}${user.name} ${user.lastname}`,
+                        school: schoolName,
+                        newPassword: birthday,
+                    });
                 }
             }
         } catch (err) {
             console.error(err);
-            setForgotError('เกิดข้อผิดพลาดในการดึงข้อมูลจากฐานข้อมูล');
+            setForgotError('เกิดข้อผิดพลาดในการดำเนินการ กรุณาลองใหม่');
         } finally {
             setForgotLoading(false);
         }
@@ -114,20 +114,68 @@ const Login = () => {
         setShowForgotModal(false);
         setForgotId('');
         setForgotDob('');
-        setForgotInfo(null);
+        setForgotResult(null);
         setForgotError('');
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
+
+        // ถ้าไม่ได้เลือกระดับ → ลองตรวจ auto-detect
+        let effectiveLevel = loginData.level;
+
+        if (!effectiveLevel) {
+            // Admin login check
+            if (loginData.user === 'admin' || loginData.user === 'root') {
+                effectiveLevel = loginData.user;
+            } else {
+                // ดึง level จาก DB ก่อน
+                try {
+                    const { data: userData } = await supabase
+                        .from('tbl_Users')
+                        .select('level, headDepartment, register_isConfirm, people_id')
+                        .eq('people_id', loginData.user)
+                        .maybeSingle();
+
+                    if (!userData) {
+                        // ลองค้นหาใน tbl_user (admin table)
+                        const { data: adminData } = await supabase
+                            .from('tbl_user')
+                            .select('user, level_id')
+                            .eq('user', loginData.user)
+                            .maybeSingle();
+                        
+                        if (adminData) {
+                            effectiveLevel = adminData.level_id || 'admin';
+                        } else {
+                            setError('ไม่พบบัญชีผู้ใช้งานนี้ในระบบ กรุณาตรวจสอบเลขประจำตัวประชาชน หรือลงทะเบียนก่อน');
+                            return;
+                        }
+                    } else {
+                        // ตรวจสอบว่ายังไม่ได้อนุมัติ
+                        if (String(userData.register_isConfirm) === '0') {
+                            setError('บัญชีของคุณยังไม่ได้รับการอนุมัติจากผู้ดูแลระบบ กรุณารอการอนุมัติ หรือติดต่อผู้ดูแลระบบสถานศึกษา');
+                            return;
+                        }
+                        effectiveLevel = userData.level || 'teacher';
+                    }
+                } catch {
+                    // ถ้าดึงไม่ได้ ให้ลอง login ปกติ
+                    effectiveLevel = 'teacher';
+                }
+            }
+        }
+
         try {
-            const data = await login(loginData.user, loginData.password, loginData.level);
+            const data = await login(loginData.user, loginData.password, effectiveLevel);
             
-            // Check default password logic (DDMMYYYY or 123456)
+            // Check default password logic (YYYYMMDD or DDMMYYYY or 123456)
             if (data && data.birthday) {
-                const defaultPass = data.birthday.split('-').reverse().join('');
-                if (loginData.password === defaultPass || loginData.password === '123456' || loginData.password === data.people_id) {
+                const bdayNoHyphen = data.birthday.replace(/-/g, '');
+                const defaultPassAD = bdayNoHyphen; // YYYYMMDD
+                const defaultPassReverse = data.birthday.split('-').reverse().join(''); // DDMMYYYY
+                if (loginData.password === defaultPassAD || loginData.password === defaultPassReverse || loginData.password === '123456' || loginData.password === data.people_id) {
                     Swal.fire({
                         title: 'คำแนะนำด้านความปลอดภัย',
                         text: 'รหัสผ่านของคุณคาดเดาได้ง่ายเกินไป กรุณาเปลี่ยนรหัสผ่านเพื่อความปลอดภัยของข้อมูล!',
@@ -143,8 +191,15 @@ const Login = () => {
 
             navigate('/');
         } catch (err) {
-            setError('ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง หรือยังไม่ได้รับการยืนยันจากแอดมิน !');
             console.error(err);
+            // ให้ error message ชัดเจนขึ้น
+            if (err.message === 'Invalid role selected for this user') {
+                setError('ระดับการใช้งานที่เลือกไม่ตรงกับบัญชีของคุณ ลองเลือกระดับอื่น หรือเว้นว่างไว้เพื่อให้ระบบตรวจอัตโนมัติ');
+            } else if (err.message === 'Invalid credentials') {
+                setError('รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่ หรือกดปุ่ม "ลืมรหัสผ่าน" เพื่อรีเซ็ตรหัสผ่าน');
+            } else {
+                setError('ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง หรือยังไม่ได้รับการยืนยันจากแอดมิน');
+            }
         }
     };
 
@@ -161,7 +216,7 @@ const Login = () => {
                 {error && (
                     <div className="alert alert-danger alert-dismissable">
                         <button type="button" className="close" onClick={() => setError('')}>&times;</button>
-                        {error}
+                        <i className="fas fa-exclamation-triangle mr-1"></i> {error}
                     </div>
                 )}
                 <div className="card">
@@ -172,7 +227,7 @@ const Login = () => {
                                 <input
                                     type="text"
                                     className="form-control"
-                                    placeholder="ชื่อผู้ใช้"
+                                    placeholder="เลขประจำตัวประชาชน 13 หลัก"
                                     name="user"
                                     value={loginData.user}
                                     onChange={handleChange}
@@ -189,7 +244,7 @@ const Login = () => {
                                 <input
                                     type={showPassword ? 'text' : 'password'}
                                     className="form-control"
-                                    placeholder="รหัสผ่าน"
+                                    placeholder="รหัสผ่าน (วันเกิด YYYYMMDD เช่น 19820930)"
                                     name="password"
                                     value={loginData.password}
                                     onChange={handleChange}
@@ -210,12 +265,11 @@ const Login = () => {
                             <div className="input-group mb-3">
                                 <select
                                     name="level"
-                                    className="custom-select form-control" // Added form-control for better BS5 compat if needed
+                                    className="custom-select form-control"
                                     onChange={handleChange}
                                     value={loginData.level}
-                                    required
                                 >
-                                    <option value="">เลือกระดับการใช้งาน</option>
+                                    <option value="">ตรวจอัตโนมัติ (ไม่ต้องเลือกก็ได้)</option>
                                     <option value="teacher">ครูผู้สอน</option>
                                     <option value="headdepartment">หัวหน้ากลุ่มสาระโรงเรียน</option>
                                     <option value="admin_school">ผู้ดูแลระบบสถานศึกษา (School Admin)</option>
@@ -225,7 +279,6 @@ const Login = () => {
                                     <option value="supervisor">ศึกษานิเทศ</option>
                                     <option value="districdirector">ผู้อำนวยการเขต/รอง ผอ. เขต</option>
                                     <option value="admin">ผู้ดูแลระบบเขตพื้นที่ (Admin เขต)</option>
-                                    {/* Root is usually hidden or debug only, omitting for standard user view unless requested */}
                                 </select>
                             </div>
 
@@ -245,11 +298,19 @@ const Login = () => {
                                         style={{ marginTop: '5px' }}
                                         onClick={() => setShowForgotModal(true)}
                                     >
-                                        <i className="fas fa-question-circle"></i> ลืมรหัสผ่าน?
+                                        <i className="fas fa-key"></i> ลืมรหัสผ่าน? (รีเซ็ตเอง)
                                     </button>
                                 </div>
                             </div>
                         </form>
+
+                        {/* Login Help */}
+                        <div className="mt-3 p-2 bg-light rounded border" style={{ fontSize: '0.82rem' }}>
+                            <p className="mb-1 font-weight-bold text-info"><i className="fas fa-info-circle mr-1"></i> วิธีเข้าสู่ระบบ</p>
+                            <p className="mb-1">• <strong>ชื่อผู้ใช้:</strong> เลขประจำตัวประชาชน 13 หลัก</p>
+                            <p className="mb-1">• <strong>รหัสผ่าน:</strong> วันเกิด ค.ศ. <code>YYYYMMDD</code> เช่น <code>19820930</code></p>
+                            <p className="mb-0">• <strong>ระดับ:</strong> เว้นว่างไว้ ระบบจะตรวจให้อัตโนมัติ</p>
+                        </div>
                     </div>
                 </div>
 
@@ -288,7 +349,7 @@ const Login = () => {
                     <div style={{ borderTop: '1px solid rgba(0,0,0,0.05)', width: '60%', margin: '0 auto 15px auto' }}></div>
 
                     <p className="mb-0 small text-muted">
-                        <span className="mr-3"><i className="fas fa-code-branch mr-1"></i> Version 0.10 &copy; {new Date().getFullYear()}</span>
+                        <span className="mr-3"><i className="fas fa-code-branch mr-1"></i> Version 0.11 &copy; {new Date().getFullYear()}</span>
                     </p>
                     <p className="mb-0 small">
                         <span className="text-muted mr-1">Developed by</span>
@@ -300,20 +361,24 @@ const Login = () => {
                 </div>
             </div>
 
-            {/* Forgot Password Modal */}
+            {/* Forgot Password Modal - Auto Reset */}
             {showForgotModal && (
                 <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
                     <div className="modal-dialog modal-dialog-centered">
                         <div className="modal-content">
                             <div className="modal-header bg-warning">
-                                <h5 className="modal-title font-weight-bold"><i className="fas fa-key"></i> ค้นหารหัสผ่านของคุณ</h5>
+                                <h5 className="modal-title font-weight-bold"><i className="fas fa-key"></i> รีเซ็ตรหัสผ่าน (Self-Service)</h5>
                                 <button type="button" className="close" onClick={closeForgotModal}>
                                     <span>&times;</span>
                                 </button>
                             </div>
                             <div className="modal-body">
-                                {!forgotInfo ? (
+                                {!forgotResult ? (
                                     <form onSubmit={handleForgotSubmit}>
+                                        <div className="alert alert-info small mb-3">
+                                            <i className="fas fa-info-circle mr-1"></i>
+                                            ยืนยันตัวตนด้วยเลขประจำตัวประชาชนและวันเกิด ระบบจะรีเซ็ตรหัสผ่านให้ทันที
+                                        </div>
                                         <div className="form-group mb-3">
                                             <label>กรอกเลขประจำตัวประชาชน 13 หลัก</label>
                                             <input 
@@ -326,7 +391,7 @@ const Login = () => {
                                                 autoFocus
                                                 placeholder="เลข 13 หลัก"
                                             />
-                                            <label>วัน/เดือน/ปีเกิด <span className="text-danger small">(ที่ใช้ลงทะเบียน)</span></label>
+                                            <label>วัน/เดือน/ปีเกิด <span className="text-danger small">(ค.ศ. ที่ใช้ลงทะเบียน)</span></label>
                                             <input 
                                                 type="date" 
                                                 className="form-control form-control-lg" 
@@ -336,28 +401,32 @@ const Login = () => {
                                             />
                                         </div>
                                         {forgotError && <div className="alert alert-danger"><i className="fas fa-exclamation-triangle"></i> {forgotError}</div>}
-                                        <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={forgotLoading || forgotId.length !== 13 || !forgotDob}>
-                                            {forgotLoading ? 'กำลังค้นหา...' : <span><i className="fas fa-search"></i> ค้นหาข้อมูล</span>}
+                                        <button type="submit" className="btn btn-danger btn-block btn-lg" disabled={forgotLoading || forgotId.length !== 13 || !forgotDob}>
+                                            {forgotLoading ? 'กำลังดำเนินการ...' : <span><i className="fas fa-sync-alt"></i> รีเซ็ตรหัสผ่าน</span>}
                                         </button>
                                     </form>
                                 ) : (
-                                    <div className="alert alert-success shadow-sm">
-                                        <h5 className="alert-heading border-bottom pb-2 mb-3 text-success"><i className="fas fa-check-circle"></i> พบข้อมูลของคุณ</h5>
-                                        <p className="mb-2"><strong>ชื่อ-สกุล:</strong> {forgotInfo.name}</p>
-                                        <p className="mb-2"><strong>ตำแหน่ง:</strong> {forgotInfo.position}</p>
-                                        <p className="mb-2"><strong>โรงเรียน:</strong> {forgotInfo.school}</p>
+                                    <div className="alert alert-success shadow-sm mb-0">
+                                        <h5 className="alert-heading border-bottom pb-2 mb-3 text-success"><i className="fas fa-check-circle"></i> รีเซ็ตรหัสผ่านสำเร็จ!</h5>
+                                        <p className="mb-2"><strong>ชื่อ-สกุล:</strong> {forgotResult.name}</p>
+                                        <p className="mb-2"><strong>โรงเรียน:</strong> {forgotResult.school}</p>
                                         <hr />
                                         <div className="text-center mt-3">
-                                            <span className="text-muted small">รหัสผ่านของคุณคือ</span>
-                                            <h3 className="text-danger mb-0 mt-1 font-weight-bold" style={{ letterSpacing: '2px' }}>{forgotInfo.password}</h3>
+                                            <p className="text-muted small mb-1">รหัสผ่านใหม่ของคุณคือ <strong>วันเกิด (ค.ศ.)</strong></p>
+                                            <h3 className="text-danger mb-1 font-weight-bold" style={{ letterSpacing: '3px' }}>{forgotResult.newPassword}</h3>
+                                            <p className="text-muted small">(รูปแบบ YYYYMMDD เช่น 19820930)</p>
+                                        </div>
+                                        <div className="alert alert-warning small mt-2 mb-0">
+                                            <i className="fas fa-lightbulb mr-1"></i>
+                                            <strong>แนะนำ:</strong> หลังเข้าสู่ระบบ ควรเปลี่ยนรหัสผ่านใหม่เพื่อความปลอดภัย
                                         </div>
                                     </div>
                                 )}
                             </div>
                             <div className="modal-footer bg-light">
-                                {forgotInfo && (
-                                    <button type="button" className="btn btn-success" onClick={() => { closeForgotModal(); setLoginData({...loginData, user: forgotId}); }}>
-                                        นำไปเข้าสู่ระบบ
+                                {forgotResult && (
+                                    <button type="button" className="btn btn-success" onClick={() => { closeForgotModal(); setLoginData({...loginData, user: forgotId, password: forgotResult.newPassword}); }}>
+                                        <i className="fas fa-sign-in-alt mr-1"></i> นำไปเข้าสู่ระบบ
                                     </button>
                                 )}
                                 <button type="button" className="btn btn-secondary" onClick={closeForgotModal}>ปิดหน้าต่าง</button>

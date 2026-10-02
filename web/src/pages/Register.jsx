@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { Link } from 'react-router-dom';
 import CryptoJS from 'crypto-js';
+import { encryptLegacyPassword } from '../utils/legacyCrypto';
 
 const Register = () => {
     const [step, setStep] = useState(1);
@@ -177,36 +178,21 @@ const Register = () => {
                 school = '1000650001';
             }
 
-            // 2. Encrypt Password (DDMMYYYY from Birthday)
-            // Assuming input is YYYY-MM-DD (standard date input) -> convert to DDMMYYYY
-            // Note: PHP uses Thai date input, so we might need to adjust logic if we use standard date input.
-            // Let's assume standard YYYY-MM-DD input for now.
-            // Encrypt Password (DDMMYYYY from Birthday)
+            // 2. Encrypt Password (YYYYMMDD from Birthday in Christian Era)
+            // ใช้รูปแบบ YYYYMMDD ค.ศ. ตรงกับ ResetPwd / ResetUserPassword
             if (!formData.birthday) {
                 setLoading(false);
                 return alert('กรุณาระบุวัน/เดือน/ปีเกิด');
             }
-            // Fix: Check if input year is in Buddhist Era or Christian Era
+            // Normalize birthday to Christian Era YYYY-MM-DD
             const dateParts = formData.birthday.split('-');
             let year = parseInt(dateParts[0], 10);
-            const thaiYear = year < 2400 ? year + 543 : year;
             const christianYear = year >= 2400 ? year - 543 : year;
             const dbBirthday = `${christianYear}-${dateParts[1]}-${dateParts[2]}`;
-            const pwdRaw = `${dateParts[2]}${dateParts[1]}${thaiYear}`; // DDMMYYYY (Thai Year)
+            // Password = YYYYMMDD in Christian Era (e.g. 19820930)
+            const pwdRaw = `${christianYear}${dateParts[1]}${dateParts[2]}`;
 
-            // Encryption Logic (Same as Login)
-            const secret_key = 'PNS2AREA';
-            const secret_iv = 'SyS4School';
-            const keyHash = CryptoJS.SHA256(secret_key).toString(CryptoJS.enc.Hex);
-            const ivHash = CryptoJS.SHA256(secret_iv).toString(CryptoJS.enc.Hex);
-            const key = CryptoJS.enc.Utf8.parse(keyHash.substring(0, 32));
-            const iv = CryptoJS.enc.Utf8.parse(ivHash.substring(0, 16));
-
-            const encryptedPass = CryptoJS.AES.encrypt(pwdRaw, key, {
-                iv: iv,
-                mode: CryptoJS.mode.CBC,
-                padding: CryptoJS.pad.Pkcs7
-            }).toString();
+            const encryptedPass = encryptLegacyPassword(pwdRaw);
 
             // 3. Insert to Supabase
             const { error } = await supabase.from('tbl_Users').insert([{
@@ -230,7 +216,7 @@ const Register = () => {
                 phone: formData.phone,
                 email: formData.email,
                 level: level,
-                register_isConfirm: 0,
+                register_isConfirm: 1,
                 register_date: new Date().toISOString()
             }]);
 
@@ -464,7 +450,7 @@ const Register = () => {
                                             <h5 className="mb-1"><strong>ชื่อผู้ใช้ (Username):</strong> {peopleId}</h5>
                                             <h5 className="mb-0"><strong>รหัสผ่าน (Password):</strong> {generatedPassword}</h5>
                                         </div>
-                                        <p className="text-muted mt-3 mb-4">สถานะ: รอผู้ดูแลระบบอนุมัติการใช้งาน (ไม่เกิน 1 วันทำการ)</p>
+                                        <p className="text-success mt-3 mb-4"><i className="fas fa-check-circle mr-1"></i> สามารถเข้าสู่ระบบได้ทันที</p>
                                         <Link to="/login" className="btn btn-primary btn-lg px-5">
                                             <i className="fas fa-sign-in-alt"></i> กลับไปหน้าเข้าสู่ระบบ
                                         </Link>

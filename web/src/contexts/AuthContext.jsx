@@ -134,8 +134,6 @@ export const AuthProvider = ({ children }) => {
 
             console.log('🔍 Login Debug Info:');
             console.log('  - Table:', table, '| Column:', userCol, '| User:', email);
-            console.log('  - JS  format:', encryptedJS);
-            console.log('  - PHP format:', encryptedPHP);
 
             // ลองด้วย JS format ก่อน
             let { data, error } = await supabase
@@ -152,15 +150,57 @@ export const AuthProvider = ({ children }) => {
                 console.log('✅ Matched JS format (single base64)');
             }
 
-            console.log('📊 Query Result:', { data, error });
+            // ถ้ายังไม่เจอ ลอง convert password format เผื่อผู้ใช้ป้อนแบบเก่า
+            // เช่น ผู้ใช้ป้อน DDMMYYYY (พ.ศ.) แต่ระบบ Reset เป็น YYYYMMDD (ค.ศ.)
+            if (!data && !error && table === 'tbl_Users') {
+                // ดึง user ข้อมูลมาเช็ค birthday
+                const { data: userRec } = await supabase
+                    .from(table).select('*')
+                    .eq(userCol, email).maybeSingle();
+
+                if (userRec && userRec.birthday) {
+                    const bday = String(userRec.birthday).replace(/-/g, '');
+                    // สร้างรหัสทุกรูปแบบที่เป็นไปได้จากวันเกิด
+                    const bdParts = String(userRec.birthday).split('-');
+                    if (bdParts.length === 3) {
+                        const yyyy = bdParts[0];
+                        const mm = bdParts[1];
+                        const dd = bdParts[2];
+                        const thaiYear = String(parseInt(yyyy, 10) + 543);
+                        
+                        const possiblePasswords = [
+                            bday,                       // YYYYMMDD ค.ศ. (19820930)
+                            `${dd}${mm}${thaiYear}`,    // DDMMYYYY พ.ศ. (30092525) - format เก่า
+                            `${dd}${mm}${yyyy}`,        // DDMMYYYY ค.ศ. (30091982)
+                        ];
+
+                        // ถ้า password ที่ผู้ใช้กรอกตรงกับรูปแบบใดรูปแบบหนึ่ง → ปล่อยเข้า
+                        if (possiblePasswords.includes(password)) {
+                            data = userRec;
+                            console.log('✅ Matched via birthday format conversion');
+                            
+                            // อัพเดทรหัสผ่านให้เป็น format ใหม่ (YYYYMMDD ค.ศ.)
+                            const newEncrypted = encryptLegacyPassword(bday);
+                            await supabase.from(table).update({ passwd: newEncrypted }).eq(userCol, email);
+                            console.log('🔄 Auto-migrated password to new format');
+                        }
+                    }
+                }
+            }
+
+            console.log('📊 Query Result:', { found: !!data, error });
 
             if (error) {
                 console.error("Legacy Login Error:", error);
-                // Fallback to standar auth if table login fails? No, strict mode.
                 throw error;
             }
 
             if (data) {
+                // ตรวจสอบว่ายังไม่ได้อนุมัติ
+                if (table === 'tbl_Users' && String(data.register_isConfirm) === '0') {
+                    throw new Error('Account not confirmed');
+                }
+
                 // Check if user is an evaluator
                 let is_evaluator = false;
                 const roleId = data.level || level;
@@ -177,7 +217,8 @@ export const AuthProvider = ({ children }) => {
                 }
 
                 // Security Check: Verify that the user's database level matches the selected role
-                if (table === 'tbl_Users' && data.level && data.level !== level) {
+                // Skip this check if level was auto-detected (the Login page already resolved it)
+                if (table === 'tbl_Users' && data.level && data.level !== level && level) {
                     // Allow login as 'supervision' (ผู้นิเทศ) if the user has evaluator rights
                     const isAllowedEvaluatorLogin = (level === 'supervision' && is_evaluator);
                     // Allow login as 'teacher' if user has level === 'admin_school'
@@ -223,22 +264,6 @@ export const AuthProvider = ({ children }) => {
                 return data;
             } else {
                 console.error('❌ No matching user found in database');
-                // Let's also try to query without password to see if user exists
-                const { data: userCheck } = await supabase
-                    .from(table)
-                    .select('*')
-                    .eq(userCol, email)
-                    .maybeSingle();
-
-                if (userCheck) {
-                    console.log('👤 User exists but password mismatch');
-                    console.log('  - Stored password:', userCheck.passwd);
-                    console.log('  - Tried JS format:', encryptedJS);
-                    console.log('  - Tried PHP format:', encryptedPHP);
-                } else {
-                    console.log('👤 User not found with username:', email);
-                }
-
                 throw new Error('Invalid credentials');
             }
 
