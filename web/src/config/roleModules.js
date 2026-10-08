@@ -99,7 +99,14 @@ export const allModules = [
 
 export const roleModules = {
   chairman: [
-    "info"
+    "info",
+    "Plan_Check",
+    "Plan_scoring",
+    "view_scoring",
+    "statusplan_pass",
+    "editSignature",
+    "editprofile",
+    "chgpasswd"
   ],
   admin: [
     // Core Management
@@ -161,22 +168,28 @@ export const roleModules = {
     "approve_evaluator"
   ],
   directorschool: [
-    "chgpasswd",
-    "editprofile",
     "info",
     "Plan_Check",
     "Plan_scoring",
+    "statusplan_pass",
     "statusplan",
     "statusplan_clip",
-    "statusplan_pass",
     "view_scoring",
-    "nominate_evaluator"
+    "nominate_evaluator",
+    "supervision_summary",
+    "editSignature",
+    "editprofile",
+    "chgpasswd"
   ],
   headdepartment: [
     "info",
     "Plan_Check",
     "Plan_scoring",
-    "view_scoring"
+    "statusplan_pass",
+    "view_scoring",
+    "editSignature",
+    "editprofile",
+    "chgpasswd"
   ],
   root: [
     "ManageUserAdmin",
@@ -186,26 +199,43 @@ export const roleModules = {
     "info",
     "Plan_Check",
     "Plan_scoring",
-    "view_scoring"
-  ],
-  districdirector: [
-    "chgpasswd",
-    "editprofile",
-    "info"
-  ],
-  teacher: [
-    "chgpasswd",
+    "view_scoring",
+    "statusplan_pass",
     "editSignature",
     "editprofile",
+    "chgpasswd"
+  ],
+  districdirector: [
+    "info",
+    "supervision_summary",
+    "admin_monitor",
+    "view_scoring",
+    "editSignature",
+    "editprofile",
+    "chgpasswd"
+  ],
+  teacher: [
     "info",
     "sendplan",
     "statusplan",
+    "statusplan_pass",
     "statusplan_clip",
-    "view_scoring"
+    "view_scoring",
+    "editSignature",
+    "editprofile",
+    "chgpasswd"
   ],
   supervisor: [
-    "chgpasswd",
-    "info"
+    "info",
+    "supervision_summary",
+    "admin_monitor",
+    "Plan_Check",
+    "Plan_scoring",
+    "view_scoring",
+    "statusplan_pass",
+    "editSignature",
+    "editprofile",
+    "chgpasswd"
   ],
   admin_school: [
     "info",

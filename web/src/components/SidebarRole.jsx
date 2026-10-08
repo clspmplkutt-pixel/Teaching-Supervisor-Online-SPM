@@ -5,7 +5,7 @@ import { roleModules, moduleLabels, moduleIcons } from '../config/roleModules';
 import useNotifications from '../hooks/useNotifications';
 
 const getRoleBadgeModule = (roleId) => {
-  // Plan_Check คือเมนู "ตรวจแผนการสอน" ที่มี badge แสดงจำนวนแผนค้างตรวจ
+  if (roleId === 'teacher') return 'statusplan';
   return 'Plan_Check';
 };
 
