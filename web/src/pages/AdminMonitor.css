@@ -1,0 +1,250 @@
+/* ==========================================================================
+   AdminMonitor.css — Luxury Modern Supervision Monitoring Dashboard
+   สพม.พิษณุโลก อุตรดิตถ์
+   ========================================================================== */
+
+.admin-monitor-container {
+  padding-bottom: 50px;
+}
+
+/* ─── Hero KPI Cards ─── */
+.monitor-hero-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.monitor-kpi-card {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transition: all 0.25s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.monitor-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.monitor-kpi-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.monitor-kpi-info {
+  flex: 1;
+}
+
+.monitor-kpi-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.monitor-kpi-val {
+  font-size: 1.65rem;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.2;
+}
+
+.monitor-kpi-sub {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+/* Card Themes */
+.kpi-theme-indigo .monitor-kpi-icon {
+  background: rgba(99, 102, 241, 0.12);
+  color: #4f46e5;
+}
+.kpi-theme-success .monitor-kpi-icon {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+.kpi-theme-warning .monitor-kpi-icon {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+.kpi-theme-cyan .monitor-kpi-icon {
+  background: rgba(6, 182, 212, 0.12);
+  color: #0891b2;
+}
+
+/* ─── Province Breakdown Bar ─── */
+.province-breakdown-card {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  color: #ffffff;
+  border-radius: 14px;
+  padding: 18px 24px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.15);
+}
+
+.province-breakdown-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.province-breakdown-items {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.province-pill-stat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.province-pill-stat .badge-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+/* ─── Search & Filter Bar ─── */
+.monitor-filter-panel {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+/* ─── Detail Modal (Glassmorphism Overlay) ─── */
+.monitor-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1060;
+  padding: 16px;
+  animation: monitorModalFadeIn 0.2s ease-out;
+}
+
+@keyframes monitorModalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.monitor-modal-card {
+  background: #ffffff;
+  border-radius: 16px;
+  max-width: 900px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  border: 1px solid #e2e8f0;
+  animation: monitorModalSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+@keyframes monitorModalSlideUp {
+  from { transform: translateY(20px) scale(0.98); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.monitor-modal-header {
+  padding: 18px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f8fafc;
+}
+
+.monitor-modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.monitor-modal-footer {
+  padding: 14px 24px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* Interactive table styling */
+.monitor-table th {
+  background: #f1f5f9;
+  color: #334155;
+  font-weight: 600;
+  font-size: 0.88rem;
+  border-top: none;
+}
+
+.monitor-table td {
+  vertical-align: middle;
+  font-size: 0.9rem;
+}
+
+.monitor-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+  .monitor-hero-grid {
+    grid-template-columns: 1fr;
+  }
+  .province-breakdown-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .monitor-modal-card {
+    max-height: 95vh;
+  }
+}

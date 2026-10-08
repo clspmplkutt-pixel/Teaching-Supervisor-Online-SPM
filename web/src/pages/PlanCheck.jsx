@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
 import StatusBadge from '../components/StatusBadge';
+import { maskThaiId } from '../utils/thaiId';
 
 const getRoleId = (user, profile) =>
   profile?.level ||
@@ -211,7 +212,7 @@ const PlanCheck = () => {
       <div className="card-header bg-light d-flex justify-content-between align-items-center py-2 px-3 border-bottom">
         <div className="d-flex align-items-center">
           <span className="badge badge-warning text-dark mr-2">#{idx + 1}</span>
-          <span className="font-weight-bold text-dark">{teacherMap[row.people_id] || row.people_id || '-'}</span>
+          <span className="font-weight-bold text-dark">{teacherMap[row.people_id] || (row.people_id ? maskThaiId(row.people_id) : '-')}</span>
         </div>
         <StatusBadge status={row.plan_status} short />
       </div>
@@ -261,7 +262,7 @@ const PlanCheck = () => {
         <div className="card-header bg-light d-flex justify-content-between align-items-center py-2 px-3 border-bottom">
           <div className="d-flex align-items-center">
             <span className="badge badge-success mr-2">#{idx + 1}</span>
-            <span className="font-weight-bold text-dark">{teacherMap[row.people_id] || row.people_id || '-'}</span>
+            <span className="font-weight-bold text-dark">{teacherMap[row.people_id] || (row.people_id ? maskThaiId(row.people_id) : '-')}</span>
           </div>
           <StatusBadge status={row.plan_status} short />
         </div>
@@ -606,9 +607,9 @@ const PlanCheck = () => {
                               <td className="text-center text-muted fw-semibold">{idx + 1}</td>
                               <td>
                                 <div className="fw-bold text-dark">
-                                  {teacherMap[row.people_id] || row.people_id || '-'}
+                                  {teacherMap[row.people_id] || (row.people_id ? maskThaiId(row.people_id) : '-')}
                                 </div>
-                                <small className="text-muted">{row.people_id}</small>
+                                <small className="text-muted">{maskThaiId(row.people_id)}</small>
                               </td>
                               <td>
                                 <span className="badge badge-light border">
@@ -733,7 +734,7 @@ const PlanCheck = () => {
                             <tr key={row.planid}>
                               <td className="text-center text-muted fw-semibold">{idx + 1}</td>
                               <td>
-                                <strong>{teacherMap[row.people_id] || row.people_id || '-'}</strong>
+                                <strong>{teacherMap[row.people_id] || (row.people_id ? maskThaiId(row.people_id) : '-')}</strong>
                               </td>
                               <td>{lookups.teachSubjectShort[row.teach_subject_id] || '-'}</td>
                               <td>{row.subject_name} ({row.subject_code})</td>

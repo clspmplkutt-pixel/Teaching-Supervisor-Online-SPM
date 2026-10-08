@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../hooks/useUserProfile';
@@ -109,29 +110,74 @@ const Dashboard = () => {
                 setStudentData(dmcData || []);
             }
 
-            // 5. Load Plan Stats (For Teachers / Authors / Directors)
-            const role = user?.level_id || user?.user_metadata?.role || user?.role || 'teacher';
+            // 5. Load Plan Stats (For Teachers / Authors / Directors / Supervisors)
+            const role = user?.level_id || user?.user_metadata?.role || user?.role || profile?.level || 'teacher';
             if (role === 'teacher' && profile?.people_id) {
                 const { data: plans } = await supabase
                     .from('tbl_sendplan')
-                    .select('plan_status')
+                    .select('planid, plan_status')
                     .eq('people_id', profile.people_id);
                 if (plans) {
                     setPlanStats({
                         type: 'teacher',
                         total: plans.length,
-                        pending: plans.filter(p => String(p.plan_status) === '1').length,
-                        passed: plans.filter(p => String(p.plan_status) === '2').length,
+                        waitingDirector: plans.filter(p => ['1', '4'].includes(String(p.plan_status))).length,
+                        waitingClip: plans.filter(p => String(p.plan_status) === '2').length,
+                        underEvaluation: plans.filter(p => ['5', '6'].includes(String(p.plan_status))).length,
+                        completed: plans.filter(p => String(p.plan_status) === '7').length,
                         rejected: plans.filter(p => String(p.plan_status) === '3').length,
                     });
                 }
             } else if (role === 'directorschool' && profile?.school) {
-                const { count } = await supabase
+                const { data: plans } = await supabase
                     .from('tbl_sendplan')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('school_code', profile.school)
-                    .eq('plan_status', '1');
-                setPlanStats({ type: 'director', pending: count || 0 });
+                    .select('planid, plan_status')
+                    .eq('school_code', profile.school);
+                if (plans) {
+                    setPlanStats({
+                        type: 'director',
+                        total: plans.length,
+                        pending: plans.filter(p => ['1', '4'].includes(String(p.plan_status))).length,
+                        approved: plans.filter(p => ['2', '5', '6', '7'].includes(String(p.plan_status))).length,
+                        rejected: plans.filter(p => String(p.plan_status) === '3').length,
+                        completed: plans.filter(p => String(p.plan_status) === '7').length,
+                    });
+                }
+            } else if (['supervisor', 'chairman'].includes(role) && profile?.people_id) {
+                const { data: plans } = await supabase
+                    .from('tbl_sendplan')
+                    .select('planid, plan_status, committee1, committee2, committee3, committee4, committee5')
+                    .or(`committee1.eq.${profile.people_id},committee2.eq.${profile.people_id},committee3.eq.${profile.people_id},committee4.eq.${profile.people_id},committee5.eq.${profile.people_id}`);
+                
+                const { data: scores } = await supabase
+                    .from('tbl_sendplan_score')
+                    .select('planid')
+                    .eq('supervision', profile.people_id);
+                
+                const scoredSet = new Set((scores || []).map(s => String(s.planid)));
+                const totalAssigned = plans?.length || 0;
+                const scoredCount = plans?.filter(p => scoredSet.has(String(p.planid))).length || 0;
+                const pendingCount = totalAssigned - scoredCount;
+
+                setPlanStats({
+                    type: 'committee',
+                    total: totalAssigned,
+                    scored: scoredCount,
+                    pending: pendingCount,
+                });
+            } else if (['districdirector', 'admin'].includes(role)) {
+                const [planRes, scoredPlanRes, usingSchoolRes] = await Promise.all([
+                    supabase.from('tbl_sendplan').select('planid', { count: 'exact', head: true }),
+                    supabase.from('tbl_sendplan').select('planid', { count: 'exact', head: true }).eq('plan_status', '7'),
+                    supabase.from('tbl_sendplan').select('school_code')
+                ]);
+                const usingSchoolsSet = new Set((usingSchoolRes.data || []).map(p => p.school_code).filter(Boolean));
+                setPlanStats({
+                    type: 'district',
+                    totalPlans: planRes.count || 0,
+                    completedPlans: scoredPlanRes.count || 0,
+                    usingSchools: usingSchoolsSet.size,
+                });
             }
 
         } catch (error) {
@@ -192,61 +238,220 @@ const Dashboard = () => {
                             </div>
                         </div>
 
-                        {/* Info Boxes (Stats) */}
+                        {/* Info Boxes (Stats) for Teacher */}
                         {planStats && planStats.type === 'teacher' && (
                             <div className="col-12 mb-3">
+                                {planStats.rejected > 0 && (
+                                    <div className="alert alert-warning border-0 shadow-sm mb-3 d-flex align-items-center justify-content-between">
+                                        <div>
+                                            <i className="fa-solid fa-triangle-exclamation mr-2 text-danger"></i>
+                                            <strong>แจ้งเตือน:</strong> คุณมีแผนที่ผู้อำนวยการส่งกลับเพื่อแก้ไข จำนวน {planStats.rejected} แผน
+                                        </div>
+                                        <Link to="/statusplan" className="btn btn-sm btn-warning font-weight-bold">
+                                            ดูแผนและแก้ไข
+                                        </Link>
+                                    </div>
+                                )}
                                 <div className="row">
-                                    <div className="col-md-3 col-sm-6 col-12">
-                                        <div className="info-box bg-info">
-                                            <span className="info-box-icon"><i className="far fa-file-alt"></i></span>
-                                            <div className="info-box-content">
-                                                <span className="info-box-text">แผนทั้งหมด</span>
-                                                <span className="info-box-number">{planStats.total}</span>
+                                    <div className="col-md-3 col-sm-6 col-12 mb-2">
+                                        <Link to="/statusplan" className="text-decoration-none">
+                                            <div className="info-box bg-info shadow-sm" style={{ cursor: 'pointer' }}>
+                                                <span className="info-box-icon"><i className="far fa-file-alt"></i></span>
+                                                <div className="info-box-content text-white">
+                                                    <span className="info-box-text">แผนทั้งหมด</span>
+                                                    <span className="info-box-number">{planStats.total} แผน</span>
+                                                </div>
                                             </div>
-                                        </div>
+                                        </Link>
                                     </div>
-                                    <div className="col-md-3 col-sm-6 col-12">
-                                        <div className="info-box bg-warning">
-                                            <span className="info-box-icon"><i className="far fa-clock"></i></span>
-                                            <div className="info-box-content">
-                                                <span className="info-box-text">รอการประเมิน</span>
-                                                <span className="info-box-number">{planStats.pending}</span>
+                                    <div className="col-md-3 col-sm-6 col-12 mb-2">
+                                        <Link to="/statusplan" className="text-decoration-none">
+                                            <div className="info-box bg-warning shadow-sm" style={{ cursor: 'pointer' }}>
+                                                <span className="info-box-icon"><i className="far fa-clock"></i></span>
+                                                <div className="info-box-content text-white">
+                                                    <span className="info-box-text">รอ ผอ. อนุมัติ</span>
+                                                    <span className="info-box-number">{planStats.waitingDirector} แผน</span>
+                                                </div>
                                             </div>
-                                        </div>
+                                        </Link>
                                     </div>
-                                    <div className="col-md-3 col-sm-6 col-12">
-                                        <div className="info-box bg-success">
-                                            <span className="info-box-icon"><i className="far fa-check-circle"></i></span>
-                                            <div className="info-box-content">
-                                                <span className="info-box-text">ผ่านแล้ว</span>
-                                                <span className="info-box-number">{planStats.passed}</span>
+                                    <div className="col-md-3 col-sm-6 col-12 mb-2">
+                                        <Link to="/statusplan_clip" className="text-decoration-none">
+                                            <div className="info-box bg-primary shadow-sm" style={{ cursor: 'pointer' }}>
+                                                <span className="info-box-icon"><i className="fa-brands fa-youtube"></i></span>
+                                                <div className="info-box-content text-white">
+                                                    <span className="info-box-text">รอส่งคลิปการสอน</span>
+                                                    <span className="info-box-number">{planStats.waitingClip} แผน</span>
+                                                </div>
                                             </div>
-                                        </div>
+                                        </Link>
                                     </div>
-                                    <div className="col-md-3 col-sm-6 col-12">
-                                        <div className="info-box bg-danger">
-                                            <span className="info-box-icon"><i className="fas fa-times-circle"></i></span>
-                                            <div className="info-box-content">
-                                                <span className="info-box-text">ไม่ผ่าน (รอแก้ไข)</span>
-                                                <span className="info-box-number">{planStats.rejected}</span>
+                                    <div className="col-md-3 col-sm-6 col-12 mb-2">
+                                        <Link to="/statusplan_pass" className="text-decoration-none">
+                                            <div className="info-box bg-success shadow-sm" style={{ cursor: 'pointer' }}>
+                                                <span className="info-box-icon"><i className="far fa-check-circle"></i></span>
+                                                <div className="info-box-content text-white">
+                                                    <span className="info-box-text">ผ่านการนิเทศสมบูรณ์</span>
+                                                    <span className="info-box-number">{planStats.completed} แผน</span>
+                                                </div>
                                             </div>
-                                        </div>
+                                        </Link>
                                     </div>
                                 </div>
                             </div>
                         )}
 
+                        {/* Info Boxes (Stats) for School Director */}
                         {planStats && planStats.type === 'director' && (
                             <div className="col-12 mb-3">
                                 <div className="row">
-                                    <div className="col-md-4 col-sm-6 col-12">
-                                        <div className="info-box bg-warning">
-                                            <span className="info-box-icon"><i className="far fa-envelope"></i></span>
-                                            <div className="info-box-content">
-                                                <span className="info-box-text">แผนรอการประเมิน (โรงเรียน)</span>
-                                                <span className="info-box-number">{planStats.pending}</span>
+                                    <div className="col-md-3 col-sm-6 col-12 mb-2">
+                                        <Link to="/Plan_Check" className="text-decoration-none">
+                                            <div className="info-box bg-warning shadow-sm" style={{ cursor: 'pointer' }}>
+                                                <span className="info-box-icon"><i className="far fa-envelope"></i></span>
+                                                <div className="info-box-content text-white">
+                                                    <span className="info-box-text">รอ ผอ. ตรวจอนุมัติ</span>
+                                                    <span className="info-box-number">{planStats.pending} แผน</span>
+                                                </div>
                                             </div>
-                                        </div>
+                                        </Link>
+                                    </div>
+                                    <div className="col-md-3 col-sm-6 col-12 mb-2">
+                                        <Link to="/Plan_Check" className="text-decoration-none">
+                                            <div className="info-box bg-info shadow-sm" style={{ cursor: 'pointer' }}>
+                                                <span className="info-box-icon"><i className="fa-solid fa-spinner"></i></span>
+                                                <div className="info-box-content text-white">
+                                                    <span className="info-box-text">อนุมัติแล้ว/กำลังประเมิน</span>
+                                                    <span className="info-box-number">{planStats.approved} แผน</span>
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    </div>
+                                    <div className="col-md-3 col-sm-6 col-12 mb-2">
+                                        <Link to="/Plan_Check" className="text-decoration-none">
+                                            <div className="info-box bg-success shadow-sm" style={{ cursor: 'pointer' }}>
+                                                <span className="info-box-icon"><i className="far fa-check-circle"></i></span>
+                                                <div className="info-box-content text-white">
+                                                    <span className="info-box-text">ประเมินเสร็จสมบูรณ์</span>
+                                                    <span className="info-box-number">{planStats.completed} แผน</span>
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    </div>
+                                    <div className="col-md-3 col-sm-6 col-12 mb-2">
+                                        <Link to="/Plan_Check" className="text-decoration-none">
+                                            <div className="info-box bg-secondary shadow-sm" style={{ cursor: 'pointer' }}>
+                                                <span className="info-box-icon"><i className="fa-solid fa-school"></i></span>
+                                                <div className="info-box-content text-white">
+                                                    <span className="info-box-text">แผนในโรงเรียนทั้งหมด</span>
+                                                    <span className="info-box-number">{planStats.total} แผน</span>
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Info Boxes (Stats) for Supervisor / Committee */}
+                        {planStats && planStats.type === 'committee' && (
+                            <div className="col-12 mb-3">
+                                <div className="row">
+                                    <div className="col-md-3 col-sm-6 col-12 mb-2">
+                                        <Link to="/Plan_Check" className="text-decoration-none">
+                                            <div className="info-box bg-info shadow-sm" style={{ cursor: 'pointer' }}>
+                                                <span className="info-box-icon"><i className="fa-solid fa-list-check"></i></span>
+                                                <div className="info-box-content text-white">
+                                                    <span className="info-box-text">แผนที่ได้รับมอบหมาย</span>
+                                                    <span className="info-box-number">{planStats.total} แผน</span>
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    </div>
+                                    <div className="col-md-3 col-sm-6 col-12 mb-2">
+                                        <Link to="/Plan_Check" className="text-decoration-none">
+                                            <div className={`info-box ${planStats.pending > 0 ? 'bg-danger' : 'bg-success'} shadow-sm`} style={{ cursor: 'pointer' }}>
+                                                <span className="info-box-icon"><i className={planStats.pending > 0 ? 'far fa-clock' : 'far fa-check-circle'}></i></span>
+                                                <div className="info-box-content text-white">
+                                                    <span className="info-box-text">ค้างการประเมิน</span>
+                                                    <span className="info-box-number">{planStats.pending} แผน</span>
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    </div>
+                                    <div className="col-md-3 col-sm-6 col-12 mb-2">
+                                        <Link to="/view_scoring" className="text-decoration-none">
+                                            <div className="info-box bg-success shadow-sm" style={{ cursor: 'pointer' }}>
+                                                <span className="info-box-icon"><i className="fa-solid fa-star"></i></span>
+                                                <div className="info-box-content text-white">
+                                                    <span className="info-box-text">ประเมินแล้วเสร็จ</span>
+                                                    <span className="info-box-number">{planStats.scored} แผน</span>
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    </div>
+                                    <div className="col-md-3 col-sm-6 col-12 mb-2">
+                                        <Link to="/admin_monitor" className="text-decoration-none">
+                                            <div className="info-box bg-primary shadow-sm" style={{ cursor: 'pointer' }}>
+                                                <span className="info-box-icon"><i className="fa-solid fa-chart-line"></i></span>
+                                                <div className="info-box-content text-white">
+                                                    <span className="info-box-text">กำกับติดตามระดับเขต</span>
+                                                    <span className="info-box-number">ศูนย์ Monitor</span>
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Info Boxes (Stats) for District Director / Admin */}
+                        {planStats && planStats.type === 'district' && (
+                            <div className="col-12 mb-3">
+                                <div className="row">
+                                    <div className="col-md-3 col-sm-6 col-12 mb-2">
+                                        <Link to="/admin_monitor" className="text-decoration-none">
+                                            <div className="info-box bg-success shadow-sm" style={{ cursor: 'pointer' }}>
+                                                <span className="info-box-icon"><i className="fa-solid fa-school-circle-check"></i></span>
+                                                <div className="info-box-content text-white">
+                                                    <span className="info-box-text">รร. ที่ส่งแผนแล้ว</span>
+                                                    <span className="info-box-number">{planStats.usingSchools} / {totalSchools} แห่ง</span>
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    </div>
+                                    <div className="col-md-3 col-sm-6 col-12 mb-2">
+                                        <Link to="/admin_monitor" className="text-decoration-none">
+                                            <div className="info-box bg-info shadow-sm" style={{ cursor: 'pointer' }}>
+                                                <span className="info-box-icon"><i className="far fa-file-alt"></i></span>
+                                                <div className="info-box-content text-white">
+                                                    <span className="info-box-text">แผนการสอนทั้งเขต</span>
+                                                    <span className="info-box-number">{planStats.totalPlans} แผน</span>
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    </div>
+                                    <div className="col-md-3 col-sm-6 col-12 mb-2">
+                                        <Link to="/supervision_summary" className="text-decoration-none">
+                                            <div className="info-box bg-primary shadow-sm" style={{ cursor: 'pointer' }}>
+                                                <span className="info-box-icon"><i className="far fa-check-circle"></i></span>
+                                                <div className="info-box-content text-white">
+                                                    <span className="info-box-text">ประเมินเสร็จสมบูรณ์</span>
+                                                    <span className="info-box-number">{planStats.completedPlans} แผน</span>
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    </div>
+                                    <div className="col-md-3 col-sm-6 col-12 mb-2">
+                                        <Link to="/admin_monitor" className="text-decoration-none">
+                                            <div className="info-box bg-warning shadow-sm" style={{ cursor: 'pointer' }}>
+                                                <span className="info-box-icon"><i className="fa-solid fa-chart-pie"></i></span>
+                                                <div className="info-box-content text-white">
+                                                    <span className="info-box-text">ศูนย์กำกับติดตาม</span>
+                                                    <span className="info-box-number">ดูภาพรวม</span>
+                                                </div>
+                                            </div>
+                                        </Link>
                                     </div>
                                 </div>
                             </div>

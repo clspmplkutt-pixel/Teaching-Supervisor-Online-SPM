@@ -600,6 +600,51 @@ const SendPlan = () => {
     return true;
   };
 
+  const handleApplyKPAPreset = () => {
+    setForm((prev) => ({
+      ...prev,
+      objectives_knowledge: prev.objectives_knowledge || `ผู้เรียนมีความรู้ความเข้าใจเกี่ยวกับ ${prev.subject_content || 'เนื้อหาบทเรียน'} และสามารถอธิบายหลักการสำคัญได้อย่างถูกต้อง`,
+      objectives_process: prev.objectives_process || `ผู้เรียนสามารถฝึกปฏิบัติ คิดวิเคราะห์ และประยุกต์ใช้กระบวนการทำงานร่วมกับผู้อื่นได้อย่างมีประสิทธิภาพ`,
+      objectives_attribute: prev.objectives_attribute || `ผู้เรียนมีวินัย ใฝ่เรียนรู้ และมุ่งมั่นในการทำงาน`,
+    }));
+    showToast('แทรกข้อความตัวอย่าง K-P-A เรียบร้อยแล้ว (สามารถแก้ไขเพิ่มเติมได้)', 'success');
+  };
+
+  const handleApplyActivitiesPreset = () => {
+    const totalMin = form.teach_minute ? parseInt(form.teach_minute, 10) : 50;
+    const introMin = Math.round(totalMin * 0.2);
+    const bodyMin = Math.round(totalMin * 0.6);
+    const conclMin = totalMin - introMin - bodyMin;
+
+    setForm((prev) => ({
+      ...prev,
+      learning_activities: prev.learning_activities || 
+        `1. ขั้นนำเข้าสู่บทเรียน (${introMin} นาที):\n- ครูทบทวนความรู้เดิม กระตุ้นความสนใจด้วยคำถามหรือสถานการณ์จำลอง\n- แจ้งจุดประสงค์การเรียนรู้และกิจกรรมที่จะปฏิบัติ\n\n` +
+        `2. ขั้นจัดกิจกรรมการเรียนรู้ (${bodyMin} นาที):\n- นักเรียนศึกษาใบความรู้/สื่อการเรียนรู้ และร่วมกันอภิปรายในกลุ่ม\n- นักเรียนลงมือปฏิบัติกิจกรรม/ทำใบงาน โดยครูคอยให้คำแนะนำและอำนวยความสะดวก\n- ตัวแทนกลุ่มนำเสนอผลงานและร่วมกันแลกเปลี่ยนเรียนรู้\n\n` +
+        `3. ขั้นสรุปและประเมินผล (${conclMin} นาที):\n- ครูและนักเรียนร่วมกันสรุปองค์ความรู้สำคัญของบทเรียน\n- ทำแบบทดสอบท้ายบทหรือประเมินผลงานตามเกณฑ์รูบริกส์`,
+    }));
+    showToast('แทรกตัวอย่างขั้นตอนการจัดกิจกรรม 3 ขั้น เรียบร้อยแล้ว', 'success');
+  };
+
+  const handleApplyMeasurementPreset = () => {
+    setForm((prev) => ({
+      ...prev,
+      Measurement_how: prev.Measurement_how || `1. การตรวจใบงานและชิ้นงาน\n2. การสังเกตพฤติกรรมการมีส่วนร่วมในการจัดกิจกรรม\n3. การประเมินการนำเสนอผลงานกลุ่ม`,
+      Measurement_tools: prev.Measurement_tools || `1. แบบประเมินใบงาน/ชิ้นงาน\n2. แบบสังเกตพฤติกรรมการทำงานกลุ่ม\n3. แบบประเมินคุณลักษณะอันพึงประสงค์`,
+      Measurement_scoring: prev.Measurement_scoring || `เกณฑ์รูบริกส์ (Rubric Assessment) 4 ระดับคุณภาพ:\n- ระดับ 4 (ดีมาก) = ได้คะแนนร้อยละ 80 ขึ้นไป\n- ระดับ 3 (ดี) = ได้คะแนนร้อยละ 70 - 79\n- ระดับ 2 (พอใช้) = ได้คะแนนร้อยละ 60 - 69\n- ระดับ 1 (ปรับปรุง) = ได้คะแนนต่ำกว่าร้อยละ 60`,
+      Measurement_outcomes: prev.Measurement_outcomes || `ผู้เรียนต้องได้ผลการประเมินในระดับคุณภาพ 2 (พอใช้) ขึ้นไป หรือคิดเป็นร้อยละ 70 ของคะแนนเต็ม จึงจะถือว่าผ่านเกณฑ์การประเมิน`,
+    }));
+    showToast('แทรกตัวอย่างการวัดและประเมินผลเรียบร้อยแล้ว', 'success');
+  };
+
+  const handleApplyMediaPreset = () => {
+    setForm((prev) => ({
+      ...prev,
+      instructional_media: prev.instructional_media || `1. สไลด์นำเสนอประกอบการสอน (Canva / PowerPoint)\n2. ใบความรู้และใบกิจกรรมการเรียนรู้\n3. วีดิทัศน์ประกอบการจัดการเรียนรู้ (YouTube)\n4. แหล่งเรียนรู้ออนไลน์และห้องสมุดโรงเรียน`,
+    }));
+    showToast('แทรกตัวอย่างสื่อและแหล่งเรียนรู้เรียบร้อยแล้ว', 'success');
+  };
+
   const handleNextStep = () => {
     if (!validateStep(currentStep)) return;
     if (currentStep < 4) {
@@ -1075,10 +1120,18 @@ const SendPlan = () => {
             {/* ================= STEP 2: จุดประสงค์ & สาระ (K-P-A) ================= */}
             <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
               <div className="card card-primary card-outline">
-                <div className="card-header bg-light">
-                  <h4 className="card-title font-weight-bold text-primary">
+                <div className="card-header bg-light d-flex justify-content-between align-items-center flex-wrap">
+                  <h4 className="card-title font-weight-bold text-primary m-0">
                     <i className="fa-solid fa-bullseye mr-2"></i> จุดประสงค์การเรียนรู้ (K-P-A)
                   </h4>
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-outline-primary font-weight-bold"
+                    onClick={handleApplyKPAPreset}
+                    title="แทรกข้อความโครงสร้าง K-P-A มาตรฐาน"
+                  >
+                    <i className="fa-solid fa-wand-magic-sparkles mr-1"></i> ตัวอย่าง K-P-A มาตรฐาน
+                  </button>
                 </div>
                 <div className="card-body">
                   <div className="row">
@@ -1111,10 +1164,18 @@ const SendPlan = () => {
               </div>
 
               <div className="card card-info card-outline">
-                <div className="card-header bg-light">
-                  <h4 className="card-title font-weight-bold text-info">
+                <div className="card-header bg-light d-flex justify-content-between align-items-center flex-wrap">
+                  <h4 className="card-title font-weight-bold text-info m-0">
                     <i className="fa-solid fa-book-open-reader mr-2"></i> มาตรฐาน สาระการเรียนรู้ และกิจกรรม
                   </h4>
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-outline-info font-weight-bold"
+                    onClick={handleApplyActivitiesPreset}
+                    title="แทรกตัวอย่างขั้นตอนการจัดกิจกรรม 3 ขั้น (นำ-สอน-สรุป)"
+                  >
+                    <i className="fa-solid fa-wand-magic-sparkles mr-1"></i> ตัวอย่างขั้นตอนการสอน (3 ขั้น)
+                  </button>
                 </div>
                 <div className="card-body">
                   <div className="row">
@@ -1191,7 +1252,16 @@ const SendPlan = () => {
                   <div className="row">
                     <div className="col-lg-12">
                       <div className="mb-3">
-                        <label htmlFor="instructional_media">สื่อ / แหล่งการเรียนรู้ :</label>
+                        <div className="d-flex justify-content-between align-items-center mb-1">
+                          <label htmlFor="instructional_media" className="m-0">สื่อ / แหล่งการเรียนรู้ :</label>
+                          <button
+                            type="button"
+                            className="btn btn-xs btn-outline-secondary font-weight-bold"
+                            onClick={handleApplyMediaPreset}
+                          >
+                            <i className="fa-solid fa-wand-magic-sparkles mr-1"></i> ตัวอย่างสื่อ
+                          </button>
+                        </div>
                         <textarea className="form-control notemini" name="instructional_media" id="instructional_media" rows="3" placeholder="เช่น สื่อนำเสนอ Canva, ใบงาน, วีดิทัศน์ YouTube, แหล่งเรียนรู้ในชุมชน..." value={form.instructional_media} onChange={handleChange}></textarea>
                       </div>
                     </div>
@@ -1200,10 +1270,18 @@ const SendPlan = () => {
               </div>
 
               <div className="card card-navy">
-                <div className="card-header">
-                  <h4 className="card-title font-weight-bold">
+                <div className="card-header d-flex justify-content-between align-items-center flex-wrap">
+                  <h4 className="card-title font-weight-bold m-0">
                     <i className="fa-solid fa-list-check mr-2"></i> การวัดและประเมินผลการเรียนรู้
                   </h4>
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-light text-navy font-weight-bold"
+                    onClick={handleApplyMeasurementPreset}
+                    title="แทรกตัวอย่างวิธีการ เครื่องมือ เกณฑ์รูบริกส์ และการตัดสินผล"
+                  >
+                    <i className="fa-solid fa-wand-magic-sparkles mr-1"></i> ตัวอย่างการวัดประเมินผล
+                  </button>
                 </div>
                 <div className="card-body">
                   <div className="row">

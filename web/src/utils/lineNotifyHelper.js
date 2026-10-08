@@ -91,6 +91,35 @@ export const generateEvaluationResultMessage = ({
   );
 };
 
+export const generateSchoolFollowUpMessage = ({
+  schoolName,
+  currentHost = typeof window !== 'undefined' ? window.location.origin : '',
+}) => {
+  return (
+    `📢 [ติดตามการส่งแผนการจัดการเรียนรู้ - สพม.พิษณุโลก อุตรดิตถ์]\n` +
+    `เรียน ท่านผู้อำนวยการและคุณครู${schoolName ? ` โรงเรียน${schoolName}` : ''}\n\n` +
+    `ระบบนิเทศการศึกษาออนไลน์ สพม.พิษณุโลก อุตรดิตถ์ ขอความอนุเคราะห์ประชาสัมพันธ์และติดตามการจัดส่งแผนการจัดการเรียนรู้ของสถานศึกษาในระบบ\n\n` +
+    `เพื่อขับเคลื่อนการประเมินวิทยฐานะ ว.PA และการยกระดับคุณภาพการเรียนรู้ ขอเรียนเชิญเข้าสู่ระบบเพื่อจัดส่งแผนฯ ได้ที่:\n` +
+    `🔗 ${currentHost}/sendplan\n\n` +
+    `ขอขอบพระคุณสำหรับความร่วมมือในการพัฒนาคุณภาพการศึกษาเป็นอย่างสูง`
+  );
+};
+
+export const generateCommitteeReminderMessage = ({
+  committeeName,
+  pendingCount = 1,
+  currentHost = typeof window !== 'undefined' ? window.location.origin : '',
+}) => {
+  return (
+    `⏰ [แจ้งเตือนภาระงานประเมินแผนการจัดการเรียนรู้]\n` +
+    `เรียน กรรมการนิเทศ ${committeeName || 'ท่านกรรมการ'}\n\n` +
+    `ระบบนิเทศการศึกษาออนไลน์ สพม.พิษณุโลก อุตรดิตถ์ ขอเรียนแจ้งเตือนว่า ท่านมีแผนการจัดการเรียนรู้ที่รอการประเมินและให้ข้อเสนอแนะ จำนวน ${pendingCount} แผน\n\n` +
+    `ขอความอนุเคราะห์เข้าสู่ระบบเพื่อดำเนินการประเมินตามเกณฑ์ Rubrics ได้ที่:\n` +
+    `🔗 ${currentHost}/Plan_Check\n\n` +
+    `ขอขอบพระคุณในความอนุเคราะห์ร่วมขับเคลื่อนการนิเทศการศึกษาเป็นอย่างสูง`
+  );
+};
+
 export const openLineShare = (messageText) => {
   const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(messageText)}`;
   window.open(lineUrl, '_blank', 'noopener,noreferrer');

@@ -52,3 +52,42 @@ export const getThaiIdInfo = (raw) => {
     isValid,
   };
 };
+
+/**
+ * PDPA Compliance: Mask Thai National ID
+ * Example: 3-6508-00123-45-6 -> 3-65xx-xxxxx-xx-6
+ */
+export const maskThaiId = (raw) => {
+  const digits = cleanThaiId(raw);
+  if (!digits) return '';
+  if (digits.length < 13) return formatThaiId(raw);
+  return `${digits.slice(0, 1)}-${digits.slice(1, 3)}xx-xxxxx-xx-${digits.slice(12, 13)}`;
+};
+
+/**
+ * PDPA Compliance: Mask Phone Number
+ * Example: 0812345678 -> 081-xxx-5678
+ */
+export const maskPhoneNumber = (raw) => {
+  if (!raw) return '';
+  const digits = String(raw).replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `${digits.slice(0, 3)}-xxx-${digits.slice(6, 10)}`;
+  }
+  if (digits.length === 9) {
+    return `${digits.slice(0, 2)}-xxx-${digits.slice(5, 9)}`;
+  }
+  return raw;
+};
+
+/**
+ * PDPA Compliance: Mask Email
+ * Example: teacher@gmail.com -> te***r@gmail.com
+ */
+export const maskEmail = (email) => {
+  if (!email || !email.includes('@')) return email || '';
+  const [name, domain] = email.split('@');
+  if (name.length <= 2) return `${name[0]}*@${domain}`;
+  return `${name.slice(0, 2)}***${name.slice(-1)}@${domain}`;
+};
+

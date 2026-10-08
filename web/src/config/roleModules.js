@@ -337,11 +337,13 @@ export const moduleLabels = {
   send_clip: "ส่งคลิป (เก่า)",
   view_scoring: "ดูคะแนนการประเมิน",
   nominate_evaluator: "เสนอแต่งตั้งผู้นิเทศ",
-  approve_evaluator: "อนุมัติผู้นิเทศ"
+  approve_evaluator: "อนุมัติผู้นิเทศ",
+  admin_monitor: "กำกับติดตามการนิเทศ (Monitor)"
 };
 
 export const moduleIcons = {
   info: "fa-solid fa-house-chimney text-blue",
+  admin_monitor: "nav-icon fa-solid fa-chart-line text-indigo",
   supervision_summary: "fa-solid fa-chart-pie text-success",
   confirmUser: "fa-solid fa-user-check text-success",
   sendplan: "nav-icon fa-regular fa-paper-plane text-success",
