@@ -4,6 +4,7 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import PendingWorkAlert from '../components/PendingWorkAlert';
+import BottomNav from '../components/BottomNav';
 import { useAuth } from '../contexts/AuthContext';
 import { moduleLabels } from '../config/roleModules';
 
@@ -116,6 +117,7 @@ const AppLayout = () => {
       </div>
 
       <Footer />
+      <BottomNav />
     </div>
   );
 };
