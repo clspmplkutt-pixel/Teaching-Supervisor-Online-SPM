@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient';
 import { Link } from 'react-router-dom';
 import CryptoJS from 'crypto-js';
 import { encryptLegacyPassword } from '../utils/legacyCrypto';
+import { formatThaiId, cleanThaiId, isValidThaiId } from '../utils/thaiId';
 
 const Register = () => {
     const [step, setStep] = useState(1);
@@ -48,31 +49,20 @@ const Register = () => {
         gradeLevels: []
     });
 
-    // Validates Thai National ID
-    const checkID = (id) => {
-        if (id.length !== 13) return false;
-        let sum = 0;
-        for (let i = 0; i < 12; i++) {
-            sum += parseFloat(id.charAt(i)) * (13 - i);
-        }
-        if ((11 - sum % 11) % 10 !== parseFloat(id.charAt(12))) return false;
-        return true;
-    };
-
     // Handle People ID Input (Step 1)
     const handlePeopleIdChange = async (e) => {
-        const val = e.target.value.replace(/[^0-9]/g, ''); // Only numbers
-        if (val.length > 13) return;
-        setPeopleId(val);
+        const clean = cleanThaiId(e.target.value);
+        const formatted = formatThaiId(clean);
+        setPeopleId(formatted);
 
-        if (val.length === 13) {
-            if (checkID(val)) {
+        if (clean.length === 13) {
+            if (isValidThaiId(clean)) {
                 // Check duplication in DB
                 setLoading(true);
                 const { data } = await supabase
                     .from('tbl_Users')
                     .select('id')
-                    .eq('people_id', val)
+                    .eq('people_id', clean)
                     .maybeSingle();
                 setLoading(false);
 
@@ -80,15 +70,15 @@ const Register = () => {
                     setPeopleIdError('เป็นสมาชิกอยู่แล้ว ไม่สามารถสมัครได้');
                     setIsIdValid(false);
                 } else {
-                    setPeopleIdError('เลขประจำตัวประชาชนถูกต้อง'); // Success message handled in UI
+                    setPeopleIdError('เลขประจำตัวประชาชนถูกต้อง');
                     setIsIdValid(true);
                 }
             } else {
-                setPeopleIdError('เลขประจำตัวประชาชนไม่ถูกต้อง');
+                setPeopleIdError('เลขประจำตัวประชาชนไม่ถูกต้องตามหลักตรวจสอบ');
                 setIsIdValid(false);
             }
         } else {
-            setPeopleIdError('');
+            setPeopleIdError(clean.length > 0 ? `ระบุแล้ว ${clean.length}/13 หลัก` : '');
             setIsIdValid(false);
         }
     };
@@ -196,7 +186,7 @@ const Register = () => {
 
             // 3. Insert to Supabase
             const { error } = await supabase.from('tbl_Users').insert([{
-                people_id: peopleId,
+                people_id: cleanThaiId(peopleId),
                 prefix: formData.prefix,
                 name: formData.name,
                 lastname: formData.lastname,
@@ -278,7 +268,7 @@ const Register = () => {
                                             id="people_id"
                                             value={peopleId}
                                             onChange={handlePeopleIdChange}
-                                            placeholder="กรอกเลข 13 หลัก"
+                                            placeholder="X-XXXX-XXXXX-XX-X"
                                         />
                                     </div>
                                 ) : step === 2 ? (

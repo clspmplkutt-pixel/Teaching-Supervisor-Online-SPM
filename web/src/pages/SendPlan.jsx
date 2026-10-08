@@ -5,6 +5,7 @@ import { supabase } from '../supabaseClient';
 import { useUserProfile } from '../hooks/useUserProfile';
 import useSelect2 from '../hooks/useSelect2';
 import { uploadToDrive } from '../utils/driveUpload';
+import { showToast } from '../utils/toast';
 import './SendPlan.css';
 
 const normalizeThaiDate = (value) => {
@@ -103,6 +104,103 @@ const SendPlan = () => {
     indicators_mid: [],
     indicators_final: [],
   });
+
+  // Draft & Autosave state
+  const [draftInfo, setDraftInfo] = useState(null);
+  const [isDraftDismissed, setIsDraftDismissed] = useState(false);
+  const [lastSavedTime, setLastSavedTime] = useState('');
+
+  const draftKey = profile?.people_id ? `lmss_sendplan_draft_${profile.people_id}` : null;
+
+  // Check existing draft on mount (only for new plan)
+  useEffect(() => {
+    if (!draftKey || planid) return;
+    try {
+      const savedRaw = localStorage.getItem(draftKey);
+      if (savedRaw) {
+        const parsed = JSON.parse(savedRaw);
+        if (parsed && parsed.form) {
+          setDraftInfo(parsed);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to read draft', e);
+    }
+  }, [draftKey, planid]);
+
+  // Debounced autosave
+  useEffect(() => {
+    if (!draftKey || planid || loading) return;
+    const hasData = form.subject_code || form.subject_name || form.subject_name_plan || form.subject_content;
+    if (!hasData) return;
+
+    const timer = setTimeout(() => {
+      try {
+        const payload = {
+          form,
+          savedAt: new Date().toISOString(),
+        };
+        localStorage.setItem(draftKey, JSON.stringify(payload));
+        const dt = new Date();
+        setLastSavedTime(`${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}:${String(dt.getSeconds()).padStart(2, '0')}`);
+      } catch (e) {
+        console.warn('Autosave failed', e);
+      }
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [form, draftKey, planid, loading]);
+
+  const handleRestoreDraft = () => {
+    if (draftInfo?.form) {
+      setForm((prev) => ({
+        ...prev,
+        ...draftInfo.form,
+      }));
+      setIsDraftDismissed(true);
+      showToast('กู้คืนข้อมูลร่างเรียบร้อยแล้ว');
+    }
+  };
+
+  const handleDiscardDraft = () => {
+    if (draftKey) {
+      localStorage.removeItem(draftKey);
+    }
+    setDraftInfo(null);
+    setIsDraftDismissed(true);
+    setLastSavedTime('');
+    setForm({
+      teach_subject_id: '',
+      grade_level_id: '',
+      subject_type: '01',
+      subject_code: '',
+      subject_name: '',
+      subject_content: '',
+      subject_name_plan: '',
+      teach_date: '',
+      teach_timestart: '',
+      teach_timeend: '',
+      teach_minute: '',
+      learning_model: '',
+      competency: [],
+      ability21: [],
+      desirable: [],
+      objectives_knowledge: '',
+      objectives_process: '',
+      objectives_attribute: '',
+      learning_outcomes: '',
+      learning_content: '',
+      learning_activities: '',
+      instructional_media: '',
+      Measurement_how: '',
+      Measurement_tools: '',
+      Measurement_scoring: '',
+      Measurement_outcomes: '',
+      indicators_mid: [],
+      indicators_final: [],
+    });
+    showToast('ล้างข้อมูลร่างเรียบร้อยแล้ว', 'info');
+  };
 
   // ประเภทวิชาที่ไม่ต้องมีตัวชี้วัดระหว่างทาง/ปลายทาง
   const SUBJECT_TYPES_NO_INDICATORS = ['02', '08', '09'];
@@ -499,6 +597,10 @@ const SendPlan = () => {
         if (error) throw error;
       }
 
+      if (draftKey) {
+        localStorage.removeItem(draftKey);
+      }
+
       Swal.fire({
         title: planid ? 'แก้ไขสำเร็จแล้ว' : 'ส่งสำเร็จแล้ว',
         text: 'ระบบกำลังนำท่านกลับไปหน้าแรก',
@@ -531,6 +633,32 @@ const SendPlan = () => {
       <div className="row">
         <div className="col-12">
           <form onSubmit={handleSubmit} className="form-horizontal was-validated" autoComplete="off">
+            {draftInfo && !isDraftDismissed && !planid && (
+              <div
+                className="alert alert-info shadow-sm mb-3 d-flex flex-wrap align-items-center justify-content-between p-3"
+                style={{ borderLeft: '5px solid #0ea5e9' }}
+              >
+                <div>
+                  <h6 className="font-weight-bold mb-1 text-dark">
+                    <i className="fa-solid fa-floppy-disk mr-2 text-info"></i>
+                    พบข้อมูลร่างแผนการสอนที่บันทึกไว้ในเครื่อง
+                  </h6>
+                  <div className="small text-muted">
+                    บันทึกล่าสุดเมื่อ: {new Date(draftInfo.savedAt).toLocaleDateString('th-TH')} เวลา{' '}
+                    {new Date(draftInfo.savedAt).toLocaleTimeString('th-TH')}
+                    {draftInfo.form?.subject_name_plan ? ` (แผน: "${draftInfo.form.subject_name_plan}")` : ''}
+                  </div>
+                </div>
+                <div className="mt-2 mt-md-0 d-flex" style={{ gap: '8px' }}>
+                  <button type="button" className="btn btn-sm btn-info text-white" onClick={handleRestoreDraft}>
+                    <i className="fa-solid fa-rotate-left mr-1"></i> กู้คืนข้อมูลร่าง
+                  </button>
+                  <button type="button" className="btn btn-sm btn-outline-secondary" onClick={handleDiscardDraft}>
+                    <i className="fa-solid fa-trash mr-1"></i> ล้างร่าง/เริ่มใหม่
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="card card-success">
               <div className="card-header">
                 <h4 className="card-title">{planid ? 'แก้ไขข้อมูลแผนการสอน' : 'ข้อมูลผู้จัดทำแผน'}</h4>
@@ -898,13 +1026,34 @@ const SendPlan = () => {
                   </div>
                 )}
               </div>
-              <div className="card-footer text-center">
-                <button type="submit" className="btn btn-success" id="btn_submit" disabled={saving}>
-                  <i className={planid ? "fa-solid fa-save" : "fa-regular fa-paper-plane"}></i> {planid ? "บันทึกการแก้ไข" : "ส่งแผนการสอน"}
-                </button>
-                <Link to="/statusplan" className="btn btn-danger ml-2">
-                  <i className="fa-solid fa-ban"></i> ยกเลิก
-                </Link>
+              <div className="card-footer d-flex flex-wrap justify-content-between align-items-center">
+                <div className="small py-1">
+                  {lastSavedTime && (
+                    <span className="text-success font-weight-bold">
+                      <i className="fa-solid fa-cloud-arrow-up mr-1"></i>
+                      บันทึกร่างอัตโนมัติแล้ว ({lastSavedTime})
+                    </span>
+                  )}
+                </div>
+                <div>
+                  {!planid && (
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary mr-2"
+                      onClick={handleDiscardDraft}
+                      title="ล้างข้อมูลในฟอร์มเพื่อเริ่มใหม่"
+                    >
+                      <i className="fa-solid fa-eraser mr-1"></i> ล้างข้อมูลร่าง
+                    </button>
+                  )}
+                  <button type="submit" className="btn btn-success" id="btn_submit" disabled={saving}>
+                    <i className={planid ? "fa-solid fa-save mr-1" : "fa-regular fa-paper-plane mr-1"}></i>{' '}
+                    {saving ? "กำลังบันทึก..." : (planid ? "บันทึกการแก้ไข" : "ส่งแผนการสอน")}
+                  </button>
+                  <Link to="/statusplan" className="btn btn-danger ml-2">
+                    <i className="fa-solid fa-ban mr-1"></i> ยกเลิก
+                  </Link>
+                </div>
               </div>
             </div>
           </form>

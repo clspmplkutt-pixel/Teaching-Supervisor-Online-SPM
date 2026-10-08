@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { encryptLegacyPassword } from '../utils/legacyCrypto';
+import { formatThaiId, cleanThaiId, getThaiIdInfo } from '../utils/thaiId';
 import Swal from 'sweetalert2';
 
 const Login = () => {
@@ -30,11 +31,12 @@ const Login = () => {
         setForgotResult(null);
         setForgotLoading(true);
 
+        const cleanForgotId = cleanThaiId(forgotId);
         try {
             const { data: user, error } = await supabase
                 .from('tbl_Users')
                 .select('*')
-                .eq('people_id', forgotId)
+                .eq('people_id', cleanForgotId)
                 .maybeSingle();
 
             if (error) throw error;
@@ -78,7 +80,7 @@ const Login = () => {
                     const { error: updateError } = await supabase
                         .from('tbl_Users')
                         .update({ passwd: encrypted })
-                        .eq('people_id', forgotId);
+                        .eq('people_id', cleanForgotId);
                     
                     if (updateError) throw updateError;
 
@@ -122,20 +124,23 @@ const Login = () => {
         e.preventDefault();
         setError('');
 
+        const rawUser = (loginData.user || '').trim();
+        const effectiveUser = /^[\d-]/.test(rawUser) ? cleanThaiId(rawUser) : rawUser;
+
         // ถ้าไม่ได้เลือกระดับ → ลองตรวจ auto-detect
         let effectiveLevel = loginData.level;
 
         if (!effectiveLevel) {
             // Admin login check
-            if (loginData.user === 'admin' || loginData.user === 'root') {
-                effectiveLevel = loginData.user;
+            if (effectiveUser === 'admin' || effectiveUser === 'root') {
+                effectiveLevel = effectiveUser;
             } else {
                 // ดึง level จาก DB ก่อน
                 try {
                     const { data: userData } = await supabase
                         .from('tbl_Users')
                         .select('level, headDepartment, register_isConfirm, people_id')
-                        .eq('people_id', loginData.user)
+                        .eq('people_id', effectiveUser)
                         .maybeSingle();
 
                     if (!userData) {
@@ -143,7 +148,7 @@ const Login = () => {
                         const { data: adminData } = await supabase
                             .from('tbl_user')
                             .select('user, level_id')
-                            .eq('user', loginData.user)
+                            .eq('user', effectiveUser)
                             .maybeSingle();
                         
                         if (adminData) {
@@ -168,7 +173,7 @@ const Login = () => {
         }
 
         try {
-            const data = await login(loginData.user, loginData.password, effectiveLevel);
+            const data = await login(effectiveUser, loginData.password, effectiveLevel);
             
             // Check default password logic (YYYYMMDD or DDMMYYYY or 123456)
             if (data && data.birthday) {
@@ -203,9 +208,21 @@ const Login = () => {
         }
     };
 
+    const handleUserChange = (e) => {
+        const val = e.target.value;
+        if (/^[\d-]/.test(val)) {
+            setLoginData(prev => ({ ...prev, user: formatThaiId(val) }));
+        } else {
+            setLoginData(prev => ({ ...prev, user: val }));
+        }
+    };
+
     const handleChange = (e) => {
         setLoginData({ ...loginData, [e.target.name]: e.target.value });
     };
+
+    const isIdInput = /^[\d-]/.test(loginData.user || '');
+    const idInfo = isIdInput ? getThaiIdInfo(loginData.user) : null;
 
     return (
         <div className="hold-transition login-page pace-primary" style={{ minHeight: '100vh' }}>
@@ -223,14 +240,14 @@ const Login = () => {
                     <div className="card-body login-card-body">
                         <h4 className="login-box-msg text-danger">เข้าสู่ระบบ</h4>
                         <form onSubmit={handleSubmit}>
-                            <div className="input-group mb-3">
+                            <div className="input-group mb-1">
                                 <input
                                     type="text"
                                     className="form-control"
                                     placeholder="เลขประจำตัวประชาชน 13 หลัก"
                                     name="user"
                                     value={loginData.user}
-                                    onChange={handleChange}
+                                    onChange={handleUserChange}
                                     required
                                     autoFocus
                                 />
@@ -240,6 +257,26 @@ const Login = () => {
                                     </div>
                                 </div>
                             </div>
+                            {idInfo && idInfo.length > 0 && (
+                                <div className="mb-2 pl-1 small">
+                                    {idInfo.isComplete && idInfo.isValid && (
+                                        <span className="text-success font-weight-bold">
+                                            <i className="fas fa-check-circle mr-1"></i>เลขประจำตัวประชาชนถูกต้อง
+                                        </span>
+                                    )}
+                                    {idInfo.isComplete && !idInfo.isValid && (
+                                        <span className="text-warning font-weight-bold">
+                                            <i className="fas fa-triangle-exclamation mr-1"></i>เลขบัตรไม่ถูกต้องตามหลักตรวจสอบ
+                                        </span>
+                                    )}
+                                    {!idInfo.isComplete && (
+                                        <span className="text-muted">
+                                            <i className="fas fa-id-card mr-1"></i>ระบุแล้ว {idInfo.length}/13 หลัก
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                            {(!idInfo || idInfo.length === 0) && <div className="mb-2"></div>}
                             <div className="input-group mb-3">
                                 <input
                                     type={showPassword ? 'text' : 'password'}
@@ -383,15 +420,33 @@ const Login = () => {
                                             <label>กรอกเลขประจำตัวประชาชน 13 หลัก</label>
                                             <input 
                                                 type="text" 
-                                                className="form-control form-control-lg mb-2" 
+                                                className="form-control form-control-lg mb-1" 
                                                 value={forgotId} 
-                                                onChange={(e) => setForgotId(e.target.value.replace(/[^0-9]/g, ''))}
-                                                maxLength="13"
+                                                onChange={(e) => setForgotId(formatThaiId(e.target.value))}
                                                 required 
                                                 autoFocus
-                                                placeholder="เลข 13 หลัก"
+                                                placeholder="X-XXXX-XXXXX-XX-X"
                                             />
-                                            <label>วัน/เดือน/ปีเกิด <span className="text-danger small">(ค.ศ. ที่ใช้ลงทะเบียน)</span></label>
+                                            {forgotId && (
+                                                <div className="small mb-2 pl-1">
+                                                    {getThaiIdInfo(forgotId).isComplete && getThaiIdInfo(forgotId).isValid && (
+                                                        <span className="text-success font-weight-bold">
+                                                            <i className="fas fa-check-circle mr-1"></i>เลขประจำตัวประชาชนถูกต้อง
+                                                        </span>
+                                                    )}
+                                                    {getThaiIdInfo(forgotId).isComplete && !getThaiIdInfo(forgotId).isValid && (
+                                                        <span className="text-warning font-weight-bold">
+                                                            <i className="fas fa-triangle-exclamation mr-1"></i>เลขบัตรไม่ถูกต้องตามหลักตรวจสอบ
+                                                        </span>
+                                                    )}
+                                                    {!getThaiIdInfo(forgotId).isComplete && (
+                                                        <span className="text-muted">
+                                                            ระบุแล้ว {getThaiIdInfo(forgotId).length}/13 หลัก
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+                                            <label className="mt-2">วัน/เดือน/ปีเกิด <span className="text-danger small">(ค.ศ. ที่ใช้ลงทะเบียน)</span></label>
                                             <input 
                                                 type="date" 
                                                 className="form-control form-control-lg" 
@@ -401,7 +456,7 @@ const Login = () => {
                                             />
                                         </div>
                                         {forgotError && <div className="alert alert-danger"><i className="fas fa-exclamation-triangle"></i> {forgotError}</div>}
-                                        <button type="submit" className="btn btn-danger btn-block btn-lg" disabled={forgotLoading || forgotId.length !== 13 || !forgotDob}>
+                                        <button type="submit" className="btn btn-danger btn-block btn-lg" disabled={forgotLoading || cleanThaiId(forgotId).length !== 13 || !forgotDob}>
                                             {forgotLoading ? 'กำลังดำเนินการ...' : <span><i className="fas fa-sync-alt"></i> รีเซ็ตรหัสผ่าน</span>}
                                         </button>
                                     </form>
@@ -425,7 +480,7 @@ const Login = () => {
                             </div>
                             <div className="modal-footer bg-light">
                                 {forgotResult && (
-                                    <button type="button" className="btn btn-success" onClick={() => { closeForgotModal(); setLoginData({...loginData, user: forgotId, password: forgotResult.newPassword}); }}>
+                                    <button type="button" className="btn btn-success" onClick={() => { closeForgotModal(); setLoginData({...loginData, user: formatThaiId(forgotId), password: forgotResult.newPassword}); }}>
                                         <i className="fas fa-sign-in-alt mr-1"></i> นำไปเข้าสู่ระบบ
                                     </button>
                                 )}

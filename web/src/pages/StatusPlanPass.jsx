@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { useUserProfile } from '../hooks/useUserProfile';
+import StatusBadge from '../components/StatusBadge';
 
 const StatusPlanPass = () => {
   const { profile, loading: profileLoading } = useUserProfile();
@@ -117,8 +118,7 @@ const StatusPlanPass = () => {
                         )}
                       </td>
                       <td>
-                        {String(row.plan_status) === '2' && <span className="badge badge-success">ผ่าน</span>}
-                        {String(row.plan_status) === '3' && <span className="badge badge-danger">ไม่ผ่าน</span>}
+                        <StatusBadge status={row.plan_status} />
                       </td>
                       <td>
                         <div className="d-flex align-items-center gap-1">

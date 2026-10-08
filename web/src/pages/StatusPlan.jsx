@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../hooks/useUserProfile';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
+import StatusBadge, { PlanTimelineStepper } from '../components/StatusBadge';
 
 const getRoleId = (user) => {
   return user?.level_id || user?.user_metadata?.role || user?.role || 'teacher';
@@ -274,10 +275,10 @@ const StatusPlan = () => {
           {committeeTotal > 0 ? ` / ${committeeTotal} คน` : ''}
         </td>
         <td>
-          <span className={`badge ${statusBadgeClass(row.plan_status)}`}>{lookups.status[String(row.plan_status)] || ''}</span>
-          {String(row.plan_status) === '3' && row.plan_ds_comment && (
-            <div className="mt-1">หมายเหตุ: {row.plan_ds_comment}</div>
-          )}
+          <StatusBadge
+            status={row.plan_status}
+            customNote={String(row.plan_status) === '3' && row.plan_ds_comment ? `หมายเหตุ: ${row.plan_ds_comment}` : ''}
+          />
         </td>
         <td className="text-center">
           <div className="d-flex flex-column gap-1" style={{ gap: '4px' }}>
@@ -326,7 +327,12 @@ const StatusPlan = () => {
           )}
         </td>
         <td>
-          <Link to={`/appointment?planid=${row.planid}`} className="btn btn-info">ตรวจ/แต่งตั้ง</Link>
+          <div className="d-flex flex-column align-items-center" style={{ gap: '6px' }}>
+            <StatusBadge status={row.plan_status} short />
+            <Link to={`/appointment?planid=${row.planid}`} className="btn btn-sm btn-info w-100">
+              <i className="fas fa-clipboard-check mr-1"></i> ตรวจ/แต่งตั้ง
+            </Link>
+          </div>
         </td>
       </tr>
     );
@@ -371,6 +377,19 @@ const StatusPlan = () => {
             </div>
           </div>
           <div className="card-body">
+            {roleId !== 'directorschool' && rows.length > 0 && (
+              <div className="mb-3">
+                <div className="d-flex justify-content-between align-items-center mb-1">
+                  <span className="small text-muted font-weight-bold">
+                    <i className="fa-solid fa-route mr-1 text-primary"></i> แผนล่าสุดอยู่ในขั้นตอน:
+                  </span>
+                  <span className="small text-muted">
+                    {rows[0]?.subject_name_plan || ''}
+                  </span>
+                </div>
+                <PlanTimelineStepper currentStatus={rows[0]?.plan_status || '1'} />
+              </div>
+            )}
             <div className="table-responsive">
               <table className="table table-bordered table-hover table-striped" id="data">
                 <thead>
