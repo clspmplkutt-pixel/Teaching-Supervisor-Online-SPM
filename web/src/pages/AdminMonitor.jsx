@@ -400,37 +400,31 @@ const AdminMonitor = () => {
 
     return (
         <div className="admin-monitor admin-monitor-container">
-            {/* Page Header */}
-            <div className="content-header">
-                <div className="container-fluid">
-                    <div className="row mb-2 align-items-center">
-                        <div className="col-sm-7">
-                            <h1 className="m-0 font-weight-bold" style={{ color: '#1e293b' }}>
-                                <i className="fa-solid fa-chart-line text-primary mr-2"></i>
-                                กำกับติดตามและประเมินผลการใช้งาน (Supervision Monitor)
-                            </h1>
-                            <p className="text-muted mb-0 small">
-                                ศูนย์กลางบริหารจัดการและติดตามความก้าวหน้าการนิเทศการศึกษา สพม.พิษณุโลก อุตรดิตถ์
-                            </p>
-                        </div>
-                        <div className="col-sm-5 text-sm-right mt-2 mt-sm-0">
-                            <button
-                                type="button"
-                                className="btn btn-outline-success font-weight-bold shadow-sm"
-                                onClick={handleBroadcastPendingSchools}
-                                title="ส่งข้อความสรุปติดตาม รร. ที่ยังไม่ส่งแผน เข้ากลุ่ม LINE ผู้บริหาร"
-                            >
-                                <i className="fa-brands fa-line mr-1 text-success"></i> สรุปติดตามค้างส่งเข้า LINE
-                            </button>
-                        </div>
-                    </div>
+            {/* Top Action Bar */}
+            <div className="d-flex justify-content-between align-items-center flex-wrap mb-3 p-3 bg-white rounded-lg shadow-sm border">
+                <div>
+                    <h5 className="m-0 font-weight-bold text-dark">
+                        <i className="fa-solid fa-chart-line text-primary mr-2"></i>
+                        ศูนย์บัญชาการกำกับติดตามและประเมินผลการใช้งาน (Supervision Monitor)
+                    </h5>
+                    <p className="text-muted mb-0 small mt-1">
+                        ติดตามความก้าวหน้าการจัดส่งแผนและการประเมินผลของ 57 สถานศึกษา สพม.พิษณุโลก อุตรดิตถ์
+                    </p>
+                </div>
+                <div className="mt-2 mt-sm-0">
+                    <button
+                        type="button"
+                        className="btn btn-outline-success font-weight-bold shadow-sm"
+                        onClick={handleBroadcastPendingSchools}
+                        title="ส่งข้อความสรุปติดตาม รร. ที่ยังไม่ส่งแผน เข้ากลุ่ม LINE ผู้บริหาร"
+                    >
+                        <i className="fa-brands fa-line mr-1 text-success"></i> สรุปติดตามค้างส่งเข้า LINE
+                    </button>
                 </div>
             </div>
 
-            <section className="content">
-                <div className="container-fluid">
-                    {/* Hero KPI Cards */}
-                    <div className="monitor-hero-grid">
+            {/* Hero KPI Cards */}
+            <div className="monitor-hero-grid">
                         <div className="monitor-kpi-card kpi-theme-indigo">
                             <div className="monitor-kpi-icon">
                                 <i className="fa-solid fa-school"></i>
@@ -852,8 +846,6 @@ const AdminMonitor = () => {
                             )}
                         </div>
                     </div>
-                </div>
-            </section>
 
             {/* ─── MODAL 1: รายละเอียดสถานศึกษา (School Detail Modal) ─── */}
             {selectedSchoolModal && (

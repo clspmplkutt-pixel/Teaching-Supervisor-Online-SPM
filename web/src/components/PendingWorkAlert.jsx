@@ -55,7 +55,7 @@ const PendingWorkAlert = () => {
           .from('tbl_sendplan')
           .select('planid')
           .or(`committee1.eq.${peopleId},committee2.eq.${peopleId},committee3.eq.${peopleId},committee4.eq.${peopleId},committee5.eq.${peopleId}`)
-          .eq('plan_status', '2');
+          .in('plan_status', ['2', '5', '6']);
 
         if (assignedPlans && assignedPlans.length > 0) {
           const planIds = assignedPlans.map((p) => String(p.planid));

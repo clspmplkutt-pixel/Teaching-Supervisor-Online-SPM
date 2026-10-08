@@ -59,7 +59,7 @@ const useNotifications = () => {
             .or(
               `committee1.eq.${peopleId},committee2.eq.${peopleId},committee3.eq.${peopleId},committee4.eq.${peopleId},committee5.eq.${peopleId}`
             )
-            .eq('plan_status', '2');
+            .in('plan_status', ['2', '5', '6']);
 
           if (!plans || plans.length === 0) {
             if (mounted) setCount(0);
