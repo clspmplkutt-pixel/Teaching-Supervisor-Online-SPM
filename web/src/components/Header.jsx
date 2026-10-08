@@ -42,35 +42,43 @@ const Header = () => {
             </ul>
 
             {/* Right navbar links */}
-            <ul className="navbar-nav ml-auto">
+            <ul className="navbar-nav ml-auto align-items-center">
                 <li className="nav-item">
-                    <span className="nav-link">
-                        {thai_date_full(new Date())} | <span className="text-blue">{userName} ({userRole}) <span className="badge badge-warning">React Version</span></span>
+                    <span className="nav-link py-1 px-2" style={{ fontSize: '13px' }}>
+                        <span className="d-none d-md-inline text-muted">{thai_date_full(new Date())} | </span>
+                        <span className="text-primary font-weight-bold">
+                            {userName} <span className="text-muted font-weight-normal">({userRole})</span>
+                        </span>
+                        <span className="badge badge-warning d-none d-lg-inline-block ml-1">React</span>
                     </span>
                 </li>
 
                 {/* 🔔 Notification Bell */}
-                {notifCount > 0 && (
-                    <li className="nav-item">
-                        <Link to={notifLink} className="nav-link" title={`มี ${notifCount} รายการรอดำเนินการ`}>
-                            <i className="fas fa-bell text-warning"></i>
+                <li className="nav-item">
+                    <Link
+                        to={notifLink}
+                        className="nav-link px-2"
+                        title={notifCount > 0 ? `มี ${notifCount} รายการรอดำเนินการ` : 'ไม่มีรายการค้างดำเนินการ'}
+                    >
+                        <i className={`fas fa-bell ${notifCount > 0 ? 'text-warning animate__animated animate__shakeX' : 'text-secondary'}`}></i>
+                        {notifCount > 0 && (
                             <span
                                 className="badge badge-danger navbar-badge"
-                                style={{ fontSize: '10px' }}
+                                style={{ fontSize: '10px', top: '4px', right: '4px' }}
                             >
                                 {notifCount > 99 ? '99+' : notifCount}
                             </span>
-                        </Link>
-                    </li>
-                )}
+                        )}
+                    </Link>
+                </li>
 
-                <li className="nav-item">
-                    <a className="nav-link" data-widget="fullscreen" href="#" role="button">
+                <li className="nav-item d-none d-sm-inline-block">
+                    <a className="nav-link px-2" data-widget="fullscreen" href="#" role="button" title="เต็มจอ">
                         <i className="fas fa-expand-arrows-alt"></i>
                     </a>
                 </li>
                 <li className="nav-item">
-                    <button className="nav-link btn btn-link" onClick={logout} role="button">
+                    <button className="nav-link btn btn-link px-2" onClick={logout} role="button" title="ออกจากระบบ">
                         <i className="fa-solid fa-arrow-right-from-bracket text-danger"></i>
                     </button>
                 </li>

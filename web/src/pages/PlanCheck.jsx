@@ -5,6 +5,7 @@ import { useUserProfile } from '../hooks/useUserProfile';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
+import StatusBadge from '../components/StatusBadge';
 
 const getRoleId = (user, profile) =>
   profile?.level ||
@@ -23,6 +24,7 @@ const PlanCheck = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('pending_director'); // 'pending_director' | 'approved_director' | 'committee'
+  const [viewMode, setViewMode] = useState('auto'); // 'auto', 'card', 'table'
 
   // Lookups
   const [lookups, setLookups] = useState({
@@ -204,6 +206,157 @@ const PlanCheck = () => {
   const filteredApprovedDirector = useMemo(() => filterList(approvedDirectorPlans), [approvedDirectorPlans, searchTerm, teacherMap]);
   const filteredCommittee = useMemo(() => filterList(committeePlans), [committeePlans, searchTerm, teacherMap]);
 
+  const renderDirectorPendingCard = (row, idx) => (
+    <div key={`m-dpen-${row.planid}`} className="card shadow-sm border mb-3 rounded-lg overflow-hidden">
+      <div className="card-header bg-light d-flex justify-content-between align-items-center py-2 px-3 border-bottom">
+        <div className="d-flex align-items-center">
+          <span className="badge badge-warning text-dark mr-2">#{idx + 1}</span>
+          <span className="font-weight-bold text-dark">{teacherMap[row.people_id] || row.people_id || '-'}</span>
+        </div>
+        <StatusBadge status={row.plan_status} short />
+      </div>
+      <div className="card-body p-3">
+        <h5 className="font-weight-bold text-primary mb-1" style={{ fontSize: '0.95rem' }}>
+          {row.subject_name_plan || '-'}
+        </h5>
+        <div className="small text-muted mb-2">
+          {row.subject_name} ({row.subject_code}) • {lookups.gradeLevel[row.grade_level_id] || '-'} • {lookups.teachSubjectShort[row.teach_subject_id] || '-'}
+        </div>
+        {row.subject_content && (
+          <div className="small text-secondary mb-2">
+            <strong>หน่วย:</strong> {row.subject_content}
+          </div>
+        )}
+        <div className="d-flex justify-content-between align-items-center small text-muted pt-2 border-top">
+          <span>ปี {row.edu_year}/{row.edu_term}</span>
+          <div className="d-flex" style={{ gap: '8px' }}>
+            {row.plan_file && (
+              <a href={row.plan_file} target="_blank" rel="noreferrer" className="text-danger font-weight-bold">
+                <i className="fa-regular fa-file-pdf mr-1"></i>ดู PDF
+              </a>
+            )}
+            {row.plan_clip && (
+              <a href={`https://www.youtube.com/watch?v=${row.plan_clip}`} target="_blank" rel="noreferrer" className="text-danger font-weight-bold ml-2">
+                <i className="fa-brands fa-youtube mr-1"></i>คลิป
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="card-footer bg-white p-2 border-top">
+        <Link
+          to={`/appointment?planid=${row.planid}&from=Plan_Check`}
+          className="btn btn-primary btn-block btn-sm font-weight-bold shadow-sm"
+        >
+          <i className="fa-solid fa-file-signature mr-1"></i> ตรวจ / อนุมัติ / แต่งตั้งกรรมการ
+        </Link>
+      </div>
+    </div>
+  );
+
+  const renderDirectorApprovedCard = (row, idx) => {
+    const comms = [row.committee1, row.committee2, row.committee3, row.committee4, row.committee5].filter(Boolean);
+    return (
+      <div key={`m-dapp-${row.planid}`} className="card shadow-sm border mb-3 rounded-lg overflow-hidden">
+        <div className="card-header bg-light d-flex justify-content-between align-items-center py-2 px-3 border-bottom">
+          <div className="d-flex align-items-center">
+            <span className="badge badge-success mr-2">#{idx + 1}</span>
+            <span className="font-weight-bold text-dark">{teacherMap[row.people_id] || row.people_id || '-'}</span>
+          </div>
+          <StatusBadge status={row.plan_status} short />
+        </div>
+        <div className="card-body p-3">
+          <h5 className="font-weight-bold text-primary mb-1" style={{ fontSize: '0.95rem' }}>
+            {row.subject_name_plan || '-'}
+          </h5>
+          <div className="small text-muted mb-2">
+            {row.subject_name} ({row.subject_code}) • {lookups.teachSubjectShort[row.teach_subject_id] || '-'}
+          </div>
+          <div className="d-flex justify-content-between align-items-center small text-muted pt-2 border-top">
+            <span>กรรมการ: {comms.length} ท่าน</span>
+            {row.plan_file && (
+              <a href={row.plan_file} target="_blank" rel="noreferrer" className="text-danger font-weight-bold">
+                <i className="fa-regular fa-file-pdf mr-1"></i>ดู PDF
+              </a>
+            )}
+          </div>
+        </div>
+        <div className="card-footer bg-white p-2 border-top d-flex" style={{ gap: '6px' }}>
+          <Link
+            to={`/appointment?planid=${row.planid}&from=Plan_Check`}
+            className="btn btn-warning btn-sm text-dark font-weight-bold flex-fill"
+          >
+            <i className="fa-solid fa-user-pen mr-1"></i> แก้ไขกรรมการ ({comms.length})
+          </Link>
+          <Link
+            to={`/view_scoring?planid=${row.planid}`}
+            className="btn btn-outline-info btn-sm flex-fill"
+          >
+            <i className="fa-solid fa-chart-line mr-1"></i> ผลนิเทศ
+          </Link>
+        </div>
+      </div>
+    );
+  };
+
+  const renderCommitteeCard = (row, index) => {
+    let committee = '';
+    if (row.committee1 === userId) committee = 'committee1';
+    if (row.committee2 === userId) committee = 'committee2';
+    if (row.committee3 === userId) committee = 'committee3';
+    if (row.committee4 === userId) committee = 'committee4';
+    if (row.committee5 === userId) committee = 'committee5';
+
+    const scored = scoreSet.has(String(row.planid));
+
+    return (
+      <div key={`m-comm-${row.planid}`} className="card shadow-sm border mb-3 rounded-lg overflow-hidden">
+        <div className="card-header bg-light d-flex justify-content-between align-items-center py-2 px-3 border-bottom">
+          <div className="d-flex align-items-center">
+            <span className="badge badge-info mr-2">#{index + 1}</span>
+            <span className="font-weight-bold text-dark">{row.subject_code ? `${row.subject_name} (${row.subject_code})` : row.subject_name}</span>
+          </div>
+          <StatusBadge status={row.plan_status} short />
+        </div>
+        <div className="card-body p-3">
+          <h5 className="font-weight-bold text-primary mb-1" style={{ fontSize: '0.95rem' }}>
+            {row.subject_name_plan || '-'}
+          </h5>
+          <div className="small text-muted mb-2">
+            {lookups.gradeLevel[row.grade_level_id] || ''} • {lookups.teachSubjectShort[row.teach_subject_id] || ''}
+            {row.subject_content && ` • หน่วย: ${row.subject_content}`}
+          </div>
+          <div className="d-flex justify-content-between align-items-center small text-muted pt-2 border-top">
+            <span>ปี {row.edu_year}/{row.edu_term}</span>
+            <div className="d-flex" style={{ gap: '8px' }}>
+              {row.plan_file && (
+                <a href={row.plan_file} target="_blank" rel="noreferrer" className="text-danger font-weight-bold">
+                  <i className="fa-regular fa-file-pdf mr-1"></i>ดู PDF
+                </a>
+              )}
+              {row.plan_clip && (
+                <a href={`https://www.youtube.com/watch?v=${row.plan_clip}`} target="_blank" rel="noreferrer" className="text-danger font-weight-bold ml-2">
+                  <i className="fa-brands fa-youtube mr-1"></i>คลิปสอน
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="card-footer bg-white p-2 border-top">
+          {scored ? (
+            <Link to={`/view_scoring?planid=${row.planid}`} className="btn btn-outline-success btn-block btn-sm font-weight-bold">
+              <i className="fa-solid fa-check mr-1"></i> ดูผลการประเมิน
+            </Link>
+          ) : (
+            <Link to={`/Plan_scoring?committee=${committee}&planid=${row.planid}`} className="btn btn-danger btn-block btn-sm font-weight-bold shadow-sm">
+              <i className="fa-solid fa-pen-to-square mr-1"></i> ให้คะแนนประเมินแผนนี้
+            </Link>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   if (loading || profileLoading) {
     return <LoadingSpinner fullPage={false} />;
   }
@@ -355,12 +508,38 @@ const PlanCheck = () => {
                   )}
                 </ul>
               </div>
-              <div className="col-md-4 col-12">
-                <div className="input-group input-group-sm">
+              <div className="col-md-5 col-12 d-flex align-items-center justify-content-md-end flex-wrap" style={{ gap: '8px' }}>
+                <div className="btn-group btn-group-sm" role="group" aria-label="สลับมุมมอง">
+                  <button
+                    type="button"
+                    className={`btn ${viewMode === 'auto' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                    onClick={() => setViewMode('auto')}
+                    title="ปรับอัตโนมัติตามขนาดหน้าจอ"
+                  >
+                    <i className="fa-solid fa-magic mr-1"></i> อัตโนมัติ
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${viewMode === 'card' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                    onClick={() => setViewMode('card')}
+                    title="มุมมองการ์ด (เหมาะกับมือถือ)"
+                  >
+                    <i className="fa-solid fa-grip-vertical mr-1"></i> การ์ด
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${viewMode === 'table' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                    onClick={() => setViewMode('table')}
+                    title="มุมมองตาราง"
+                  >
+                    <i className="fa-solid fa-table-list mr-1"></i> ตาราง
+                  </button>
+                </div>
+                <div className="input-group input-group-sm" style={{ width: '180px' }}>
                   <input
                     type="text"
                     className="form-control"
-                    placeholder="ค้นหาชื่อครู, วิชา, แผน..."
+                    placeholder="ค้นหาชื่อครู, วิชา..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
@@ -378,274 +557,313 @@ const PlanCheck = () => {
           <div className="card-body p-0">
             {/* TAB 1: รอ ผอ. ตรวจอนุมัติ */}
             {activeTab === 'pending_director' && (
-              <div className="table-responsive">
-                <table className="table table-hover align-middle mb-0">
-                  <thead className="thead-light">
-                    <tr>
-                      <th style={{ width: '45px' }} className="text-center">ที่</th>
-                      <th style={{ minWidth: '160px' }}>ครูผู้จัดทำแผน</th>
-                      <th style={{ minWidth: '130px' }}>กลุ่มสาระฯ</th>
-                      <th style={{ minWidth: '100px' }}>ระดับชั้น</th>
-                      <th style={{ minWidth: '160px' }}>วิชา (รหัสวิชา)</th>
-                      <th style={{ minWidth: '220px' }}>ชื่อแผนการจัดการเรียนรู้</th>
-                      <th style={{ minWidth: '100px' }} className="text-center">ปี/เทอม</th>
-                      <th style={{ width: '60px' }} className="text-center">แผน</th>
-                      <th style={{ width: '60px' }} className="text-center">คลิป</th>
-                      <th style={{ minWidth: '150px' }} className="text-center">ดำเนินการ</th>
-                      <th style={{ minWidth: '130px' }} className="text-center">สถานะ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredPendingDirector.length === 0 ? (
+              <div>
+                {/* Mobile Card View */}
+                <div className={`p-3 ${viewMode === 'card' ? 'd-block' : viewMode === 'table' ? 'd-none' : 'd-block d-md-none'}`}>
+                  {filteredPendingDirector.length === 0 ? (
+                    <EmptyState
+                      message={searchTerm ? 'ไม่พบแผนการสอนที่ตรงกับการค้นหา' : 'ยอดเยี่ยมมาก! ไม่มีแผนการสอนที่รอ ผอ. อนุมัติในขณะนี้'}
+                      fullPage={false}
+                    />
+                  ) : (
+                    filteredPendingDirector.map(renderDirectorPendingCard)
+                  )}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className={`table-responsive ${viewMode === 'table' ? 'd-block' : viewMode === 'card' ? 'd-none' : 'd-none d-md-block'}`}>
+                  <table className="table table-hover align-middle mb-0">
+                    <thead className="thead-light">
                       <tr>
-                        <td colSpan="11" className="py-5">
-                          <EmptyState
-                            message={searchTerm ? 'ไม่พบแผนการสอนที่ตรงกับการค้นหา' : 'ยอดเยี่ยมมาก! ไม่มีแผนการสอนที่รอ ผอ. อนุมัติในขณะนี้'}
-                            fullPage={false}
-                          />
-                        </td>
+                        <th style={{ width: '45px' }} className="text-center">ที่</th>
+                        <th style={{ minWidth: '160px' }}>ครูผู้จัดทำแผน</th>
+                        <th style={{ minWidth: '130px' }}>กลุ่มสาระฯ</th>
+                        <th style={{ minWidth: '100px' }}>ระดับชั้น</th>
+                        <th style={{ minWidth: '160px' }}>วิชา (รหัสวิชา)</th>
+                        <th style={{ minWidth: '220px' }}>ชื่อแผนการจัดการเรียนรู้</th>
+                        <th style={{ minWidth: '100px' }} className="text-center">ปี/เทอม</th>
+                        <th style={{ width: '60px' }} className="text-center">แผน</th>
+                        <th style={{ width: '60px' }} className="text-center">คลิป</th>
+                        <th style={{ minWidth: '150px' }} className="text-center">ดำเนินการ</th>
+                        <th style={{ minWidth: '130px' }} className="text-center">สถานะ</th>
                       </tr>
-                    ) : (
-                      filteredPendingDirector.map((row, idx) => {
-                        const isRevised = String(row.plan_status) === '4';
-                        return (
-                          <tr key={row.planid}>
-                            <td className="text-center text-muted fw-semibold">{idx + 1}</td>
-                            <td>
-                              <div className="fw-bold text-dark">
-                                {teacherMap[row.people_id] || row.people_id || '-'}
-                              </div>
-                              <small className="text-muted">{row.people_id}</small>
-                            </td>
-                            <td>
-                              <span className="badge badge-light border">
-                                {lookups.teachSubjectShort[row.teach_subject_id] || lookups.teachSubject[row.teach_subject_id] || '-'}
-                              </span>
-                            </td>
-                            <td>{lookups.gradeLevel[row.grade_level_id] || '-'}</td>
-                            <td>
-                              <strong>{row.subject_name}</strong>
-                              {row.subject_code && <small className="text-muted d-block">({row.subject_code})</small>}
-                            </td>
-                            <td>
-                              <div className="fw-semibold text-primary">{row.subject_name_plan || '-'}</div>
-                              {row.subject_content && (
-                                <small className="text-muted d-block text-truncate" style={{ maxWidth: '250px' }}>
-                                  หน่วย: {row.subject_content}
-                                </small>
-                              )}
-                            </td>
-                            <td className="text-center">
-                              <small>{row.edu_year}/{row.edu_term}</small>
-                              <small className="text-muted d-block">(ปีงบ {row.budget_year})</small>
-                            </td>
-                            <td className="text-center">
-                              {row.plan_file ? (
-                                <a
-                                  href={row.plan_file}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="btn btn-outline-danger btn-sm p-1 px-2"
-                                  title="เปิดดูไฟล์แผน PDF"
-                                >
-                                  <i className="fa-regular fa-file-pdf fa-lg"></i>
-                                </a>
-                              ) : (
-                                <span className="text-muted">-</span>
-                              )}
-                            </td>
-                            <td className="text-center">
-                              {row.plan_clip ? (
-                                <a
-                                  href={`https://www.youtube.com/watch?v=${row.plan_clip}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="btn btn-outline-danger btn-sm p-1 px-2"
-                                  title="ดูคลิปการสอน"
-                                >
-                                  <i className="fa-brands fa-youtube fa-lg text-danger"></i>
-                                </a>
-                              ) : (
-                                <span className="text-muted">-</span>
-                              )}
-                            </td>
-                            <td className="text-center">
-                              <Link
-                                to={`/appointment?planid=${row.planid}&from=Plan_Check`}
-                                className="btn btn-primary btn-sm px-3 shadow-sm font-weight-bold"
-                                style={{ borderRadius: '8px' }}
-                              >
-                                <i className="fa-solid fa-file-signature mr-1"></i> ตรวจ/อนุมัติ/แต่งตั้ง
-                              </Link>
-                            </td>
-                            <td className="text-center">
-                              {isRevised ? (
-                                <span className="badge badge-info p-2" style={{ fontSize: '11px' }}>
-                                  <i className="fa-solid fa-rotate mr-1"></i> ครูแก้ไขแล้ว
+                    </thead>
+                    <tbody>
+                      {filteredPendingDirector.length === 0 ? (
+                        <tr>
+                          <td colSpan="11" className="py-5">
+                            <EmptyState
+                              message={searchTerm ? 'ไม่พบแผนการสอนที่ตรงกับการค้นหา' : 'ยอดเยี่ยมมาก! ไม่มีแผนการสอนที่รอ ผอ. อนุมัติในขณะนี้'}
+                              fullPage={false}
+                            />
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredPendingDirector.map((row, idx) => {
+                          const isRevised = String(row.plan_status) === '4';
+                          return (
+                            <tr key={row.planid}>
+                              <td className="text-center text-muted fw-semibold">{idx + 1}</td>
+                              <td>
+                                <div className="fw-bold text-dark">
+                                  {teacherMap[row.people_id] || row.people_id || '-'}
+                                </div>
+                                <small className="text-muted">{row.people_id}</small>
+                              </td>
+                              <td>
+                                <span className="badge badge-light border">
+                                  {lookups.teachSubjectShort[row.teach_subject_id] || lookups.teachSubject[row.teach_subject_id] || '-'}
                                 </span>
-                              ) : (
-                                <span className="badge badge-warning p-2 text-dark" style={{ fontSize: '11px' }}>
-                                  <i className="fa-solid fa-hourglass-half mr-1"></i> รอ ผอ. ตรวจอนุมัติ
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                              </td>
+                              <td>{lookups.gradeLevel[row.grade_level_id] || '-'}</td>
+                              <td>
+                                <strong>{row.subject_name}</strong>
+                                {row.subject_code && <small className="text-muted d-block">({row.subject_code})</small>}
+                              </td>
+                              <td>
+                                <div className="fw-semibold text-primary">{row.subject_name_plan || '-'}</div>
+                                {row.subject_content && (
+                                  <small className="text-muted d-block text-truncate" style={{ maxWidth: '250px' }}>
+                                    หน่วย: {row.subject_content}
+                                  </small>
+                                )}
+                              </td>
+                              <td className="text-center">
+                                <small>{row.edu_year}/{row.edu_term}</small>
+                                <small className="text-muted d-block">(ปีงบ {row.budget_year})</small>
+                              </td>
+                              <td className="text-center">
+                                {row.plan_file ? (
+                                  <a
+                                    href={row.plan_file}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="btn btn-outline-danger btn-sm p-1 px-2"
+                                    title="เปิดดูไฟล์แผน PDF"
+                                  >
+                                    <i className="fa-regular fa-file-pdf fa-lg"></i>
+                                  </a>
+                                ) : (
+                                  <span className="text-muted">-</span>
+                                )}
+                              </td>
+                              <td className="text-center">
+                                {row.plan_clip ? (
+                                  <a
+                                    href={`https://www.youtube.com/watch?v=${row.plan_clip}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="btn btn-outline-danger btn-sm p-1 px-2"
+                                    title="ดูคลิปการสอน"
+                                  >
+                                    <i className="fa-brands fa-youtube fa-lg text-danger"></i>
+                                  </a>
+                                ) : (
+                                  <span className="text-muted">-</span>
+                                )}
+                              </td>
+                              <td className="text-center">
+                                <Link
+                                  to={`/appointment?planid=${row.planid}&from=Plan_Check`}
+                                  className="btn btn-primary btn-sm px-3 shadow-sm font-weight-bold"
+                                  style={{ borderRadius: '8px' }}
+                                >
+                                  <i className="fa-solid fa-file-signature mr-1"></i> ตรวจ/อนุมัติ/แต่งตั้ง
+                                </Link>
+                              </td>
+                              <td className="text-center">
+                                {isRevised ? (
+                                  <span className="badge badge-info p-2" style={{ fontSize: '11px' }}>
+                                    <i className="fa-solid fa-rotate mr-1"></i> ครูแก้ไขแล้ว
+                                  </span>
+                                ) : (
+                                  <span className="badge badge-warning p-2 text-dark" style={{ fontSize: '11px' }}>
+                                    <i className="fa-solid fa-hourglass-half mr-1"></i> รอ ผอ. ตรวจอนุมัติ
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
             {/* TAB 2: อนุมัติแล้ว */}
             {activeTab === 'approved_director' && (
-              <div className="table-responsive">
-                <table className="table table-hover align-middle mb-0">
-                  <thead className="thead-light">
-                    <tr>
-                      <th style={{ width: '45px' }} className="text-center">ที่</th>
-                      <th>ครูผู้จัดทำแผน</th>
-                      <th>กลุ่มสาระฯ</th>
-                      <th>วิชา (รหัสวิชา)</th>
-                      <th>ชื่อแผนการจัดการเรียนรู้</th>
-                      <th className="text-center">ไฟล์แผน</th>
-                      <th className="text-center">คณะกรรมการ / ดำเนินการ</th>
-                      <th className="text-center">สถานะ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredApprovedDirector.length === 0 ? (
+              <div>
+                {/* Mobile Card View */}
+                <div className={`p-3 ${viewMode === 'card' ? 'd-block' : viewMode === 'table' ? 'd-none' : 'd-block d-md-none'}`}>
+                  {filteredApprovedDirector.length === 0 ? (
+                    <EmptyState message="ยังไม่มีรายการแผนการสอนที่ผ่านการอนุมัติ" fullPage={false} />
+                  ) : (
+                    filteredApprovedDirector.map(renderDirectorApprovedCard)
+                  )}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className={`table-responsive ${viewMode === 'table' ? 'd-block' : viewMode === 'card' ? 'd-none' : 'd-none d-md-block'}`}>
+                  <table className="table table-hover align-middle mb-0">
+                    <thead className="thead-light">
                       <tr>
-                        <td colSpan="8" className="py-5">
-                          <EmptyState message="ยังไม่มีรายการแผนการสอนที่ผ่านการอนุมัติ" fullPage={false} />
-                        </td>
+                        <th style={{ width: '45px' }} className="text-center">ที่</th>
+                        <th>ครูผู้จัดทำแผน</th>
+                        <th>กลุ่มสาระฯ</th>
+                        <th>วิชา (รหัสวิชา)</th>
+                        <th>ชื่อแผนการจัดการเรียนรู้</th>
+                        <th className="text-center">ไฟล์แผน</th>
+                        <th className="text-center">คณะกรรมการ / ดำเนินการ</th>
+                        <th className="text-center">สถานะ</th>
                       </tr>
-                    ) : (
-                      filteredApprovedDirector.map((row, idx) => {
-                        const comms = [row.committee1, row.committee2, row.committee3, row.committee4, row.committee5].filter(Boolean);
-                        return (
-                          <tr key={row.planid}>
-                            <td className="text-center text-muted fw-semibold">{idx + 1}</td>
-                            <td>
-                              <strong>{teacherMap[row.people_id] || row.people_id || '-'}</strong>
-                            </td>
-                            <td>{lookups.teachSubjectShort[row.teach_subject_id] || '-'}</td>
-                            <td>{row.subject_name} ({row.subject_code})</td>
-                            <td>{row.subject_name_plan || '-'}</td>
-                            <td className="text-center">
-                              {row.plan_file && (
-                                <a href={row.plan_file} target="_blank" rel="noreferrer" className="btn btn-outline-danger btn-sm p-1 px-2" title="เปิดดูแผน PDF">
-                                  <i className="fa-regular fa-file-pdf fa-lg"></i>
-                                </a>
-                              )}
-                            </td>
-                            <td className="text-center">
-                              <div className="d-flex flex-column flex-sm-row justify-content-center align-items-center gap-1" style={{ gap: '6px' }}>
-                                <Link
-                                  to={`/appointment?planid=${row.planid}&from=Plan_Check`}
-                                  className="btn btn-warning btn-sm text-dark font-weight-bold shadow-sm"
-                                  title="แก้ไขหรือเปลี่ยนรายชื่อคณะกรรมการนิเทศ"
-                                >
-                                  <i className="fa-solid fa-user-pen mr-1"></i> แก้ไขกรรมการ ({comms.length})
-                                </Link>
-                                <Link
-                                  to={`/view_scoring?planid=${row.planid}`}
-                                  className="btn btn-outline-info btn-sm shadow-sm"
-                                  title="ดูคะแนนและผลการประเมิน"
-                                >
-                                  <i className="fa-solid fa-chart-line mr-1"></i> ดูคะแนนนิเทศ
-                                </Link>
-                              </div>
-                            </td>
-                            <td className="text-center">
-                              <span className="badge badge-success p-2">
-                                {lookups.status[String(row.plan_status)] || 'อนุมัติแล้ว'}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {filteredApprovedDirector.length === 0 ? (
+                        <tr>
+                          <td colSpan="8" className="py-5">
+                            <EmptyState message="ยังไม่มีรายการแผนการสอนที่ผ่านการอนุมัติ" fullPage={false} />
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredApprovedDirector.map((row, idx) => {
+                          const comms = [row.committee1, row.committee2, row.committee3, row.committee4, row.committee5].filter(Boolean);
+                          return (
+                            <tr key={row.planid}>
+                              <td className="text-center text-muted fw-semibold">{idx + 1}</td>
+                              <td>
+                                <strong>{teacherMap[row.people_id] || row.people_id || '-'}</strong>
+                              </td>
+                              <td>{lookups.teachSubjectShort[row.teach_subject_id] || '-'}</td>
+                              <td>{row.subject_name} ({row.subject_code})</td>
+                              <td>{row.subject_name_plan || '-'}</td>
+                              <td className="text-center">
+                                {row.plan_file && (
+                                  <a href={row.plan_file} target="_blank" rel="noreferrer" className="btn btn-outline-danger btn-sm p-1 px-2" title="เปิดดูแผน PDF">
+                                    <i className="fa-regular fa-file-pdf fa-lg"></i>
+                                  </a>
+                                )}
+                              </td>
+                              <td className="text-center">
+                                <div className="d-flex flex-column flex-sm-row justify-content-center align-items-center gap-1" style={{ gap: '6px' }}>
+                                  <Link
+                                    to={`/appointment?planid=${row.planid}&from=Plan_Check`}
+                                    className="btn btn-warning btn-sm text-dark font-weight-bold shadow-sm"
+                                    title="แก้ไขหรือเปลี่ยนรายชื่อคณะกรรมการนิเทศ"
+                                  >
+                                    <i className="fa-solid fa-user-pen mr-1"></i> แก้ไขกรรมการ ({comms.length})
+                                  </Link>
+                                  <Link
+                                    to={`/view_scoring?planid=${row.planid}`}
+                                    className="btn btn-outline-info btn-sm shadow-sm"
+                                    title="ดูคะแนนและผลการประเมิน"
+                                  >
+                                    <i className="fa-solid fa-chart-line mr-1"></i> ดูคะแนนนิเทศ
+                                  </Link>
+                                </div>
+                              </td>
+                              <td className="text-center">
+                                <span className="badge badge-success p-2">
+                                  {lookups.status[String(row.plan_status)] || 'อนุมัติแล้ว'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
             {/* TAB 3: แผนที่ต้องตรวจในฐานะกรรมการ */}
             {activeTab === 'committee' && (
-              <div className="table-responsive">
-                <table className="table table-hover align-middle mb-0">
-                  <thead className="thead-light">
-                    <tr>
-                      <th style={{ width: '45px' }} className="text-center">ที่</th>
-                      <th>กลุ่มสาระ</th>
-                      <th>ระดับชั้น</th>
-                      <th>ชื่อวิชา (รหัสวิชา)</th>
-                      <th>ชื่อแผนการสอน</th>
-                      <th className="text-center">แผน</th>
-                      <th className="text-center">คลิป</th>
-                      <th className="text-center">การประเมิน</th>
-                      <th className="text-center">สถานะ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredCommittee.length === 0 ? (
+              <div>
+                {/* Mobile Card View */}
+                <div className={`p-3 ${viewMode === 'card' ? 'd-block' : viewMode === 'table' ? 'd-none' : 'd-block d-md-none'}`}>
+                  {filteredCommittee.length === 0 ? (
+                    <EmptyState message="ไม่มีแผนการสอนที่ได้รับมอบหมายให้ประเมินในฐานะกรรมการ" fullPage={false} />
+                  ) : (
+                    filteredCommittee.map(renderCommitteeCard)
+                  )}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className={`table-responsive ${viewMode === 'table' ? 'd-block' : viewMode === 'card' ? 'd-none' : 'd-none d-md-block'}`}>
+                  <table className="table table-hover align-middle mb-0">
+                    <thead className="thead-light">
                       <tr>
-                        <td colSpan="9" className="py-5">
-                          <EmptyState message="ไม่มีแผนการสอนที่ได้รับมอบหมายให้ประเมินในฐานะกรรมการ" fullPage={false} />
-                        </td>
+                        <th style={{ width: '45px' }} className="text-center">ที่</th>
+                        <th>กลุ่มสาระ</th>
+                        <th>ระดับชั้น</th>
+                        <th>ชื่อวิชา (รหัสวิชา)</th>
+                        <th>ชื่อแผนการสอน</th>
+                        <th className="text-center">แผน</th>
+                        <th className="text-center">คลิป</th>
+                        <th className="text-center">การประเมิน</th>
+                        <th className="text-center">สถานะ</th>
                       </tr>
-                    ) : (
-                      filteredCommittee.map((row, index) => {
-                        let committee = '';
-                        if (row.committee1 === userId) committee = 'committee1';
-                        if (row.committee2 === userId) committee = 'committee2';
-                        if (row.committee3 === userId) committee = 'committee3';
-                        if (row.committee4 === userId) committee = 'committee4';
-                        if (row.committee5 === userId) committee = 'committee5';
+                    </thead>
+                    <tbody>
+                      {filteredCommittee.length === 0 ? (
+                        <tr>
+                          <td colSpan="9" className="py-5">
+                            <EmptyState message="ไม่มีแผนการสอนที่ได้รับมอบหมายให้ประเมินในฐานะกรรมการ" fullPage={false} />
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredCommittee.map((row, index) => {
+                          let committee = '';
+                          if (row.committee1 === userId) committee = 'committee1';
+                          if (row.committee2 === userId) committee = 'committee2';
+                          if (row.committee3 === userId) committee = 'committee3';
+                          if (row.committee4 === userId) committee = 'committee4';
+                          if (row.committee5 === userId) committee = 'committee5';
 
-                        const scored = scoreSet.has(String(row.planid));
+                          const scored = scoreSet.has(String(row.planid));
 
-                        return (
-                          <tr key={row.planid}>
-                            <td className="text-center">{index + 1}</td>
-                            <td>{lookups.teachSubjectShort[row.teach_subject_id] || ''}</td>
-                            <td>{lookups.gradeLevel[row.grade_level_id] || ''}</td>
-                            <td>{row.subject_name} ({row.subject_code})</td>
-                            <td>{row.subject_name_plan}</td>
-                            <td className="text-center">
-                              {row.plan_file && (
-                                <a href={row.plan_file} title="แผน" target="_blank" rel="noreferrer">
-                                  <i className="fa-regular fa-file-pdf fa-lg"></i>
-                                </a>
-                              )}
-                            </td>
-                            <td className="text-center">
-                              {row.plan_clip && (
-                                <a href={`https://www.youtube.com/watch?v=${row.plan_clip}`} title="ดูคลิปการสอน" target="_blank" rel="noreferrer">
-                                  <i className="fa-brands fa-youtube text-danger"></i>
-                                </a>
-                              )}
-                            </td>
-                            <td className="text-center">
-                              {scored ? (
-                                <Link to={`/view_scoring?planid=${row.planid}`} className="btn btn-sm btn-outline-success">
-                                  <i className="fa-solid fa-check mr-1"></i> ดูผลประเมิน
-                                </Link>
-                              ) : (
-                                <Link to={`/Plan_scoring?committee=${committee}&planid=${row.planid}`} className="btn btn-sm btn-danger">
-                                  <i className="fa-solid fa-pen-to-square mr-1"></i> ให้คะแนนประเมิน
-                                </Link>
-                              )}
-                            </td>
-                            <td className="text-center">{lookups.status[String(row.plan_status)] || ''}</td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                          return (
+                            <tr key={row.planid}>
+                              <td className="text-center">{index + 1}</td>
+                              <td>{lookups.teachSubjectShort[row.teach_subject_id] || ''}</td>
+                              <td>{lookups.gradeLevel[row.grade_level_id] || ''}</td>
+                              <td>{row.subject_name} ({row.subject_code})</td>
+                              <td>{row.subject_name_plan}</td>
+                              <td className="text-center">
+                                {row.plan_file && (
+                                  <a href={row.plan_file} title="แผน" target="_blank" rel="noreferrer">
+                                    <i className="fa-regular fa-file-pdf fa-lg"></i>
+                                  </a>
+                                )}
+                              </td>
+                              <td className="text-center">
+                                {row.plan_clip && (
+                                  <a href={`https://www.youtube.com/watch?v=${row.plan_clip}`} title="ดูคลิปการสอน" target="_blank" rel="noreferrer">
+                                    <i className="fa-brands fa-youtube text-danger"></i>
+                                  </a>
+                                )}
+                              </td>
+                              <td className="text-center">
+                                {scored ? (
+                                  <Link to={`/view_scoring?planid=${row.planid}`} className="btn btn-sm btn-outline-success">
+                                    <i className="fa-solid fa-check mr-1"></i> ดูผลประเมิน
+                                  </Link>
+                                ) : (
+                                  <Link to={`/Plan_scoring?committee=${committee}&planid=${row.planid}`} className="btn btn-sm btn-danger">
+                                    <i className="fa-solid fa-pen-to-square mr-1"></i> ให้คะแนนประเมิน
+                                  </Link>
+                                )}
+                              </td>
+                              <td className="text-center">{lookups.status[String(row.plan_status)] || ''}</td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
@@ -661,15 +879,42 @@ const PlanCheck = () => {
     <div className="row">
       <div className="col-12">
         <div className="card card-success">
-          <div className="card-header d-flex justify-content-between align-items-center">
+          <div className="card-header d-flex justify-content-between align-items-center flex-wrap" style={{ gap: '10px' }}>
             <h3 className="card-title m-0">
-              <i className="fa-solid fa-list-check"></i> รายการตรวจแผนการสอน
+              <i className="fa-solid fa-list-check mr-2"></i> รายการตรวจแผนการสอน
+              <span className="badge badge-light ml-2">{filteredCommittee.length} รายการ</span>
             </h3>
-            <div className="card-tools ml-auto">
-              <div className="input-group input-group-sm" style={{ width: '250px' }}>
+            <div className="card-tools ml-auto d-flex align-items-center flex-wrap" style={{ gap: '8px' }}>
+              <div className="btn-group btn-group-sm" role="group" aria-label="สลับมุมมอง">
+                <button
+                  type="button"
+                  className={`btn ${viewMode === 'auto' ? 'btn-light' : 'btn-outline-light'}`}
+                  onClick={() => setViewMode('auto')}
+                  title="ปรับอัตโนมัติตามขนาดหน้าจอ"
+                >
+                  <i className="fa-solid fa-magic mr-1"></i> อัตโนมัติ
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${viewMode === 'card' ? 'btn-light' : 'btn-outline-light'}`}
+                  onClick={() => setViewMode('card')}
+                  title="มุมมองการ์ด (เหมาะกับมือถือ)"
+                >
+                  <i className="fa-solid fa-grip-vertical mr-1"></i> การ์ด
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${viewMode === 'table' ? 'btn-light' : 'btn-outline-light'}`}
+                  onClick={() => setViewMode('table')}
+                  title="มุมมองตาราง"
+                >
+                  <i className="fa-solid fa-table-list mr-1"></i> ตาราง
+                </button>
+              </div>
+              <div className="input-group input-group-sm" style={{ width: '200px' }}>
                 <input
                   type="text"
-                  className="form-control float-right"
+                  className="form-control"
                   placeholder="ค้นหาชื่อวิชา / แผน..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -683,7 +928,17 @@ const PlanCheck = () => {
             </div>
           </div>
           <div className="card-body">
-            <div className="table-responsive">
+            {/* Mobile Card View */}
+            <div className={viewMode === 'card' ? 'd-block' : viewMode === 'table' ? 'd-none' : 'd-block d-md-none'}>
+              {filteredCommittee.length === 0 ? (
+                <EmptyState message={searchTerm ? 'ไม่พบแผนการสอนที่ตรงกับคำค้นหา' : 'ยังไม่มีแผนการสอนที่ได้รับมอบหมายให้ตรวจ'} fullPage={false} />
+              ) : (
+                filteredCommittee.map(renderCommitteeCard)
+              )}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className={`table-responsive ${viewMode === 'table' ? 'd-block' : viewMode === 'card' ? 'd-none' : 'd-none d-md-block'}`}>
               <table className="table table-bordered table-hover table-striped" id="data">
                 <thead>
                   <tr>
