@@ -161,6 +161,53 @@ const AdminMonitor = () => {
         });
     }, [committeeStats, searchCommittee, filterProgress]);
 
+    const exportSchoolsCSV = () => {
+        const headers = ['ลำดับ', 'สหวิทยาเขต', 'ชื่อโรงเรียน', 'สถานะการใช้งาน', 'จำนวนบุคลากร', 'แผนที่ส่ง (แผน)', 'ประเมินครบ (แผน)'];
+        const rows = filteredSchools.map((s, idx) => [
+            idx + 1,
+            `"${s.khet || ''}"`,
+            `"${s.name || ''}"`,
+            s.isUsing ? 'ใช้งานแล้ว' : 'ยังไม่ได้ใช้งาน',
+            s.usersCount,
+            s.plansTotal,
+            s.plansEvaluated
+        ]);
+        const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `รายงานติดตามการใช้งานโรงเรียน_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const exportCommitteesCSV = () => {
+        const headers = ['ลำดับ', 'ชื่อ-นามสกุล กรรมการ', 'ตำแหน่ง/สิทธิ์', 'จำนวนแผนที่ได้รับมอบหมาย (แผน)', 'ประเมินแล้ว (แผน)', 'ค้างประเมิน (แผน)', 'ร้อยละความก้าวหน้า'];
+        const rows = filteredCommittees.map((c, idx) => {
+            const percent = c.total > 0 ? (c.scored / c.total) * 100 : 0;
+            return [
+                idx + 1,
+                `"${c.name || ''}"`,
+                `"${c.level || ''}"`,
+                c.total,
+                c.scored,
+                c.pending,
+                `${percent.toFixed(0)}%`
+            ];
+        });
+        const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `รายงานภาระงานกรรมการนิเทศ_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     if (loading) {
         return <LoadingSpinner title="กำกับติดตามการใช้งาน" message="กำลังโหลดข้อมูลสรุปผล กรุณารอสักครู่..." />;
     }
@@ -214,12 +261,12 @@ const AdminMonitor = () => {
                             <ul className="nav nav-tabs" role="tablist">
                                 <li className="nav-item">
                                     <a className={`nav-link ${activeTab === 'school' ? 'active' : ''}`} onClick={() => setActiveTab('school')} style={{cursor: 'pointer'}}>
-                                        สรุปรายโรงเรียน
+                                        สรุปรายโรงเรียน ({filteredSchools.length})
                                     </a>
                                 </li>
                                 <li className="nav-item">
                                     <a className={`nav-link ${activeTab === 'committee' ? 'active' : ''}`} onClick={() => setActiveTab('committee')} style={{cursor: 'pointer'}}>
-                                        สรุปรายบุคคล (คณะกรรมการ)
+                                        สรุปรายบุคคล (คณะกรรมการ) ({filteredCommittees.length})
                                     </a>
                                 </li>
                             </ul>
@@ -228,22 +275,32 @@ const AdminMonitor = () => {
                             <div className="tab-content">
                                 {activeTab === 'school' && (
                                     <>
-                                        <div className="row mb-3">
-                                            <div className="col-md-4 mb-2">
+                                        <div className="row mb-3 align-items-center">
+                                            <div className="col-md-3 mb-2">
                                                 <input type="text" className="form-control" placeholder="ค้นหาชื่อโรงเรียน..." value={searchSchool} onChange={e => setSearchSchool(e.target.value)} />
                                             </div>
-                                            <div className="col-md-4 mb-2">
+                                            <div className="col-md-3 mb-2">
                                                 <select className="form-control" value={filterKhet} onChange={e => setFilterKhet(e.target.value)}>
                                                     <option value="">-- ทุกสหวิทยาเขต --</option>
                                                     {Object.values(lookups.khet).map((kName, i) => <option key={i} value={kName}>{kName}</option>)}
                                                 </select>
                                             </div>
-                                            <div className="col-md-4 mb-2">
+                                            <div className="col-md-3 mb-2">
                                                 <select className="form-control" value={filterUsage} onChange={e => setFilterUsage(e.target.value)}>
                                                     <option value="">-- ทุกสถานะ --</option>
                                                     <option value="using">ใช้งานแล้ว</option>
                                                     <option value="not_using">ยังไม่ได้ใช้งาน</option>
                                                 </select>
+                                            </div>
+                                            <div className="col-md-3 mb-2 text-md-right">
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-outline-success font-weight-bold"
+                                                    onClick={exportSchoolsCSV}
+                                                    title="ส่งออกรายงานเป็นไฟล์ CSV"
+                                                >
+                                                    <i className="fa-solid fa-file-excel mr-1"></i> ส่งออก CSV
+                                                </button>
                                             </div>
                                         </div>
                                         <div className="table-responsive">
@@ -288,16 +345,26 @@ const AdminMonitor = () => {
 
                                 {activeTab === 'committee' && (
                                     <>
-                                        <div className="row mb-3">
-                                            <div className="col-md-6 mb-2">
+                                        <div className="row mb-3 align-items-center">
+                                            <div className="col-md-5 mb-2">
                                                 <input type="text" className="form-control" placeholder="ค้นหาชื่อกรรมการ..." value={searchCommittee} onChange={e => setSearchCommittee(e.target.value)} />
                                             </div>
-                                            <div className="col-md-6 mb-2">
+                                            <div className="col-md-4 mb-2">
                                                 <select className="form-control" value={filterProgress} onChange={e => setFilterProgress(e.target.value)}>
                                                     <option value="">-- ทุกสถานะการประเมิน --</option>
                                                     <option value="done">ประเมินครบ 100%</option>
                                                     <option value="pending">ค้างประเมิน (ยังไม่ครบ 100%)</option>
                                                 </select>
+                                            </div>
+                                            <div className="col-md-3 mb-2 text-md-right">
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-outline-success font-weight-bold"
+                                                    onClick={exportCommitteesCSV}
+                                                    title="ส่งออกรายงานภาระงานกรรมการเป็นไฟล์ CSV"
+                                                >
+                                                    <i className="fa-solid fa-file-excel mr-1"></i> ส่งออก CSV
+                                                </button>
                                             </div>
                                         </div>
                                         <div className="table-responsive">
