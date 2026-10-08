@@ -62,6 +62,35 @@ export const generateDirectorToCommitteeMessage = ({
   );
 };
 
+export const generateEvaluationResultMessage = ({
+  teacherName,
+  schoolName,
+  subjectName,
+  subjectCode,
+  planName,
+  totalScore,
+  qualityLabel,
+  isPassed,
+  planId,
+}) => {
+  const currentHost = window.location.origin;
+  const viewUrl = `${currentHost}/view_scoring?planid=${planId}`;
+
+  return (
+    `🎉 [ผลการประเมินแผนการจัดการเรียนรู้]\n` +
+    `ระบบนิเทศการศึกษาออนไลน์ สพม.พิษณุโลก อุตรดิตถ์\n\n` +
+    `👤 ครูผู้สอน: ${teacherName || 'ครูผู้สอน'}\n` +
+    (schoolName ? `🏫 สถานศึกษา: ${schoolName}\n` : '') +
+    `📖 วิชา: ${subjectName || '-'} (${subjectCode || '-'})\n` +
+    (planName ? `📝 แผนการสอน: ${planName}\n` : '') +
+    (totalScore !== undefined ? `📊 คะแนนเฉลี่ยรวม: ${Number(totalScore).toFixed(2)} คะแนน\n` : '') +
+    (qualityLabel ? `🏅 ระดับคุณภาพ: ${qualityLabel}\n` : '') +
+    (isPassed !== undefined ? `✅ ผลการพิจารณา: ${isPassed ? 'ผ่านเกณฑ์การประเมิน' : 'ไม่ผ่านเกณฑ์การประเมิน'}\n` : '') +
+    `\nสามารถเข้าดูรายงานผลการประเมินและเกียรติบัตรฉบับเต็มได้ที่:\n` +
+    `🔗 ${viewUrl}`
+  );
+};
+
 export const openLineShare = (messageText) => {
   const lineUrl = `https://line.me/R/msg/text/?${encodeURIComponent(messageText)}`;
   window.open(lineUrl, '_blank', 'noopener,noreferrer');

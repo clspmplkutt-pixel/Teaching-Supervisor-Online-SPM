@@ -12,6 +12,19 @@ const useQuery = () => {
   return new URLSearchParams(search);
 };
 
+const APPROVE_FEEDBACK_PRESETS = [
+  { label: '🌟 ครบถ้วนสมบูรณ์ (Active Learning)', text: 'แผนการจัดการเรียนรู้มีความครบถ้วนสมบูรณ์ กิจกรรมเน้น Active Learning สอดคล้องกับมาตรฐานและตัวชี้วัด อนุมัติให้นำไปจัดกิจกรรมการเรียนรู้ได้' },
+  { label: '💡 กิจกรรมน่าสนใจและทันสมัย', text: 'การจัดกระบวนการเรียนรู้เน้นผู้เรียนเป็นสำคัญ มีการนำสื่อเทคโนโลยีที่เหมาะสมมาประยุกต์ใช้ ส่งเสริมการคิดวิเคราะห์ได้ดี' },
+  { label: '🎯 การวัดผลครอบคลุม K/P/A', text: 'จุดประสงค์การเรียนรู้และการวัดประเมินผลครอบคลุมทั้งด้านความรู้ ทักษะกระบวนการ และคุณลักษณะอันพึงประสงค์อย่างชัดเจน' },
+  { label: '🚀 ส่งเสริมสมรรถนะแห่งศตวรรษที่ 21', text: 'กิจกรรมส่งเสริมสมรรถนะสำคัญของผู้เรียนและทักษะแห่งศตวรรษที่ 21 ได้อย่างมีประสิทธิภาพและตอบสนองความแตกต่างระหว่างบุคคล' },
+];
+
+const REJECT_FEEDBACK_PRESETS = [
+  { label: '⚠️ ปรับปรุงเกณฑ์วัดผล Rubric', text: 'ขอให้เพิ่มเติมเครื่องมือวัดและประเมินผล รวมถึงเกณฑ์การให้คะแนน (Rubric Score) ให้ละเอียดและชัดเจนยิ่งขึ้น' },
+  { label: '⚠️ เน้น Active Learning เพิ่มเติม', text: 'ควรปรับปรุงขั้นตอนกิจกรรมการเรียนรู้ให้เน้นการลงมือปฏิบัติ (Active Learning) ของนักเรียนให้มากขึ้น' },
+  { label: '⚠️ ปรับวัตถุประสงค์เชิงพฤติกรรม', text: 'ขอให้ทบทวนและระบุวัตถุประสงค์เชิงพฤติกรรมให้สามารถวัดและสังเกตผลได้ชัดเจนและสอดคล้องกับตัวชี้วัด' },
+];
+
 const Appointment = ({ readOnly = false }) => {
   const navigate = useNavigate();
   const query = useQuery();
@@ -364,19 +377,25 @@ const Appointment = ({ readOnly = false }) => {
       setForm((prev) => ({
         ...prev,
         plan_approve: value,
-        plan_ds_comment: 'ไม่อนุมัติใช้แผน เนื่องจาก................',
+        plan_ds_comment: (!prev.plan_ds_comment || prev.plan_ds_comment.includes('............'))
+          ? 'ขอให้ปรับปรุงและแก้ไขแผนการจัดการเรียนรู้ตามข้อเสนอแนะ ก่อนส่งให้ตรวจสอบอีกครั้ง'
+          : prev.plan_ds_comment,
         committee1: '',
         committee2: '',
         committee3: '',
         committee4: '',
         committee5: '',
       }));
-    } else {
+    } else if (value === '1') {
       setForm((prev) => ({
         ...prev,
         plan_approve: value,
-        plan_ds_comment: 'แผนการสอนนี้สามารถนำไปใช้งานได้ มีเทคนิควิธีการสอนที่.............\nมีการวัดผลประเมินผลที่หลากหลาย................\n...................',
+        plan_ds_comment: (!prev.plan_ds_comment || prev.plan_ds_comment.includes('............'))
+          ? 'แผนการจัดการเรียนรู้มีความครบถ้วนสมบูรณ์ กิจกรรมเน้น Active Learning สอดคล้องกับมาตรฐานและตัวชี้วัด อนุมัติให้นำไปจัดกิจกรรมการเรียนรู้ได้'
+          : prev.plan_ds_comment,
       }));
+    } else {
+      setForm((prev) => ({ ...prev, plan_approve: value }));
     }
   };
 
@@ -680,8 +699,60 @@ const Appointment = ({ readOnly = false }) => {
                     </div>
                   </div>
                   <div className="col-lg-6">
-                    <label htmlFor="plan_ds_comment"><strong>ข้อเสนอแนะ : </strong></label>
-                    <textarea name="plan_ds_comment" id="plan_ds_comment" className="form-control" rows="6" value={form.plan_ds_comment} onChange={handleChange} disabled={readOnly}></textarea>
+                    <div className="d-flex justify-content-between align-items-center mb-1">
+                      <label htmlFor="plan_ds_comment" className="mb-0">
+                        <strong>ข้อเสนอแนะ : </strong>
+                      </label>
+                      <span className="badge badge-light border text-muted" style={{ fontSize: '11px' }}>
+                        <i className="fa-solid fa-wand-magic-sparkles text-primary mr-1"></i> คลิกเลือกข้อความสำเร็จรูป
+                      </span>
+                    </div>
+
+                    {/* Quick Feedback Presets */}
+                    <div className="d-flex flex-wrap mb-2">
+                      {(form.plan_approve === '0' ? REJECT_FEEDBACK_PRESETS : APPROVE_FEEDBACK_PRESETS).map((preset, pIdx) => (
+                        <button
+                          key={pIdx}
+                          type="button"
+                          className="btn btn-outline-info btn-xs mr-1 mb-1 shadow-sm"
+                          style={{ borderRadius: '15px', fontSize: '12px', padding: '3px 10px' }}
+                          onClick={() => {
+                            setForm((prev) => {
+                              const cur = (prev.plan_ds_comment || '').trim();
+                              if (!cur || cur.includes('............')) {
+                                return { ...prev, plan_ds_comment: preset.text };
+                              }
+                              if (cur.includes(preset.text)) return prev;
+                              return { ...prev, plan_ds_comment: `${cur}\n${preset.text}` };
+                            });
+                          }}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                      {form.plan_ds_comment && (
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary btn-xs mb-1"
+                          style={{ borderRadius: '15px', fontSize: '11px', padding: '3px 8px' }}
+                          onClick={() => setForm((prev) => ({ ...prev, plan_ds_comment: '' }))}
+                          title="ล้างข้อความ"
+                        >
+                          <i className="fa-solid fa-eraser mr-1"></i> ล้าง
+                        </button>
+                      )}
+                    </div>
+
+                    <textarea
+                      name="plan_ds_comment"
+                      id="plan_ds_comment"
+                      className="form-control"
+                      rows="6"
+                      placeholder="พิมพ์ข้อเสนอแนะเพิ่มเติม หรือคลิกข้อความสำเร็จรูปด้านบน..."
+                      value={form.plan_ds_comment}
+                      onChange={handleChange}
+                      disabled={readOnly}
+                    ></textarea>
                   </div>
                 </div>
               </div>
