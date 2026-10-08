@@ -179,7 +179,7 @@ const PlanCheck = () => {
   }, [directorPlans]);
 
   const approvedDirectorPlans = useMemo(() => {
-    return directorPlans.filter((p) => ['2', '5', 2, 5].includes(p.plan_status));
+    return directorPlans.filter((p) => ['2', '5', '6', '7', 2, 5, 6, 7].includes(p.plan_status));
   }, [directorPlans]);
 
   // Filtered views based on search term
