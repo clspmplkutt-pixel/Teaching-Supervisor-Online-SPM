@@ -52,6 +52,7 @@ const StatusPlan = () => {
     subjectType: {},
   });
   const [scoreMap, setScoreMap] = useState({});
+  const [viewMode, setViewMode] = useState('auto'); // 'auto', 'table', 'card'
 
   useEffect(() => {
     let mounted = true;
@@ -338,6 +339,129 @@ const StatusPlan = () => {
     );
   };
 
+  const renderTeacherCard = (row, index) => {
+    const committeeTotal = [row.committee1, row.committee2, row.committee3, row.committee4, row.committee5].filter(Boolean).length;
+    const scoringCount = scoreMap[row.planid] || 0;
+    const canEdit = ['1', '3', '4'].includes(String(row.plan_status));
+    const schoolNo = schoolPlanRank[row.planid] || (index + 1);
+
+    return (
+      <div key={`m-card-${row.planid}`} className="card shadow-sm border mb-3 rounded-lg overflow-hidden">
+        <div className="card-header bg-light d-flex justify-content-between align-items-center py-2 px-3 border-bottom">
+          <div className="d-flex align-items-center">
+            <span className="badge badge-primary mr-2" style={{ fontSize: '0.85rem' }}>
+              #{schoolNo}
+            </span>
+            <span className="font-weight-bold text-dark" style={{ fontSize: '0.88rem' }}>
+              {lookups.teachSubjectShort[row.teach_subject_id] || ''} • {lookups.gradeLevel[row.grade_level_id] || ''}
+            </span>
+          </div>
+          <StatusBadge status={row.plan_status} short />
+        </div>
+        <div className="card-body p-3">
+          <h5 className="font-weight-bold text-primary mb-1" style={{ fontSize: '1rem', lineHeight: 1.4 }}>
+            {row.subject_name_plan || 'ไม่มีชื่อแผนการสอน'}
+          </h5>
+          <div className="text-secondary small mb-2">
+            <strong>หน่วยการเรียนรู้:</strong> {row.subject_content || '-'}
+          </div>
+
+          <div className="d-flex flex-wrap text-muted small mb-2" style={{ gap: '10px' }}>
+            <span><i className="fa-regular fa-calendar-check mr-1 text-info"></i>{row.edu_year}/{row.edu_term} (ปีงบ {row.budget_year})</span>
+            <span><i className="fa-regular fa-clock mr-1"></i>{formatDate(row.plan_senddate)}</span>
+          </div>
+
+          {String(row.plan_status) === '3' && row.plan_ds_comment && (
+            <div className="alert alert-danger py-2 px-3 small mb-2">
+              <i className="fa-solid fa-circle-exclamation mr-1"></i>
+              <strong>ข้อคิดเห็นจาก ผอ.:</strong> {row.plan_ds_comment}
+            </div>
+          )}
+
+          <div className="bg-light p-2 rounded small d-flex justify-content-between align-items-center mb-2">
+            <span>
+              <i className="fa-solid fa-users-viewfinder mr-1 text-secondary"></i>
+              กรรมการนิเทศ: {committeeTotal > 0 ? `${committeeTotal} ท่าน` : 'ยังไม่ได้แต่งตั้ง'}
+            </span>
+            {scoringCount > 0 ? (
+              <Link to={`/view_scoring?planid=${row.planid}`} className="badge badge-success px-2 py-1">
+                <i className="fa-solid fa-check-circle mr-1"></i>ประเมินแล้ว {scoringCount}/{committeeTotal}
+              </Link>
+            ) : (
+              <span className="badge badge-secondary px-2 py-1">ยังไม่มีผลประเมิน</span>
+            )}
+          </div>
+
+          <div className="d-flex flex-wrap mt-3 pt-2 border-top justify-content-between align-items-center" style={{ gap: '6px' }}>
+            <div className="d-flex" style={{ gap: '6px' }}>
+              {row.plan_file && (
+                <a href={row.plan_file} target="_blank" rel="noreferrer" className="btn btn-sm btn-outline-danger">
+                  <i className="fa-regular fa-file-pdf mr-1"></i> ดูไฟล์ PDF
+                </a>
+              )}
+              {row.plan_clip && (
+                <a href={`https://www.youtube.com/watch?v=${row.plan_clip}`} target="_blank" rel="noreferrer" className="btn btn-sm btn-outline-danger">
+                  <i className="fa-brands fa-youtube mr-1"></i> คลิปสอน
+                </a>
+              )}
+            </div>
+            <div className="d-flex" style={{ gap: '6px' }}>
+              {canEdit && (
+                <Link to={`/sendplan?planid=${row.planid}`} className="btn btn-sm btn-warning">
+                  <i className="fa-solid fa-edit mr-1"></i> แก้ไข
+                </Link>
+              )}
+              {['1', '3'].includes(String(row.plan_status)) && (
+                <button className="btn btn-sm btn-outline-danger" onClick={() => handleDelete(row)}>
+                  <i className="fa-solid fa-trash"></i>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderDirectorCard = (row, index) => {
+    const schoolNo = schoolPlanRank[row.planid] || (index + 1);
+    return (
+      <div key={`m-dir-${row.planid}`} className="card shadow-sm border mb-3 rounded-lg overflow-hidden">
+        <div className="card-header bg-light d-flex justify-content-between align-items-center py-2 px-3 border-bottom">
+          <div className="d-flex align-items-center">
+            <span className="badge badge-secondary mr-2">#{schoolNo}</span>
+            <span className="font-weight-bold text-dark">{row.teacher_name || ''}</span>
+          </div>
+          <StatusBadge status={row.plan_status} short />
+        </div>
+        <div className="card-body p-3">
+          <h5 className="font-weight-bold text-primary mb-1" style={{ fontSize: '0.95rem' }}>
+            {row.subject_name_plan}
+          </h5>
+          <div className="small text-muted mb-2">
+            {row.subject_name} ({row.subject_code}) • {lookups.gradeLevel[row.grade_level_id] || ''} • {lookups.teachSubjectShort[row.teach_subject_id] || ''}
+          </div>
+          <div className="small text-secondary mb-2">
+            <strong>หน่วยการเรียนรู้:</strong> {row.subject_content}
+          </div>
+          <div className="d-flex justify-content-between align-items-center small text-muted pt-2 border-top">
+            <span><i className="fa-regular fa-clock mr-1"></i>ส่งเมื่อ: {formatDate(row.plan_senddate)}</span>
+            {row.plan_file && (
+              <a href={row.plan_file} target="_blank" rel="noreferrer" className="text-danger font-weight-bold">
+                <i className="fa-regular fa-file-pdf mr-1"></i>ดู PDF
+              </a>
+            )}
+          </div>
+        </div>
+        <div className="card-footer bg-white p-2 border-top">
+          <Link to={`/appointment?planid=${row.planid}`} className="btn btn-info btn-block btn-sm font-weight-bold">
+            <i className="fas fa-clipboard-check mr-1"></i> ตรวจและแต่งตั้งกรรมการนิเทศ
+          </Link>
+        </div>
+      </div>
+    );
+  };
+
   const enrichedRows = useMemo(() => {
     let filteredRows = rows;
     if (searchTerm) {
@@ -363,17 +487,52 @@ const StatusPlan = () => {
     <div className="row">
       <div className="col-12">
         <div className="card card-primary card-outline">
-          <div className="card-header d-flex justify-content-between align-items-center">
-            <h3 className="card-title m-0"><i className="fa-solid fa-school-circle-check"></i> สถานะแผนการส่ง</h3>
-            <div className="card-tools ml-auto">
-                <div className="input-group input-group-sm" style={{ width: '250px' }}>
-                    <input type="text" className="form-control float-right" placeholder="ค้นหาชื่อแผน / หน่วย / รหัส..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                    <div className="input-group-append">
-                        <button type="button" className="btn btn-default" disabled>
-                            <i className="fas fa-search"></i>
-                        </button>
-                    </div>
+          <div className="card-header d-flex justify-content-between align-items-center flex-wrap" style={{ gap: '10px' }}>
+            <h3 className="card-title m-0">
+              <i className="fa-solid fa-school-circle-check mr-2"></i> สถานะแผนการส่ง
+              <span className="badge badge-info ml-2">{enrichedRows.length} รายการ</span>
+            </h3>
+            <div className="card-tools ml-auto d-flex align-items-center flex-wrap" style={{ gap: '8px' }}>
+              <div className="btn-group btn-group-sm" role="group" aria-label="สลับมุมมอง">
+                <button
+                  type="button"
+                  className={`btn ${viewMode === 'auto' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                  onClick={() => setViewMode('auto')}
+                  title="ปรับอัตโนมัติตามขนาดหน้าจอ (คอมเป็นตาราง / มือถือเป็นการ์ด)"
+                >
+                  <i className="fa-solid fa-magic mr-1"></i> อัตโนมัติ
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${viewMode === 'card' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                  onClick={() => setViewMode('card')}
+                  title="มุมมองการ์ด (อ่านง่ายบนมือถือ)"
+                >
+                  <i className="fa-solid fa-grip-vertical mr-1"></i> การ์ด
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${viewMode === 'table' ? 'btn-primary' : 'btn-outline-secondary'}`}
+                  onClick={() => setViewMode('table')}
+                  title="มุมมองตาราง (ข้อมูลครบถ้วน)"
+                >
+                  <i className="fa-solid fa-table-list mr-1"></i> ตาราง
+                </button>
+              </div>
+              <div className="input-group input-group-sm" style={{ width: '220px' }}>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="ค้นหาชื่อแผน / รหัสวิชา..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+                <div className="input-group-append">
+                  <span className="input-group-text bg-white">
+                    <i className="fas fa-search text-muted"></i>
+                  </span>
                 </div>
+              </div>
             </div>
           </div>
           <div className="card-body">
@@ -390,56 +549,69 @@ const StatusPlan = () => {
                 <PlanTimelineStepper currentStatus={rows[0]?.plan_status || '1'} />
               </div>
             )}
-            <div className="table-responsive">
-              <table className="table table-bordered table-hover table-striped" id="data">
-                <thead>
-                  {roleId === 'directorschool' ? (
-                    <tr>
-                      <th>ที่</th>
-                      <th>ครู</th>
-                      <th>กลุ่มสาระ (ย่อ)</th>
-                      <th>ระดับชั้น</th>
-                      <th>ประเภทวิชา</th>
-                      <th>ชื่อวิชา (รหัสวิชา)</th>
-                      <th>หน่วยการเรียนรู้</th>
-                      <th>ชื่อแผนการสอน</th>
-                      <th>ปีการศึกษา/ภาคเรียน (ปีงบประมาณ)</th>
-                      <th>วันที่ส่ง</th>
-                      <th>ไฟล์แผนการสอน</th>
-                      <th>สถานะ</th>
-                    </tr>
-                  ) : (
-                    <tr>
-                      <th>ที่</th>
-                      <th>กลุ่มสาระ (ย่อ)</th>
-                      <th>ระดับชั้น</th>
-                      <th>ประเภทวิชา</th>
-                      <th>หน่วยการเรียนรู้</th>
-                      <th>ชื่อแผนการสอน</th>
-                      <th>ปีการศึกษา/ภาคเรียน (ปีงบประมาณ)</th>
-                      <th>วันที่ส่ง</th>
-                      <th>แผน</th>
-                      <th>คลิป</th>
-                      <th>ผลประเมิน</th>
-                      <th>สถานะ</th>
-                      <th>การจัดการ</th>
-                    </tr>
-                  )}
-                </thead>
-                <tbody>
-                  {rows.length === 0 && (
-                    <tr>
-                      <td colSpan={totalColumns} style={{ padding: 0 }}>
-                        <EmptyState fullPage={false} message="ยังไม่มีข้อมูลแผนการส่ง" />
-                      </td>
-                    </tr>
-                  )}
-                  {roleId === 'directorschool'
-                    ? enrichedRows.map(renderDirectorRow)
-                    : enrichedRows.map(renderTeacherRow)}
-                </tbody>
-              </table>
-            </div>
+
+            {enrichedRows.length === 0 ? (
+              <EmptyState
+                fullPage={false}
+                message={searchTerm ? 'ไม่พบข้อมูลที่ตรงกับคำค้นหา' : 'ยังไม่มีข้อมูลแผนการส่ง'}
+              />
+            ) : (
+              <>
+                {/* Mobile Card View (visible when card mode or auto on small screen) */}
+                <div className={viewMode === 'card' ? 'd-block' : viewMode === 'table' ? 'd-none' : 'd-block d-md-none'}>
+                  <div className="status-plan-cards">
+                    {roleId === 'directorschool'
+                      ? enrichedRows.map(renderDirectorCard)
+                      : enrichedRows.map(renderTeacherCard)}
+                  </div>
+                </div>
+
+                {/* Desktop Table View (visible when table mode or auto on medium+ screen) */}
+                <div className={`table-responsive ${viewMode === 'table' ? 'd-block' : viewMode === 'card' ? 'd-none' : 'd-none d-md-block'}`}>
+                  <table className="table table-bordered table-hover table-striped" id="data">
+                    <thead>
+                      {roleId === 'directorschool' ? (
+                        <tr>
+                          <th>ที่</th>
+                          <th>ครู</th>
+                          <th>กลุ่มสาระ (ย่อ)</th>
+                          <th>ระดับชั้น</th>
+                          <th>ประเภทวิชา</th>
+                          <th>ชื่อวิชา (รหัสวิชา)</th>
+                          <th>หน่วยการเรียนรู้</th>
+                          <th>ชื่อแผนการสอน</th>
+                          <th>ปีการศึกษา/ภาคเรียน (ปีงบประมาณ)</th>
+                          <th>วันที่ส่ง</th>
+                          <th>ไฟล์แผนการสอน</th>
+                          <th>สถานะ</th>
+                        </tr>
+                      ) : (
+                        <tr>
+                          <th>ที่</th>
+                          <th>กลุ่มสาระ (ย่อ)</th>
+                          <th>ระดับชั้น</th>
+                          <th>ประเภทวิชา</th>
+                          <th>หน่วยการเรียนรู้</th>
+                          <th>ชื่อแผนการสอน</th>
+                          <th>ปีการศึกษา/ภาคเรียน (ปีงบประมาณ)</th>
+                          <th>วันที่ส่ง</th>
+                          <th>แผน</th>
+                          <th>คลิป</th>
+                          <th>ผลประเมิน</th>
+                          <th>สถานะ</th>
+                          <th>การจัดการ</th>
+                        </tr>
+                      )}
+                    </thead>
+                    <tbody>
+                      {roleId === 'directorschool'
+                        ? enrichedRows.map(renderDirectorRow)
+                        : enrichedRows.map(renderTeacherRow)}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

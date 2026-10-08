@@ -13,3 +13,148 @@
   overflow-y: auto;
   overflow-x: hidden;
 }
+
+/* Smart Wizard Stepper */
+.wizard-stepper-container {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e2e8f0;
+}
+
+.wizard-progress-bar {
+  height: 4px;
+  background-color: #e2e8f0;
+  border-radius: 999px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.wizard-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #10b981);
+  transition: width 0.35s ease;
+}
+
+.wizard-steps {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  gap: 8px;
+}
+
+.wizard-step-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.wizard-step-item:hover:not(:disabled) {
+  background-color: #f1f5f9;
+}
+
+.wizard-step-badge {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  background-color: #e2e8f0;
+  color: #64748b;
+  transition: all 0.25s ease;
+  flex-shrink: 0;
+}
+
+.wizard-step-item.active .wizard-step-badge {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.35);
+  transform: scale(1.08);
+}
+
+.wizard-step-item.completed .wizard-step-badge {
+  background-color: #10b981;
+  color: #ffffff;
+}
+
+.wizard-step-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.wizard-step-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: #334155;
+  line-height: 1.2;
+}
+
+.wizard-step-item.active .wizard-step-title {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.wizard-step-subtitle {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+/* Mobile responsive stepper */
+@media (max-width: 768px) {
+  .wizard-stepper-container {
+    padding: 12px;
+  }
+  .wizard-steps {
+    gap: 4px;
+  }
+  .wizard-step-item {
+    padding: 4px 6px;
+    gap: 6px;
+  }
+  .wizard-step-badge {
+    width: 28px;
+    height: 28px;
+    font-size: 0.8rem;
+  }
+  .wizard-step-subtitle {
+    display: none;
+  }
+  .wizard-step-title {
+    font-size: 0.78rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .wizard-step-text {
+    display: none;
+  }
+  .wizard-step-item.active .wizard-step-text {
+    display: flex;
+  }
+}
+
+.wizard-nav-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 20px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  border-radius: 0 0 8px 8px;
+}
+
