@@ -3,6 +3,7 @@ import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import PendingWorkAlert from '../components/PendingWorkAlert';
 import { useAuth } from '../contexts/AuthContext';
 import { moduleLabels } from '../config/roleModules';
 
@@ -108,6 +109,7 @@ const AppLayout = () => {
 
         <section className="content">
           <div className="container-fluid">
+            <PendingWorkAlert />
             <Outlet />
           </div>
         </section>

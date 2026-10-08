@@ -6,6 +6,7 @@ import { useUserProfile } from '../hooks/useUserProfile';
 import useSelect2 from '../hooks/useSelect2';
 import { uploadToDrive } from '../utils/driveUpload';
 import { showToast } from '../utils/toast';
+import { generateTeacherToDirectorMessage, showLineShareDialog } from '../utils/lineNotifyHelper';
 import './SendPlan.css';
 
 const normalizeThaiDate = (value) => {
@@ -763,6 +764,7 @@ const SendPlan = () => {
         plan_status: planid ? (existingPlanStatus === '3' ? '4' : existingPlanStatus) : '1',
       };
 
+      let insertedPlanId = planid;
       if (planid) {
         const { error } = await supabase
           .from('tbl_sendplan')
@@ -770,28 +772,49 @@ const SendPlan = () => {
           .eq('planid', planid);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('tbl_sendplan').insert([{
-          ...payload,
-          plan_clip: '',
-          committee1: '',
-          committee2: '',
-          committee3: '',
-          committee4: '',
-          committee5: '',
-        }]);
+        const { data: insertedData, error } = await supabase
+          .from('tbl_sendplan')
+          .insert([{
+            ...payload,
+            plan_clip: '',
+            committee1: '',
+            committee2: '',
+            committee3: '',
+            committee4: '',
+            committee5: '',
+          }])
+          .select('planid')
+          .single();
         if (error) throw error;
+        if (insertedData) {
+          insertedPlanId = insertedData.planid;
+        }
       }
 
       if (draftKey) {
         localStorage.removeItem(draftKey);
       }
 
-      Swal.fire({
-        title: planid ? 'แก้ไขสำเร็จแล้ว' : 'ส่งสำเร็จแล้ว',
-        text: 'ระบบกำลังนำท่านกลับไปหน้าแรก',
-        icon: 'success',
-      }).then(() => {
-        navigate('/statusplan');
+      const teacherPrefix = lookups?.prefix?.[profile?.prefix] || profile?.prefix || '';
+      const teacherName = `${teacherPrefix}${profile?.name || ''} ${profile?.lastname || ''}`.trim();
+      const schoolName = lookups?.school?.[profile?.school] || profile?.school_name || '';
+
+      const lineMsg = generateTeacherToDirectorMessage({
+        teacherName,
+        schoolName,
+        subjectName: form.subject_name,
+        subjectCode: form.subject_code,
+        planName: form.subject_name_plan,
+        planId: insertedPlanId || '',
+      });
+
+      showLineShareDialog({
+        title: planid ? 'แก้ไขแผนสำเร็จแล้ว!' : 'ส่งแผนการสอนสำเร็จแล้ว!',
+        subtitle: 'ท่านสามารถส่งการแจ้งเตือนหาผู้อำนวยการโรงเรียนผ่าน LINE เพื่อให้ตรวจอนุมัติได้ทันท่วงที',
+        messageText: lineMsg,
+        onClose: () => {
+          navigate('/statusplan');
+        },
       });
     } catch (err) {
       console.error(err);

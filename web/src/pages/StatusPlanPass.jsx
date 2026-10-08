@@ -5,6 +5,7 @@ import { useUserProfile } from '../hooks/useUserProfile';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
 import StatusBadge from '../components/StatusBadge';
+import { generateDirectorToCommitteeMessage, showLineShareDialog } from '../utils/lineNotifyHelper';
 
 const StatusPlanPass = () => {
   const { profile, loading: profileLoading } = useUserProfile();
@@ -89,6 +90,28 @@ const StatusPlanPass = () => {
     return <LoadingSpinner text="กำลังโหลดข้อมูลแผนการสอนที่ผ่านการอนุมัติ..." />;
   }
 
+  const handleShareLineToCommittee = (row) => {
+    const directorPrefix = profile?.prefix || '';
+    const directorName = `${directorPrefix}${profile?.name || ''} ${profile?.lastname || ''}`.trim();
+    const schoolName = profile?.school_name || '';
+
+    const lineMsg = generateDirectorToCommitteeMessage({
+      directorName,
+      schoolName,
+      teacherName: '',
+      subjectName: row.subject_name,
+      subjectCode: row.subject_code,
+      planName: row.subject_name_plan,
+      planId: row.planid,
+    });
+
+    showLineShareDialog({
+      title: 'ส่งข้อความแจ้งเตือนกรรมการผ่าน LINE',
+      subtitle: `แจ้งเตือนคณะกรรมการนิเทศสำหรับแผน #${row.planid} (${row.subject_name})`,
+      messageText: lineMsg,
+    });
+  };
+
   const renderPassedPlanCard = (row, index) => {
     return (
       <div
@@ -164,7 +187,18 @@ const StatusPlanPass = () => {
           </div>
         </div>
 
-        <div className="card-footer bg-light p-2 d-flex justify-content-end" style={{ gap: '6px' }}>
+        <div className="card-footer bg-light p-2 d-flex justify-content-end flex-wrap" style={{ gap: '6px' }}>
+          {isDirector && String(row.plan_status) === '2' && (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-success font-weight-bold"
+              style={{ fontSize: '12px' }}
+              onClick={() => handleShareLineToCommittee(row)}
+              title="ส่งข้อความแจ้งเตือนคณะกรรมการนิเทศผ่าน LINE"
+            >
+              <i className="fa-brands fa-line mr-1"></i> เตือนกรรมการ
+            </button>
+          )}
           <Link
             to={`/view_appointment?planid=${row.planid}`}
             className="btn btn-info btn-sm"
@@ -311,6 +345,16 @@ const StatusPlanPass = () => {
                         </td>
                         <td>
                           <div className="d-flex align-items-center" style={{ gap: '4px' }}>
+                            {isDirector && String(row.plan_status) === '2' && (
+                              <button
+                                type="button"
+                                className="btn btn-outline-success btn-sm font-weight-bold"
+                                onClick={() => handleShareLineToCommittee(row)}
+                                title="ส่งข้อความแจ้งเตือนคณะกรรมการนิเทศผ่าน LINE"
+                              >
+                                <i className="fa-brands fa-line text-success"></i> เตือน
+                              </button>
+                            )}
                             <Link to={`/view_appointment?planid=${row.planid}`} className="btn btn-info btn-sm">
                               <i className="fa-solid fa-circle-info"></i> ดูข้อมูล
                             </Link>

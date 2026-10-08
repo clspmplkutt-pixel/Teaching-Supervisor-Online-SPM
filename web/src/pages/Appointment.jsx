@@ -5,6 +5,7 @@ import { supabase } from '../supabaseClient';
 import { useUserProfile } from '../hooks/useUserProfile';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
+import { generateDirectorToCommitteeMessage, showLineShareDialog } from '../utils/lineNotifyHelper';
 
 const useQuery = () => {
   const { search } = useLocation();
@@ -434,8 +435,71 @@ const Appointment = ({ readOnly = false }) => {
       if (error) throw error;
 
       const isEdit = plan?.plan_status === '2' || plan?.plan_approve === '1';
-      Swal.fire('สำเร็จ', isEdit ? 'บันทึกการแก้ไขคณะกรรมการนิเทศเรียบร้อยแล้ว' : 'บันทึกการแต่งตั้งกรรมการเรียบร้อย', 'success');
-      navigate(returnUrl);
+
+      if (form.plan_approve === '1') {
+        const getCommitteeLabel = (id) => {
+          if (!id) return '';
+          const opt = committeeOptions.find((o) => o.value === id);
+          return opt ? opt.label : id;
+        };
+
+        const committeeNames = [
+          form.committee1,
+          form.committee2,
+          form.committee3,
+          form.committee4,
+          form.committee5,
+        ]
+          .filter(Boolean)
+          .map(getCommitteeLabel);
+
+        const directorPrefix = lookups.prefix[profile?.prefix] || profile?.prefix || '';
+        const directorName = `${directorPrefix}${profile?.name || ''} ${profile?.lastname || ''}`.trim();
+        const schoolName = lookups.school[plan?.school_code] || '';
+        const teacherPrefix = lookups.prefix[teacher?.prefix] || teacher?.prefix || '';
+        const teacherName = `${teacherPrefix}${teacher?.name || ''} ${teacher?.lastname || ''}`.trim();
+
+        const lineMsg = generateDirectorToCommitteeMessage({
+          directorName,
+          schoolName,
+          teacherName,
+          subjectName: plan?.subject_name,
+          subjectCode: plan?.subject_code,
+          planName: plan?.subject_name_plan,
+          committees: committeeNames,
+          planId: planid,
+        });
+
+        showLineShareDialog({
+          title: isEdit ? 'แก้ไขกรรมการสำเร็จแล้ว!' : 'แต่งตั้งกรรมการสำเร็จแล้ว!',
+          subtitle: 'ท่านสามารถส่งการแจ้งเตือนหาคณะกรรมการนิเทศผ่าน LINE ได้ทันที เพื่อให้เข้าประเมินแผนการสอน',
+          messageText: lineMsg,
+          onClose: () => {
+            navigate(returnUrl);
+          },
+        });
+      } else {
+        const teacherPrefix = lookups.prefix[teacher?.prefix] || teacher?.prefix || '';
+        const teacherName = `${teacherPrefix}${teacher?.name || ''} ${teacher?.lastname || ''}`.trim();
+        const currentHost = window.location.origin;
+        const rejectMsg =
+          `⚠️ [ระบบนิเทศออนไลน์ สพม.พิษณุโลก อุตรดิตถ์]\n` +
+          `เรียน ครูผู้สอน (${teacherName})\n\n` +
+          `แผนการจัดการเรียนรู้วิชา: ${plan?.subject_name || ''} (${plan?.subject_code || ''})\n` +
+          `รหัสแผน: #${planid}\n` +
+          `สถานะ: ถูกส่งกลับให้แก้ไขปรับปรุง\n` +
+          (form.plan_ds_comment ? `📝 ข้อเสนอแนะจาก ผอ.:\n${form.plan_ds_comment}\n\n` : '\n') +
+          `🔗 เข้าสู่ระบบเพื่อแก้ไขแผนได้ที่:\n${currentHost}/statusplan`;
+
+        showLineShareDialog({
+          title: 'ส่งกลับแผนการสอนเรียบร้อย!',
+          subtitle: 'ท่านสามารถส่งข้อความแจ้งเตือนครูผู้สอนผ่าน LINE เพื่อให้รับทราบข้อเสนอแนะและแก้ไขแผน',
+          messageText: rejectMsg,
+          onClose: () => {
+            navigate(returnUrl);
+          },
+        });
+      }
     } catch (err) {
       console.error(err);
       Swal.fire('Error', 'ไม่สามารถบันทึกได้', 'error');

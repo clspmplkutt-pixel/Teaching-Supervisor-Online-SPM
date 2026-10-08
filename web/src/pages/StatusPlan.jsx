@@ -7,6 +7,7 @@ import { useUserProfile } from '../hooks/useUserProfile';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
 import StatusBadge, { PlanTimelineStepper } from '../components/StatusBadge';
+import { generateTeacherToDirectorMessage, showLineShareDialog } from '../utils/lineNotifyHelper';
 
 const getRoleId = (user) => {
   return user?.level_id || user?.user_metadata?.role || user?.role || 'teacher';
@@ -234,6 +235,27 @@ const StatusPlan = () => {
     }
   };
 
+  const handleShareLineToDirector = (row) => {
+    const teacherPrefix = lookups?.prefix?.[profile?.prefix] || profile?.prefix || '';
+    const teacherName = `${teacherPrefix}${profile?.name || ''} ${profile?.lastname || ''}`.trim();
+    const schoolName = profile?.school_name || '';
+
+    const lineMsg = generateTeacherToDirectorMessage({
+      teacherName,
+      schoolName,
+      subjectName: row.subject_name,
+      subjectCode: row.subject_code,
+      planName: row.subject_name_plan,
+      planId: row.planid,
+    });
+
+    showLineShareDialog({
+      title: 'ส่งข้อความแจ้งเตือน ผอ. ผ่าน LINE',
+      subtitle: `แจ้งเตือนท่าน ผอ. เพื่อตรวจอนุมัติแผน #${row.planid} (${row.subject_name})`,
+      messageText: lineMsg,
+    });
+  };
+
   const renderTeacherRow = (row, index) => {
     const committeeTotal = [row.committee1, row.committee2, row.committee3, row.committee4, row.committee5].filter(Boolean).length;
     const scoringCount = scoreMap[row.planid] || 0;
@@ -283,6 +305,16 @@ const StatusPlan = () => {
         </td>
         <td className="text-center">
           <div className="d-flex flex-column gap-1" style={{ gap: '4px' }}>
+            {['1', '4'].includes(String(row.plan_status)) && (
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-success mb-1"
+                onClick={() => handleShareLineToDirector(row)}
+                title="ส่งข้อความแจ้งเตือน ผอ. ผ่าน LINE"
+              >
+                <i className="fa-brands fa-line text-success mr-1"></i> เตือน ผอ.
+              </button>
+            )}
             {canEdit ? (
               <Link to={`/sendplan?planid=${row.planid}`} className="btn btn-sm btn-warning mb-1">
                 <i className="fa-solid fa-edit"></i> แก้ไข
@@ -405,7 +437,17 @@ const StatusPlan = () => {
                 </a>
               )}
             </div>
-            <div className="d-flex" style={{ gap: '6px' }}>
+            <div className="d-flex flex-wrap align-items-center" style={{ gap: '6px' }}>
+              {['1', '4'].includes(String(row.plan_status)) && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-success font-weight-bold"
+                  onClick={() => handleShareLineToDirector(row)}
+                  title="ส่งข้อความแจ้งเตือน ผอ. ผ่าน LINE"
+                >
+                  <i className="fa-brands fa-line mr-1"></i> เตือน ผอ.
+                </button>
+              )}
               {canEdit && (
                 <Link to={`/sendplan?planid=${row.planid}`} className="btn btn-sm btn-warning">
                   <i className="fa-solid fa-edit mr-1"></i> แก้ไข
