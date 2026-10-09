@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { encryptLegacyPassword } from '../utils/legacyCrypto';
 import { formatThaiId, cleanThaiId, getThaiIdInfo } from '../utils/thaiId';
+import { findUsersByPeopleId } from '../utils/userLookup';
 import Swal from 'sweetalert2';
 
 const Login = () => {
@@ -33,15 +34,11 @@ const Login = () => {
 
         const cleanForgotId = cleanThaiId(forgotId);
         try {
-            const { data: user, error } = await supabase
-                .from('tbl_Users')
-                .select('*')
-                .eq('people_id', cleanForgotId)
-                .maybeSingle();
+            const { data: candidates, error } = await findUsersByPeopleId(supabase, cleanForgotId);
 
             if (error) throw error;
 
-            if (!user) {
+            if (!candidates.length) {
                 setForgotError('ไม่พบข้อมูลผู้ใช้งานนี้ในระบบ กรุณาตรวจสอบเลขประจำตัวประชาชน');
             } else {
                 const checkBirthdayMatch = (dbDate, inputDate) => {
@@ -70,7 +67,11 @@ const Login = () => {
                     return dbY === inY || Math.abs(dbY - inY) === 543;
                 };
 
-                if (!checkBirthdayMatch(user.birthday, forgotDob)) {
+                // Only accounts whose own birthday matches (protects other people sharing this ID)
+                const matchedUsers = candidates.filter((u) => checkBirthdayMatch(u.birthday, forgotDob));
+                const user = matchedUsers[0];
+
+                if (!user) {
                     setForgotError('วัน/เดือน/ปีเกิด ไม่ตรงกับข้อมูลในระบบ');
                 } else {
                     // Reset password to YYYYMMDD (Christian Era) automatically
@@ -80,7 +81,7 @@ const Login = () => {
                     const { error: updateError } = await supabase
                         .from('tbl_Users')
                         .update({ passwd: encrypted })
-                        .eq('people_id', cleanForgotId);
+                        .in('id', matchedUsers.map((u) => u.id));
                     
                     if (updateError) throw updateError;
 
@@ -137,11 +138,12 @@ const Login = () => {
             } else {
                 // ดึง level จาก DB ก่อน
                 try {
-                    const { data: userData } = await supabase
-                        .from('tbl_Users')
-                        .select('level, headDepartment, register_isConfirm, people_id')
-                        .eq('people_id', effectiveUser)
-                        .maybeSingle();
+                    const { data: userRows } = await findUsersByPeopleId(
+                        supabase,
+                        effectiveUser,
+                        'level, headDepartment, register_isConfirm, people_id'
+                    );
+                    const userData = userRows && userRows.length ? userRows[0] : null;
 
                     if (!userData) {
                         // ลองค้นหาใน tbl_user (admin table)
@@ -158,8 +160,8 @@ const Login = () => {
                             return;
                         }
                     } else {
-                        // ตรวจสอบว่ายังไม่ได้อนุมัติ
-                        if (String(userData.register_isConfirm) === '0') {
+                        // ตรวจสอบว่ายังไม่ได้อนุมัติ (ทุกบัญชีที่ใช้เลขนี้)
+                        if (userRows.every((r) => String(r.register_isConfirm) === '0')) {
                             setError('บัญชีของคุณยังไม่ได้รับการอนุมัติจากผู้ดูแลระบบ กรุณารอการอนุมัติ หรือติดต่อผู้ดูแลระบบสถานศึกษา');
                             return;
                         }

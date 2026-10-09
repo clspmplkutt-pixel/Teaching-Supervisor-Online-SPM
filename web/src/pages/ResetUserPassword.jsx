@@ -46,7 +46,7 @@ const ResetUserPassword = () => {
         try {
             let dbQuery = supabase
                 .from('tbl_Users')
-                .select('people_id, name, lastname, prefix, school, level, approved')
+                .select('id, people_id, name, lastname, prefix, school, level, register_isConfirm')
                 .or(`people_id.eq.${query.trim()},name.ilike.%${query.trim()}%,lastname.ilike.%${query.trim()}%`);
 
             if (isAdminSchool && userSchool) {
@@ -106,7 +106,7 @@ const ResetUserPassword = () => {
             const { error } = await supabase
                 .from('tbl_Users')
                 .update({ passwd: encrypted })
-                .eq('people_id', selected.people_id);
+                .eq('id', selected.id);
             if (error) throw error;
             Swal.fire('สำเร็จ! ✅', `รีเซ็ตรหัสผ่านของ ${selected.name} ${selected.lastname} เรียบร้อยแล้ว`, 'success');
             setNewPwd('');
@@ -173,8 +173,8 @@ const ResetUserPassword = () => {
                                     <tbody>
                                         {users.map((u) => (
                                             <tr
-                                                key={u.people_id}
-                                                className={selected?.people_id === u.people_id ? 'table-warning' : ''}
+                                                key={u.id}
+                                                className={selected?.id === u.id ? 'table-warning' : ''}
                                                 style={{ cursor: 'pointer' }}
                                                 onClick={() => { setSelected(u); setNewPwd(''); setConfirmPwd(''); }}
                                             >
@@ -183,7 +183,7 @@ const ResetUserPassword = () => {
                                                 <td>{lookups.school[u.school] || u.school}</td>
                                                 <td>{u.level}</td>
                                                 <td>
-                                                    {u.approved === '1'
+                                                    {String(u.register_isConfirm) === '1'
                                                         ? <span className="badge badge-success">อนุมัติแล้ว</span>
                                                         : <span className="badge badge-warning">รอการอนุมัติ</span>
                                                     }
@@ -191,7 +191,7 @@ const ResetUserPassword = () => {
                                                 <td>
                                                     <button
                                                         type="button"
-                                                        className={`btn btn-sm ${selected?.people_id === u.people_id ? 'btn-warning' : 'btn-outline-warning'}`}
+                                                        className={`btn btn-sm ${selected?.id === u.id ? 'btn-warning' : 'btn-outline-warning'}`}
                                                         onClick={() => { setSelected(u); setNewPwd(''); setConfirmPwd(''); }}
                                                     >
                                                         <i className="fa-solid fa-key"></i> เลือก

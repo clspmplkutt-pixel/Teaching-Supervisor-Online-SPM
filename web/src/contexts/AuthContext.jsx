@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { encryptLegacyPassword, encryptLegacyPasswordPHP } from '../utils/legacyCrypto';
+import { findUsersByPeopleId, matchUserPassword, pickBestMatch } from '../utils/userLookup';
 import { useNavigate } from 'react-router-dom';
 
 const AuthContext = createContext({});
@@ -122,10 +123,6 @@ export const AuthProvider = ({ children }) => {
             const cleanPassword = String(password || '').trim();
             const cleanEmail = String(email || '').trim().replace(/[-\s]/g, '');
 
-            // ลองทั้ง JS format (single base64) และ PHP format (double base64)
-            const encryptedJS = encryptLegacyPassword(cleanPassword);
-            const encryptedPHP = encryptLegacyPasswordPHP(cleanPassword);
-
             let table = 'tbl_Users';
             let userCol = 'people_id';
 
@@ -137,87 +134,39 @@ export const AuthProvider = ({ children }) => {
             console.log('🔍 Login Debug Info:');
             console.log('  - Table:', table, '| Column:', userCol, '| User:', cleanEmail);
 
-            // ลองด้วย JS format ก่อน
-            let { data, error } = await supabase
-                .from(table).select('*')
-                .eq(userCol, cleanEmail).eq('passwd', encryptedJS).maybeSingle();
+            let data = null;
+            let error = null;
 
-            // ถ้าไม่เจอ ลองด้วย PHP format (user เก่าที่ migrate มา)
-            if (!data && !error) {
+            if (table === 'tbl_user') {
+                // Admin accounts: exact password match only (JS or PHP format)
+                const encryptedJS = encryptLegacyPassword(cleanPassword);
+                const encryptedPHP = encryptLegacyPasswordPHP(cleanPassword);
                 ({ data, error } = await supabase
                     .from(table).select('*')
-                    .eq(userCol, cleanEmail).eq('passwd', encryptedPHP).maybeSingle());
-                if (data) console.log('✅ Matched PHP format (double base64)');
-            } else if (data) {
-                console.log('✅ Matched JS format (single base64)');
-            }
-
-            // ถ้ายังไม่เจอ ลอง convert password format เผื่อผู้ใช้ป้อนแบบยืดหยุ่น
-            // เช่น ผู้ใช้ป้อน DDMMYYYY (พ.ศ.), DD/MM/YYYY, YYYY-MM-DD, เลขบัตร 13 หลัก หรือ 123456
-            if (!data && !error && table === 'tbl_Users') {
-                const { data: userRec } = await supabase
-                    .from(table).select('*')
-                    .eq(userCol, cleanEmail).maybeSingle();
-
-                if (userRec) {
-                    let isMatched = false;
-                    const bday = userRec.birthday ? String(userRec.birthday).replace(/-/g, '') : '';
-                    
-                    if (userRec.birthday) {
-                        const digitsOnly = cleanPassword.replace(/\D/g, '');
-                        const bdParts = String(userRec.birthday).split('-');
-                        
-                        if (bdParts.length === 3) {
-                            const yyyy = bdParts[0];
-                            const mm = bdParts[1];
-                            const dd = bdParts[2];
-                            const m = String(parseInt(mm, 10));
-                            const d = String(parseInt(dd, 10));
-                            const thaiYear = String(parseInt(yyyy, 10) + 543);
-
-                            const possibleDigitForms = new Set([
-                                `${yyyy}${mm}${dd}`,      // YYYYMMDD ค.ศ. (19760201)
-                                `${thaiYear}${mm}${dd}`,  // YYYYMMDD พ.ศ. (25190201)
-                                `${dd}${mm}${thaiYear}`,  // DDMMYYYY พ.ศ. (01022519)
-                                `${dd}${mm}${yyyy}`,      // DDMMYYYY ค.ศ. (01021976)
-                                `${d}${mm}${thaiYear}`,   // DMMYYYY พ.ศ. (1022519)
-                                `${d}${m}${thaiYear}`,    // DMYYYY พ.ศ. (122519)
-                                `${d}${mm}${yyyy}`,       // DMMYYYY ค.ศ. (1021976)
-                                `${d}${m}${yyyy}`,        // DMYYYY ค.ศ. (121976)
-                            ]);
-
-                            const rawVariations = new Set([
-                                `${dd}/${mm}/${thaiYear}`, `${d}/${m}/${thaiYear}`, `${d}/${mm}/${thaiYear}`, `${dd}/${m}/${thaiYear}`,
-                                `${dd}-${mm}-${thaiYear}`, `${d}-${m}-${thaiYear}`, `${d}-${mm}-${thaiYear}`,
-                                `${dd}.${mm}.${thaiYear}`, `${d}.${m}.${thaiYear}`,
-                                `${yyyy}-${mm}-${dd}`, `${yyyy}/${mm}/${dd}`,
-                                `${thaiYear}-${mm}-${dd}`, `${thaiYear}/${mm}/${dd}`,
-                            ]);
-
-                            if (possibleDigitForms.has(digitsOnly) || rawVariations.has(cleanPassword)) {
-                                isMatched = true;
-                            }
-                        }
-                    }
-
-                    // Default fallbacks for users logging in with ID or default password
-                    if (!isMatched) {
-                        if (userRec.people_id && (cleanPassword === userRec.people_id || cleanPassword.replace(/\D/g, '') === userRec.people_id)) {
-                            isMatched = true;
-                        } else if (cleanPassword === '123456') {
-                            isMatched = true;
-                        }
-                    }
-
-                    if (isMatched) {
-                        data = userRec;
-                        console.log('✅ Matched via flexible birthday / default credentials');
-
-                        // อัพเดทรหัสผ่านให้เป็น format มาตรฐาน (YYYYMMDD ค.ศ.)
-                        if (bday) {
-                            const newEncrypted = encryptLegacyPassword(bday);
-                            await supabase.from(table).update({ passwd: newEncrypted }).eq(userCol, cleanEmail);
-                            console.log('🔄 Auto-migrated password to standard format');
+                    .eq(userCol, cleanEmail).eq('passwd', encryptedJS).maybeSingle());
+                if (!data && !error) {
+                    ({ data, error } = await supabase
+                        .from(table).select('*')
+                        .eq(userCol, cleanEmail).eq('passwd', encryptedPHP).maybeSingle());
+                }
+            } else {
+                // Teacher accounts: tolerate duplicate IDs and IDs stored as 12 digits
+                const { data: rows, error: lookupError } = await findUsersByPeopleId(supabase, cleanEmail);
+                error = lookupError;
+                if (!error) {
+                    if (rows.length > 1) console.warn(`⚠️ ${rows.length} accounts share people_id ${cleanEmail}`);
+                    const matched = rows
+                        .map((r) => ({ row: r, how: matchUserPassword(r, cleanPassword) }))
+                        .filter((m) => m.how);
+                    const best = pickBestMatch(matched.map((m) => m.row), cleanPassword);
+                    if (best) {
+                        data = best;
+                        const how = matched.find((m) => m.row.id === best.id)?.how;
+                        console.log(`✅ Password matched (${how})`);
+                        // Normalise the default password to YYYYMMDD (ค.ศ.) for this account only
+                        if (how === 'birthday' && best.birthday) {
+                            const newEncrypted = encryptLegacyPassword(String(best.birthday).replace(/-/g, ''));
+                            await supabase.from(table).update({ passwd: newEncrypted }).eq('id', best.id);
                         }
                     }
                 }
@@ -280,7 +229,8 @@ export const AuthProvider = ({ children }) => {
                 // Map legacy user data to session-like object
                 const userData = {
                     id: data.id,
-                    email: email, // or data.email
+                    // Use the stored ID so later queries match this exact DB record
+                    email: table === 'tbl_Users' ? (data.people_id || cleanEmail) : email,
                     user_metadata: {
                         name: data.name + ' ' + (data.lastname || ''),
                         role: effectiveRole,

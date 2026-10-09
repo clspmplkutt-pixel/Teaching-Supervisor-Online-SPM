@@ -964,7 +964,7 @@ const SendPlan = () => {
             </div>
           </div>
 
-          <form onSubmit={handleFormSubmit} className="form-horizontal was-validated" autoComplete="off">
+          <form onSubmit={handleSubmit} className="form-horizontal was-validated" autoComplete="off">
             {/* ================= STEP 1: ข้อมูลวิชา & เวลาสอน ================= */}
             <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
               <div className="card card-teal">

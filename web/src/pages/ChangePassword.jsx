@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
-import { encryptLegacyPassword } from '../utils/legacyCrypto';
+import { encryptLegacyPassword, encryptLegacyPasswordPHP } from '../utils/legacyCrypto';
 
 const ChangePassword = () => {
   const { user, logout } = useAuth();
@@ -46,18 +46,23 @@ const ChangePassword = () => {
     setSaving(true);
     try {
       const table = isAdminAccount ? 'tbl_user' : 'tbl_Users';
-      const idColumn = isAdminAccount ? 'user' : 'people_id';
+      // Teacher rows are matched by their unique row id (people_id may be duplicated)
+      const idColumn = isAdminAccount ? 'user' : (user?.id ? 'id' : 'people_id');
+      const idValue = isAdminAccount ? loginId : (user?.id || loginId);
 
       const { data: existing, error: fetchError } = await supabase
         .from(table)
         .select('passwd')
-        .eq(idColumn, loginId)
+        .eq(idColumn, idValue)
         .maybeSingle();
 
       if (fetchError) throw fetchError;
 
-      const oldEncrypted = encryptLegacyPassword(oldpwd);
-      if (!existing || existing.passwd !== oldEncrypted) {
+      const oldOk = existing && (
+        existing.passwd === encryptLegacyPassword(oldpwd) ||
+        existing.passwd === encryptLegacyPasswordPHP(oldpwd)
+      );
+      if (!oldOk) {
         Swal.fire('Error', 'รหัสผ่านเก่าไม่ถูกต้อง', 'error');
         setSaving(false);
         return;
@@ -67,7 +72,7 @@ const ChangePassword = () => {
       const { error: updateError } = await supabase
         .from(table)
         .update({ passwd: newEncrypted, lastupdate: new Date().toISOString() })
-        .eq(idColumn, loginId);
+        .eq(idColumn, idValue);
 
       if (updateError) throw updateError;
 
