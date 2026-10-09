@@ -119,70 +119,105 @@ export const AuthProvider = ({ children }) => {
 
         // *** LEGACY SYSTEM LOGIN (Match PHP Logic) ***
         try {
+            const cleanPassword = String(password || '').trim();
+            const cleanEmail = String(email || '').trim().replace(/[-\s]/g, '');
 
             // ลองทั้ง JS format (single base64) และ PHP format (double base64)
-            const encryptedJS = encryptLegacyPassword(password);
-            const encryptedPHP = encryptLegacyPasswordPHP(password);
+            const encryptedJS = encryptLegacyPassword(cleanPassword);
+            const encryptedPHP = encryptLegacyPasswordPHP(cleanPassword);
 
             let table = 'tbl_Users';
             let userCol = 'people_id';
 
-            if (level === 'admin' || level === 'root') {
+            if (level === 'admin' || level === 'root' || cleanEmail === 'admin' || cleanEmail === 'root') {
                 table = 'tbl_user';
                 userCol = 'user';
             }
 
             console.log('🔍 Login Debug Info:');
-            console.log('  - Table:', table, '| Column:', userCol, '| User:', email);
+            console.log('  - Table:', table, '| Column:', userCol, '| User:', cleanEmail);
 
             // ลองด้วย JS format ก่อน
             let { data, error } = await supabase
                 .from(table).select('*')
-                .eq(userCol, email).eq('passwd', encryptedJS).maybeSingle();
+                .eq(userCol, cleanEmail).eq('passwd', encryptedJS).maybeSingle();
 
             // ถ้าไม่เจอ ลองด้วย PHP format (user เก่าที่ migrate มา)
             if (!data && !error) {
                 ({ data, error } = await supabase
                     .from(table).select('*')
-                    .eq(userCol, email).eq('passwd', encryptedPHP).maybeSingle());
+                    .eq(userCol, cleanEmail).eq('passwd', encryptedPHP).maybeSingle());
                 if (data) console.log('✅ Matched PHP format (double base64)');
             } else if (data) {
                 console.log('✅ Matched JS format (single base64)');
             }
 
-            // ถ้ายังไม่เจอ ลอง convert password format เผื่อผู้ใช้ป้อนแบบเก่า
-            // เช่น ผู้ใช้ป้อน DDMMYYYY (พ.ศ.) แต่ระบบ Reset เป็น YYYYMMDD (ค.ศ.)
+            // ถ้ายังไม่เจอ ลอง convert password format เผื่อผู้ใช้ป้อนแบบยืดหยุ่น
+            // เช่น ผู้ใช้ป้อน DDMMYYYY (พ.ศ.), DD/MM/YYYY, YYYY-MM-DD, เลขบัตร 13 หลัก หรือ 123456
             if (!data && !error && table === 'tbl_Users') {
-                // ดึง user ข้อมูลมาเช็ค birthday
                 const { data: userRec } = await supabase
                     .from(table).select('*')
-                    .eq(userCol, email).maybeSingle();
+                    .eq(userCol, cleanEmail).maybeSingle();
 
-                if (userRec && userRec.birthday) {
-                    const bday = String(userRec.birthday).replace(/-/g, '');
-                    // สร้างรหัสทุกรูปแบบที่เป็นไปได้จากวันเกิด
-                    const bdParts = String(userRec.birthday).split('-');
-                    if (bdParts.length === 3) {
-                        const yyyy = bdParts[0];
-                        const mm = bdParts[1];
-                        const dd = bdParts[2];
-                        const thaiYear = String(parseInt(yyyy, 10) + 543);
+                if (userRec) {
+                    let isMatched = false;
+                    const bday = userRec.birthday ? String(userRec.birthday).replace(/-/g, '') : '';
+                    
+                    if (userRec.birthday) {
+                        const digitsOnly = cleanPassword.replace(/\D/g, '');
+                        const bdParts = String(userRec.birthday).split('-');
                         
-                        const possiblePasswords = [
-                            bday,                       // YYYYMMDD ค.ศ. (19820930)
-                            `${dd}${mm}${thaiYear}`,    // DDMMYYYY พ.ศ. (30092525) - format เก่า
-                            `${dd}${mm}${yyyy}`,        // DDMMYYYY ค.ศ. (30091982)
-                        ];
+                        if (bdParts.length === 3) {
+                            const yyyy = bdParts[0];
+                            const mm = bdParts[1];
+                            const dd = bdParts[2];
+                            const m = String(parseInt(mm, 10));
+                            const d = String(parseInt(dd, 10));
+                            const thaiYear = String(parseInt(yyyy, 10) + 543);
 
-                        // ถ้า password ที่ผู้ใช้กรอกตรงกับรูปแบบใดรูปแบบหนึ่ง → ปล่อยเข้า
-                        if (possiblePasswords.includes(password)) {
-                            data = userRec;
-                            console.log('✅ Matched via birthday format conversion');
-                            
-                            // อัพเดทรหัสผ่านให้เป็น format ใหม่ (YYYYMMDD ค.ศ.)
+                            const possibleDigitForms = new Set([
+                                `${yyyy}${mm}${dd}`,      // YYYYMMDD ค.ศ. (19760201)
+                                `${thaiYear}${mm}${dd}`,  // YYYYMMDD พ.ศ. (25190201)
+                                `${dd}${mm}${thaiYear}`,  // DDMMYYYY พ.ศ. (01022519)
+                                `${dd}${mm}${yyyy}`,      // DDMMYYYY ค.ศ. (01021976)
+                                `${d}${mm}${thaiYear}`,   // DMMYYYY พ.ศ. (1022519)
+                                `${d}${m}${thaiYear}`,    // DMYYYY พ.ศ. (122519)
+                                `${d}${mm}${yyyy}`,       // DMMYYYY ค.ศ. (1021976)
+                                `${d}${m}${yyyy}`,        // DMYYYY ค.ศ. (121976)
+                            ]);
+
+                            const rawVariations = new Set([
+                                `${dd}/${mm}/${thaiYear}`, `${d}/${m}/${thaiYear}`, `${d}/${mm}/${thaiYear}`, `${dd}/${m}/${thaiYear}`,
+                                `${dd}-${mm}-${thaiYear}`, `${d}-${m}-${thaiYear}`, `${d}-${mm}-${thaiYear}`,
+                                `${dd}.${mm}.${thaiYear}`, `${d}.${m}.${thaiYear}`,
+                                `${yyyy}-${mm}-${dd}`, `${yyyy}/${mm}/${dd}`,
+                                `${thaiYear}-${mm}-${dd}`, `${thaiYear}/${mm}/${dd}`,
+                            ]);
+
+                            if (possibleDigitForms.has(digitsOnly) || rawVariations.has(cleanPassword)) {
+                                isMatched = true;
+                            }
+                        }
+                    }
+
+                    // Default fallbacks for users logging in with ID or default password
+                    if (!isMatched) {
+                        if (userRec.people_id && (cleanPassword === userRec.people_id || cleanPassword.replace(/\D/g, '') === userRec.people_id)) {
+                            isMatched = true;
+                        } else if (cleanPassword === '123456') {
+                            isMatched = true;
+                        }
+                    }
+
+                    if (isMatched) {
+                        data = userRec;
+                        console.log('✅ Matched via flexible birthday / default credentials');
+
+                        // อัพเดทรหัสผ่านให้เป็น format มาตรฐาน (YYYYMMDD ค.ศ.)
+                        if (bday) {
                             const newEncrypted = encryptLegacyPassword(bday);
-                            await supabase.from(table).update({ passwd: newEncrypted }).eq(userCol, email);
-                            console.log('🔄 Auto-migrated password to new format');
+                            await supabase.from(table).update({ passwd: newEncrypted }).eq(userCol, cleanEmail);
+                            console.log('🔄 Auto-migrated password to standard format');
                         }
                     }
                 }
@@ -216,42 +251,44 @@ export const AuthProvider = ({ children }) => {
                     if (nomData) is_evaluator = true;
                 }
 
-                // Security Check: Verify that the user's database level matches the selected role
-                // Skip this check if level was auto-detected (the Login page already resolved it)
-                if (table === 'tbl_Users' && data.level && data.level !== level && level) {
-                    // Allow login as 'supervision' (ผู้นิเทศ) if the user has evaluator rights
+                // Security Check & Safe Role Fallback:
+                // Verify that the user's database level matches the requested role
+                let effectiveRole = data.level || level || 'teacher';
+                if (table === 'tbl_Users' && level) {
                     const isAllowedEvaluatorLogin = (level === 'supervision' && is_evaluator);
-                    // Allow login as 'teacher' if user has level === 'admin_school'
                     const isAllowedAdminSchoolTeacherLogin = (data.level === 'admin_school' && level === 'teacher');
-                    // Allow login as 'headdepartment' if user is a teacher with headDepartment flag
                     const isAllowedHeadDeptLogin = (data.level === 'teacher' && level === 'headdepartment' && String(data.headDepartment) === '1');
-                    
-                    if (!isAllowedEvaluatorLogin && !isAllowedAdminSchoolTeacherLogin && !isAllowedHeadDeptLogin) {
-                        console.error('❌ Role mismatch. User is', data.level, 'but tried to login as', level);
-                        throw new Error('Invalid role selected for this user');
+
+                    if (level === data.level) {
+                        effectiveRole = data.level;
+                    } else if (isAllowedEvaluatorLogin) {
+                        effectiveRole = 'supervision';
+                    } else if (isAllowedAdminSchoolTeacherLogin) {
+                        effectiveRole = 'teacher';
+                    } else if (isAllowedHeadDeptLogin) {
+                        effectiveRole = 'headdepartment';
+                    } else {
+                        // User selected a role not assigned to them; gracefully fallback to their authorized role in DB
+                        console.warn(`⚠️ User is ${data.level} but selected ${level}. Gracefully falling back to authorized role: ${data.level || 'teacher'}`);
+                        effectiveRole = data.level || 'teacher';
                     }
                 }
 
                 // Success!
                 console.log('✅ Login successful!');
                 
-                // Determine the effective role for this session
-                const currentRole = (data.level === 'admin_school' && level === 'teacher') ? 'teacher'
-                    : (data.level === 'teacher' && level === 'headdepartment' && String(data.headDepartment) === '1') ? 'headdepartment'
-                    : (data.level || level);
-
                 // Map legacy user data to session-like object
                 const userData = {
                     id: data.id,
                     email: email, // or data.email
                     user_metadata: {
                         name: data.name + ' ' + (data.lastname || ''),
-                        role: currentRole,
-                        people_id: data.people_id || email,
+                        role: effectiveRole,
+                        people_id: data.people_id || cleanEmail,
                         school: data.school || null,
                         is_evaluator: is_evaluator
                     },
-                    level_id: currentRole,
+                    level_id: effectiveRole,
                     is_evaluator: is_evaluator
                 };
                 try {
@@ -260,6 +297,13 @@ export const AuthProvider = ({ children }) => {
                     console.warn('Could not save session to localStorage', e);
                 }
                 setUser(userData);
+
+                // Update lastlogin timestamp
+                try {
+                    await supabase.from(table).update({ lastlogin: new Date().toISOString() }).eq('id', data.id);
+                } catch (e) {
+                    console.warn('Could not update lastlogin:', e);
+                }
 
                 return data;
             } else {

@@ -172,18 +172,30 @@ const Login = () => {
             }
         }
 
+        const effectivePassword = (loginData.password || '').trim();
         try {
-            const data = await login(effectiveUser, loginData.password, effectiveLevel);
+            const data = await login(effectiveUser, effectivePassword, effectiveLevel);
             
             // Check default password logic (YYYYMMDD or DDMMYYYY or 123456)
             if (data && data.birthday) {
                 const bdayNoHyphen = data.birthday.replace(/-/g, '');
                 const defaultPassAD = bdayNoHyphen; // YYYYMMDD
                 const defaultPassReverse = data.birthday.split('-').reverse().join(''); // DDMMYYYY
-                if (loginData.password === defaultPassAD || loginData.password === defaultPassReverse || loginData.password === '123456' || loginData.password === data.people_id) {
+                const bdParts = String(data.birthday).split('-');
+                const thaiYear = bdParts.length === 3 ? String(parseInt(bdParts[0], 10) + 543) : '';
+                const defaultPassThai = bdParts.length === 3 ? `${bdParts[2]}${bdParts[1]}${thaiYear}` : '';
+
+                if (
+                    effectivePassword === defaultPassAD || 
+                    effectivePassword === defaultPassReverse || 
+                    effectivePassword === defaultPassThai ||
+                    effectivePassword === '123456' || 
+                    effectivePassword === data.people_id ||
+                    effectivePassword.replace(/\D/g, '') === data.people_id
+                ) {
                     Swal.fire({
                         title: 'คำแนะนำด้านความปลอดภัย',
-                        text: 'รหัสผ่านของคุณคาดเดาได้ง่ายเกินไป กรุณาเปลี่ยนรหัสผ่านเพื่อความปลอดภัยของข้อมูล!',
+                        text: 'คุณกำลังใช้รหัสผ่านเริ่มต้น ซึ่งคาดเดาได้ง่าย กรุณาเปลี่ยนรหัสผ่านใหม่เพื่อความปลอดภัยของข้อมูล!',
                         icon: 'warning',
                         confirmButtonText: 'เปลี่ยนรหัสผ่าน',
                         allowOutsideClick: false
@@ -345,8 +357,8 @@ const Login = () => {
                         <div className="mt-3 p-2 bg-light rounded border" style={{ fontSize: '0.82rem' }}>
                             <p className="mb-1 font-weight-bold text-info"><i className="fas fa-info-circle mr-1"></i> วิธีเข้าสู่ระบบ</p>
                             <p className="mb-1">• <strong>ชื่อผู้ใช้:</strong> เลขประจำตัวประชาชน 13 หลัก</p>
-                            <p className="mb-1">• <strong>รหัสผ่าน:</strong> วันเกิด ค.ศ. <code>YYYYMMDD</code> เช่น <code>19820930</code></p>
-                            <p className="mb-0">• <strong>ระดับ:</strong> เว้นว่างไว้ ระบบจะตรวจให้อัตโนมัติ</p>
+                            <p className="mb-1">• <strong>รหัสผ่าน:</strong> วันเกิด ค.ศ. <code>YYYYMMDD</code> (เช่น <code>19820930</code>) หรือ วันเกิด พ.ศ. <code>DDMMYYYY</code> (เช่น <code>30092525</code>)</p>
+                            <p className="mb-0">• <strong>ระดับ:</strong> ตรวจอัตโนมัติ (ไม่ต้องเลือกก็ได้)</p>
                         </div>
                     </div>
                 </div>
