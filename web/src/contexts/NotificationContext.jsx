@@ -87,24 +87,33 @@ export const NotificationProvider = ({ children }) => {
       }
 
       // 3. Committee / Evaluator workload (only plans with clip attached status 5 or 6!)
+      // A slot is pending when committeeN === me and date_scoringN is still empty.
+      // (Previously counted raw score rows — one row per policy item — which made the badge drop to 0.)
       if (peopleId && roleId !== 'admin' && roleId !== 'root') {
+        const slots = [1, 2, 3, 4, 5];
+        const me = String(peopleId);
         promises.push(
           supabase
             .from('tbl_sendplan')
-            .select('planid')
-            .or(
-              `committee1.eq.${peopleId},committee2.eq.${peopleId},committee3.eq.${peopleId},committee4.eq.${peopleId},committee5.eq.${peopleId}`
+            .select(
+              `planid, ${slots.map((n) => `committee${n}, date_scoring${n}`).join(', ')}`
             )
+            .or(slots.map((n) => `committee${n}.eq.${peopleId}`).join(','))
             .in('plan_status', ['5', '6'])
             .then(async ({ data: assigned }) => {
-              if (!assigned || assigned.length === 0) return;
-              const planIds = assigned.map((p) => String(p.planid));
-              const { count: scored } = await supabase
+              const isBlank = (v) => v === null || v === undefined || String(v).trim() === '';
+              const candidates = (assigned || []).filter((p) =>
+                slots.some((n) => String(p[`committee${n}`] || '') === me && isBlank(p[`date_scoring${n}`]))
+              );
+              if (candidates.length === 0) return;
+              // Double-check against actual score rows (legacy data may lack date_scoringN)
+              const { data: myScores } = await supabase
                 .from('tbl_sendplan_score')
-                .select('planid', { count: 'exact', head: true })
-                .eq('supervision', peopleId)
-                .in('planid', planIds);
-              committeePendingCount = Math.max(0, planIds.length - (scored || 0));
+                .select('planid')
+                .eq('supervision', me)
+                .in('planid', candidates.map((p) => String(p.planid)));
+              const scoredSet = new Set((myScores || []).map((s) => String(s.planid)));
+              committeePendingCount = candidates.filter((p) => !scoredSet.has(String(p.planid))).length;
             })
         );
       }
