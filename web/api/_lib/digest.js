@@ -18,6 +18,17 @@ const MAX_SCHOOL_LINES = 15;
 const lookbackDays = () => Number(process.env.DIGEST_LOOKBACK_DAYS || 365);
 const overdueDays = () => Number(process.env.DIGEST_OVERDUE_DAYS || 7);
 
+/**
+ * รูปแบบการแสดงชื่อในกลุ่ม (DIGEST_NAME_MODE)
+ *   polite (ค่าเริ่มต้น) = แสดงชื่อแบบสุภาพ "งานรอท่านประเมิน" เรียงตามตัวอักษร ไม่แสดงจำนวนวันที่ค้าง
+ *   strict               = แสดงชื่อ + ⏰ ค้างเกิน N วัน เรียงคนที่ค้างมากที่สุดก่อน
+ *   count                = แสดงเฉพาะจำนวนรวม ไม่แสดงรายชื่อ
+ */
+const nameMode = () => {
+  const m = String(process.env.DIGEST_NAME_MODE || 'polite').toLowerCase();
+  return ['polite', 'strict', 'count'].includes(m) ? m : 'polite';
+};
+
 export const getAppUrl = () => {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
   if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
@@ -140,6 +151,7 @@ export const buildDailyDigest = async (now = new Date()) => {
   const schoolMap = Object.fromEntries(schools.map((s) => [String(s.school_id), s.school_name]));
 
   const appUrl = getAppUrl();
+  const mode = nameMode();
   const lines = [];
   lines.push('📋 สรุปงานนิเทศรอดำเนินการ');
   lines.push(`🗓 ${thaiDateLabel(now)}`);
@@ -149,14 +161,26 @@ export const buildDailyDigest = async (now = new Date()) => {
 
   if (waitDirector.length > 0) {
     lines.push('');
-    lines.push(`🏫 รอ ผอ. ตรวจ/อนุมัติ: ${waitDirector.length} แผน`);
-    const sortedSchools = [...directorBySchool.entries()].sort((a, b) => b[1] - a[1]);
-    sortedSchools.slice(0, MAX_SCHOOL_LINES).forEach(([code, count]) => {
-      const name = schoolMap[code] ? `โรงเรียน${schoolMap[code].replace(/^โรงเรียน/, '')}` : `รหัส ${code}`;
-      lines.push(`  • ${name} — ${count} แผน`);
-    });
-    if (sortedSchools.length > MAX_SCHOOL_LINES) {
-      lines.push(`  …และอีก ${sortedSchools.length - MAX_SCHOOL_LINES} โรงเรียน`);
+    lines.push(
+      mode === 'strict'
+        ? `🏫 รอ ผอ. ตรวจ/อนุมัติ: ${waitDirector.length} แผน`
+        : `🏫 แผนรอ ผอ. พิจารณา: ${waitDirector.length} แผน`
+    );
+    const sortedSchools = [...directorBySchool.entries()].sort((a, b) =>
+      mode === 'strict'
+        ? b[1] - a[1]
+        : String(schoolMap[a[0]] || a[0]).localeCompare(String(schoolMap[b[0]] || b[0]), 'th')
+    );
+    if (mode !== 'count') {
+      sortedSchools.slice(0, MAX_SCHOOL_LINES).forEach(([code, count]) => {
+        const name = schoolMap[code] ? `โรงเรียน${schoolMap[code].replace(/^โรงเรียน/, '')}` : `รหัส ${code}`;
+        lines.push(`  • ${name} — ${count} แผน`);
+      });
+      if (sortedSchools.length > MAX_SCHOOL_LINES) {
+        lines.push(`  …และอีก ${sortedSchools.length - MAX_SCHOOL_LINES} โรงเรียน`);
+      }
+    } else {
+      lines.push(`  (จาก ${sortedSchools.length} โรงเรียน)`);
     }
   }
 
@@ -167,24 +191,40 @@ export const buildDailyDigest = async (now = new Date()) => {
 
   if (pendingSlots > 0) {
     lines.push('');
-    lines.push(`✍️ รอคณะกรรมการประเมิน: ${evaluating.length} แผน (${pendingByPerson.size} ท่าน)`);
-    const sortedPeople = [...pendingByPerson.entries()].sort(
-      (a, b) => b[1].overdue - a[1].overdue || b[1].total - a[1].total
-    );
-    sortedPeople.slice(0, MAX_PEOPLE_LINES).forEach(([pid, info]) => {
+    if (mode === 'strict') {
+      lines.push(`✍️ รอคณะกรรมการประเมิน: ${evaluating.length} แผน (${pendingByPerson.size} ท่าน)`);
+    } else {
+      lines.push(`📌 งานรอท่านประเมิน: ${evaluating.length} แผน (กรรมการ ${pendingByPerson.size} ท่าน)`);
+    }
+
+    if (mode !== 'count') {
       // ห้ามแสดง people_id (เลขบัตรประชาชน) ในกลุ่ม LINE
-      const name = userMap[pid] || 'กรรมการ (ไม่พบชื่อในระบบ)';
-      const overdueTag = info.overdue > 0 ? ` ⏰ค้าง>${overdueDays()}วัน ${info.overdue}` : '';
-      lines.push(`  • ${name} — ${info.total} แผน${overdueTag}`);
-    });
-    if (sortedPeople.length > MAX_PEOPLE_LINES) {
-      lines.push(`  …และอีก ${sortedPeople.length - MAX_PEOPLE_LINES} ท่าน`);
+      const nameOf = (pid) => userMap[pid] || 'กรรมการ (ไม่พบชื่อในระบบ)';
+      const sortedPeople = [...pendingByPerson.entries()].sort((a, b) =>
+        mode === 'strict'
+          ? b[1].overdue - a[1].overdue || b[1].total - a[1].total
+          : nameOf(a[0]).replace(/^(นาย|นางสาว|นาง|ดร\.)/, '').localeCompare(
+              nameOf(b[0]).replace(/^(นาย|นางสาว|นาง|ดร\.)/, ''),
+              'th'
+            )
+      );
+      sortedPeople.slice(0, MAX_PEOPLE_LINES).forEach(([pid, info]) => {
+        const overdueTag =
+          mode === 'strict' && info.overdue > 0 ? ` ⏰ค้าง>${overdueDays()}วัน ${info.overdue}` : '';
+        lines.push(`  • ${nameOf(pid)} — ${info.total} แผน${overdueTag}`);
+      });
+      if (sortedPeople.length > MAX_PEOPLE_LINES) {
+        lines.push(`  …และอีก ${sortedPeople.length - MAX_PEOPLE_LINES} ท่าน`);
+      }
     }
   }
 
   lines.push('');
   if (appUrl) {
     lines.push(`🔗 เข้าตรวจ/ประเมิน: ${appUrl}/Plan_Check`);
+  }
+  if (mode !== 'strict') {
+    lines.push('🙏 ขอบพระคุณคณะกรรมการนิเทศทุกท่านครับ');
   }
   lines.push('💬 พิมพ์ "สรุปงาน" ในกลุ่มเพื่อดูสรุปล่าสุดได้ตลอดเวลา');
 
