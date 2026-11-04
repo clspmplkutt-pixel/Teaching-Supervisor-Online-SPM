@@ -246,6 +246,172 @@ export const roleModules = {
 };
 
 /**
+ * Categorized Navigation Sections for ALL 10 User Roles (LMSS v3.0)
+ * Provides clean, professional grouping instead of a barren flat list.
+ */
+export const roleMenuSections = {
+  districdirector: [
+    {
+      title: 'กำกับติดตาม & รายงาน',
+      icon: 'fa-solid fa-chart-line',
+      items: ['info', 'admin_monitor', 'supervision_summary'],
+    },
+    {
+      title: 'งานนิเทศและประเมินผล',
+      icon: 'fa-solid fa-folder-open',
+      items: ['statusplan_pass', 'view_scoring'],
+    },
+    {
+      title: 'ข้อมูลส่วนตัว & บัญชี',
+      icon: 'fa-solid fa-user-gear',
+      items: ['editSignature', 'editprofile', 'chgpasswd'],
+    },
+  ],
+  supervisor: [
+    {
+      title: 'กำกับติดตาม & รายงาน',
+      icon: 'fa-solid fa-chart-line',
+      items: ['info', 'admin_monitor', 'supervision_summary'],
+    },
+    {
+      title: 'การนิเทศและการประเมิน',
+      icon: 'fa-solid fa-clipboard-check',
+      items: ['Plan_Check', 'Plan_scoring', 'statusplan_pass', 'view_scoring'],
+    },
+    {
+      title: 'ข้อมูลส่วนตัว & บัญชี',
+      icon: 'fa-solid fa-user-gear',
+      items: ['editSignature', 'editprofile', 'chgpasswd'],
+    },
+  ],
+  directorschool: [
+    {
+      title: 'ภาพรวมสถานศึกษา',
+      icon: 'fa-solid fa-school',
+      items: ['info', 'supervision_summary'],
+    },
+    {
+      title: 'บริหาร & อนุมัติแผนการสอน',
+      icon: 'fa-solid fa-clipboard-check',
+      items: ['Plan_Check', 'statusplan_pass', 'view_scoring'],
+    },
+    {
+      title: 'ข้อมูลส่วนตัว & บัญชี',
+      icon: 'fa-solid fa-user-gear',
+      items: ['editSignature', 'editprofile', 'chgpasswd'],
+    },
+  ],
+  teacher: [
+    {
+      title: 'ภาพรวม',
+      icon: 'fa-solid fa-house',
+      items: ['info'],
+    },
+    {
+      title: 'การจัดการเรียนรู้ & ว.PA',
+      icon: 'fa-solid fa-chalkboard-user',
+      items: ['sendplan', 'statusplan', 'statusplan_pass', 'view_scoring'],
+    },
+    {
+      title: 'ข้อมูลส่วนตัว & บัญชี',
+      icon: 'fa-solid fa-user-gear',
+      items: ['editSignature', 'editprofile', 'chgpasswd'],
+    },
+  ],
+  admin_school: [
+    {
+      title: 'ภาพรวมสถานศึกษา',
+      icon: 'fa-solid fa-school',
+      items: ['info', 'supervision_summary'],
+    },
+    {
+      title: 'งานทะเบียนและบุคลากร',
+      icon: 'fa-solid fa-users-gear',
+      items: [
+        'confirmUser',
+        'userteacher',
+        'userheadDepartment',
+        'nominate_evaluator',
+        'reset_user_password',
+      ],
+    },
+    {
+      title: 'ข้อมูลส่วนตัว & บัญชี',
+      icon: 'fa-solid fa-user-gear',
+      items: ['editprofile', 'chgpasswd'],
+    },
+  ],
+  chairman: [
+    {
+      title: 'ภาพรวมสหวิทยาเขต',
+      icon: 'fa-solid fa-sitemap',
+      items: ['info', 'supervision_summary'],
+    },
+    {
+      title: 'การนิเทศและการประเมิน',
+      icon: 'fa-solid fa-clipboard-check',
+      items: ['Plan_Check', 'Plan_scoring', 'statusplan_pass', 'view_scoring'],
+    },
+    {
+      title: 'ข้อมูลส่วนตัว & บัญชี',
+      icon: 'fa-solid fa-user-gear',
+      items: ['editSignature', 'editprofile', 'chgpasswd'],
+    },
+  ],
+  supervision: [
+    {
+      title: 'ภาพรวม',
+      icon: 'fa-solid fa-house',
+      items: ['info'],
+    },
+    {
+      title: 'การนิเทศและการประเมิน',
+      icon: 'fa-solid fa-clipboard-check',
+      items: ['Plan_Check', 'Plan_scoring', 'statusplan_pass', 'view_scoring'],
+    },
+    {
+      title: 'ข้อมูลส่วนตัว & บัญชี',
+      icon: 'fa-solid fa-user-gear',
+      items: ['editSignature', 'editprofile', 'chgpasswd'],
+    },
+  ],
+  headdepartment: [
+    {
+      title: 'ภาพรวมกลุ่มสาระฯ',
+      icon: 'fa-solid fa-layer-group',
+      items: ['info'],
+    },
+    {
+      title: 'การจัดการเรียนรู้ & ว.PA',
+      icon: 'fa-solid fa-chalkboard-user',
+      items: ['sendplan', 'statusplan', 'statusplan_pass', 'view_scoring'],
+    },
+    {
+      title: 'ข้อมูลส่วนตัว & บัญชี',
+      icon: 'fa-solid fa-user-gear',
+      items: ['editSignature', 'editprofile', 'chgpasswd'],
+    },
+  ],
+  root: [
+    {
+      title: 'ภาพรวมระบบ',
+      icon: 'fa-solid fa-shield-halved',
+      items: ['info', 'admin_monitor'],
+    },
+    {
+      title: 'จัดการระบบกลาง',
+      icon: 'fa-solid fa-gears',
+      items: ['ManageUserAdmin', 'tbl_config', 'log'],
+    },
+    {
+      title: 'ข้อมูลส่วนตัว & บัญชี',
+      icon: 'fa-solid fa-user-gear',
+      items: ['profile', 'chgpasswd'],
+    },
+  ],
+};
+
+/**
  * Grouped Collapsible Sidebar Structure for District Admin (Replaces 42 flat items)
  */
 export const adminMenuGroups = [
@@ -331,7 +497,7 @@ export const adminMenuGroups = [
 ];
 
 export const moduleLabels = {
-  info: 'หน้าหลัก',
+  info: 'หน้าหลัก (Dashboard)',
   admin_monitor: 'ศูนย์กำกับติดตามการนิเทศ',
   supervision_summary: 'สรุปผลการนิเทศและวิจัย',
   confirmUser: 'อนุมัติผู้ใช้งานใหม่',
