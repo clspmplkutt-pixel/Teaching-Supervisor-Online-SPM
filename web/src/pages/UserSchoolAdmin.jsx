@@ -1,270 +1,294 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
 import useUserLookups from '../hooks/useUserLookups';
-import useSelect2 from '../hooks/useSelect2';
 import useAppConfig from '../hooks/useAppConfig';
+import UserDirectoryTable from '../components/UserDirectoryTable';
+import SearchableSelect from '../components/SearchableSelect';
+import { showToast } from '../utils/toast';
 
 const UserSchoolAdmin = () => {
-  const navigate = useNavigate();
-  const { lookups, lists, loading: lookupsLoading } = useUserLookups();
+  const { lookups, lists } = useUserLookups();
   const { config } = useAppConfig();
   const areaCode = config.AREA_CODE10 || '1000650001';
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [loading, setLoading] = useState(true);
-  const [rows, setRows] = useState([]);
-  const [searchText, setSearchText] = useState('');
 
-  const schoolId = searchParams.get('school_id') || '';
-
-  useSelect2([lookupsLoading, lists.school.length]);
-
-  const filteredSchools = useMemo(
-    () => lists.school.filter((row) => row.school_id !== areaCode),
-    [lists.school, areaCode]
-  );
-
-  const loadSchoolAdmins = useCallback(async () => {
-    setLoading(true);
-    try {
-      let query = supabase
-        .from('tbl_Users')
-        .select('*')
-        .eq('level', 'admin_school')
-        .neq('school', areaCode);
-
-      if (schoolId) query = query.eq('school', schoolId);
-
-      query = query
-        .order('school', { ascending: true })
-        .order('academic_id', { ascending: true })
-        .order('position_id', { ascending: false });
-
-      const { data, error } = await query;
-      if (error) throw error;
-      setRows(data || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [schoolId, areaCode]);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [showModal, setShowModal] = useState(false);
+  const [modalSchoolId, setModalSchoolId] = useState('');
+  const [teachers, setTeachers] = useState([]);
+  const [loadingTeachers, setLoadingTeachers] = useState(false);
+  const [selectedTeacherId, setSelectedTeacherId] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    loadSchoolAdmins();
-  }, [loadSchoolAdmins]);
+    if (!showModal || !modalSchoolId) {
+      setTeachers([]);
+      setSelectedTeacherId('');
+      return;
+    }
+    let mounted = true;
+    const loadTeachers = async () => {
+      setLoadingTeachers(true);
+      try {
+        const { data, error } = await supabase
+          .from('tbl_Users')
+          .select('id, people_id, prefix, name, lastname, position_id, teach_subject, level')
+          .eq('school', modalSchoolId)
+          .eq('level', 'teacher')
+          .order('name', { ascending: true });
+        if (error) throw error;
+        if (mounted) {
+          setTeachers(data || []);
+          setSelectedTeacherId('');
+        }
+      } catch (err) {
+        console.error('Load school teachers error:', err);
+      } finally {
+        if (mounted) setLoadingTeachers(false);
+      }
+    };
+    loadTeachers();
+    return () => {
+      mounted = false;
+    };
+  }, [showModal, modalSchoolId]);
 
-  const updateParam = (key, value) => {
-    const next = new URLSearchParams(searchParams);
-    if (value) next.set(key, value);
-    else next.delete(key);
-    setSearchParams(next);
-  };
+  const applyBaseFilter = useCallback((query, { areaCode: ac }) => {
+    return query.eq('level', 'admin_school').neq('school', ac);
+  }, []);
 
-  const filteredRows = useMemo(() => {
-    if (!searchText.trim()) return rows;
-    const q = searchText.trim().toLowerCase();
-    return rows.filter((row) =>
-      (row.name || '').toLowerCase().includes(q) ||
-      (row.lastname || '').toLowerCase().includes(q) ||
-      (row.people_id || '').includes(q) ||
-      (lookups.school[row.school] || '').toLowerCase().includes(q)
-    );
-  }, [rows, searchText, lookups.school]);
+  const handleRevoke = async (row, reload) => {
+    const fullName = `${lookups.prefix[row.prefix] || ''}${row.name || ''} ${row.lastname || ''}`.trim();
+    const schoolName = lookups.school[row.school] || row.school || '-';
 
-  const handleRevoke = async (userObj) => {
     const confirm = await Swal.fire({
       title: 'ยกเลิกสิทธิ์ School Admin?',
-      html: `ต้องการเปลี่ยนสิทธิ์ของ <b>${lookups.prefix[userObj.prefix] || ''}${userObj.name} ${userObj.lastname}</b> กลับเป็นครูผู้สอนทั่วไปหรือไม่?`,
+      html: `ต้องการปรับสิทธิ์ของ <strong>${fullName}</strong> (${schoolName}) กลับเป็น <strong>ครูผู้สอน (teacher)</strong> ใช่หรือไม่?`,
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonText: 'ใช่, ยกเลิกสิทธิ์',
+      confirmButtonColor: '#d97706',
+      confirmButtonText: 'ยืนยันยกเลิกสิทธิ์',
       cancelButtonText: 'ยกเลิก',
     });
 
-    if (confirm.isConfirmed) {
-      try {
-        const { error } = await supabase
-          .from('tbl_Users')
-          .update({ level: 'teacher' })
-          .eq('people_id', userObj.people_id);
-        if (error) throw error;
-        Swal.fire('สำเร็จ', 'ปรับสิทธิ์กลับเป็นครูผู้สอนเรียบร้อยแล้ว', 'success');
-        loadSchoolAdmins();
-      } catch (err) {
-        console.error(err);
-        Swal.fire('Error', err.message, 'error');
-      }
+    if (!confirm.isConfirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('tbl_Users')
+        .update({ level: 'teacher' })
+        .eq('id', row.id);
+      if (error) throw error;
+      showToast(`ปรับสิทธิ์ของ ${fullName} กลับเป็นครูผู้สอนแล้ว`, 'success');
+      setRefreshKey((k) => k + 1);
+      reload?.();
+    } catch (err) {
+      console.error(err);
+      Swal.fire('เกิดข้อผิดพลาด', err.message || 'ไม่สามารถยกเลิกสิทธิ์ได้', 'error');
     }
   };
 
-  if (lookupsLoading) {
-    return (
-      <div className="text-center p-4">
-        <div className="spinner-border text-warning" role="status"></div>
-        <p className="mt-2">กำลังโหลดข้อมูลผู้ดูแลระบบระดับสถานศึกษา...</p>
-      </div>
-    );
-  }
+  const handleAssignSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedTeacherId || saving) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('tbl_Users')
+        .update({
+          level: 'admin_school',
+          register_isConfirm: '1',
+          status: '1',
+        })
+        .eq('id', Number(selectedTeacherId));
+      if (error) throw error;
+
+      const chosen = teachers.find((t) => String(t.id) === String(selectedTeacherId));
+      const fullName = chosen
+        ? `${lookups.prefix[chosen.prefix] || ''}${chosen.name} ${chosen.lastname}`.trim()
+        : 'บุคลากรที่เลือก';
+      showToast(`แต่งตั้ง ${fullName} เป็น School Admin เรียบร้อยแล้ว`, 'success');
+      setShowModal(false);
+      setModalSchoolId('');
+      setSelectedTeacherId('');
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      console.error(err);
+      Swal.fire('เกิดข้อผิดพลาด', err.message || 'ไม่สามารถแต่งตั้ง School Admin ได้', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const schoolOptions = useMemo(
+    () =>
+      lists.school
+        .filter((s) => String(s.school_id) !== String(areaCode))
+        .map((s) => ({
+          value: String(s.school_id),
+          label: s.school_name,
+        })),
+    [lists.school, areaCode]
+  );
+
+  const teacherOptions = useMemo(
+    () =>
+      teachers.map((t) => ({
+        value: String(t.id),
+        label: `${lookups.prefix[t.prefix] || ''}${t.name} ${t.lastname}`,
+        subLabel: [
+          lookups.position[t.position_id] || 'ครู',
+          lookups.teachSubject[t.teach_subject] ? `กลุ่มสาระ: ${lookups.teachSubject[t.teach_subject]}` : '',
+        ]
+          .filter(Boolean)
+          .join(' • '),
+      })),
+    [teachers, lookups]
+  );
 
   return (
-    <div className="row">
-      <div className="col-12">
-        <div className="card card-warning card-outline">
-          <div className="card-header d-flex justify-content-between align-items-center">
-            <h3 className="card-title m-0">
-              <i className="fa-solid fa-school-flag mr-2 text-warning"></i>
-              ผู้ดูแลระบบระดับสถานศึกษา (School Admin)
-            </h3>
-            <div className="card-tools ml-auto">
-              <Link to="/userteacher" className="btn btn-sm btn-primary">
-                <i className="fa-solid fa-user-plus mr-1"></i> แต่งตั้งจากรายชื่อครู
-              </Link>
+    <>
+      <UserDirectoryTable
+        title="ผู้ดูแลระบบระดับสถานศึกษา (School Admin)"
+        subtitle="แต่งตั้งหรือถอดถอนครู/บุคลากรเพื่อช่วยดูแลอนุมัติสมาชิกและรีเซ็ตรหัสผ่านเฉพาะภายในโรงเรียนของตนเอง"
+        icon="fa-user-gear"
+        accentColor="warning"
+        applyBaseFilter={applyBaseFilter}
+        editVariant="teacher"
+        showSchoolFilter={true}
+        showSubjectFilter={true}
+        showAcademicFilter={false}
+        refreshKey={refreshKey}
+        allowDelete={false}
+        columns={{
+          thaiId: true,
+          school: true,
+          subject: true,
+          position: true,
+          academic: false,
+          status: true,
+        }}
+        infoBanner={
+          <div className="p-2 px-3 rounded bg-warning-subtle text-warning-emphasis small d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div>
+              <i className="fa-solid fa-shield-halved mr-2"></i>
+              <strong>ขอบเขตสิทธิ์ School Admin:</strong> อนุมัติผู้สมัครใหม่ จัดการข้อมูลครู แต่งตั้งหัวหน้ากลุ่มสาระฯ และรีเซ็ตรหัสผ่านได้เฉพาะบุคลากรในโรงเรียนตนเองเท่านั้น
             </div>
           </div>
-          <div className="card-body">
-            {/* Filter and Search */}
-            <div className="row g-2 mb-3">
-              <div className="col-md-6 col-lg-4">
-                <select
-                  className="form-control select2bs4"
-                  name="school_id"
-                  id="school_id"
-                  value={schoolId}
-                  onChange={(e) => updateParam('school_id', e.target.value)}
+        }
+        headerActions={
+          <button
+            type="button"
+            className="btn btn-primary btn-sm px-3"
+            onClick={() => setShowModal(true)}
+          >
+            <i className="fa-solid fa-user-plus mr-1"></i>
+            แต่งตั้ง School Admin เพิ่ม
+          </button>
+        }
+        renderCustomActions={(row, { reload }) => (
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-danger"
+            onClick={() => handleRevoke(row, reload)}
+            title="ยกเลิกสิทธิ์ School Admin (ปรับกลับเป็นครูผู้สอน)"
+          >
+            <i className="fa-solid fa-user-xmark"></i>
+          </button>
+        )}
+        emptyTitle="ยังไม่มีผู้ดูแลระบบระดับสถานศึกษา"
+        emptyMessage="กดปุ่ม แต่งตั้ง School Admin เพิ่ม เพื่อมอบหมายครูทำหน้าที่ดูแลข้อมูลระดับสถานศึกษา"
+      />
+
+      {showModal && (
+        <div
+          className="modal fade show d-block"
+          tabIndex="-1"
+          role="dialog"
+          style={{ backgroundColor: 'rgba(15, 23, 42, 0.55)', zIndex: 1070 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !saving) setShowModal(false);
+          }}
+        >
+          <div className="modal-dialog modal-dialog-centered" role="document">
+            <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '14px' }}>
+              <div className="modal-header bg-primary text-white py-3" style={{ borderTopLeftRadius: '14px', borderTopRightRadius: '14px' }}>
+                <h5 className="modal-title font-weight-bold m-0">
+                  <i className="fa-solid fa-user-gear mr-2"></i>
+                  แต่งตั้งผู้ดูแลระบบระดับสถานศึกษา (School Admin)
+                </h5>
+                <button
+                  type="button"
+                  className="close text-white"
+                  onClick={() => setShowModal(false)}
+                  disabled={saving}
                 >
-                  <option value="">-- ทุกโรงเรียน --</option>
-                  {filteredSchools.map((row) => (
-                    <option key={row.school_id} value={row.school_id}>
-                      {row.school_name}
-                    </option>
-                  ))}
-                </select>
+                  <span>&times;</span>
+                </button>
               </div>
 
-              <div className="col-md-6 col-lg-4">
-                <div className="input-group">
-                  <div className="input-group-prepend">
-                    <span className="input-group-text"><i className="fas fa-search"></i></span>
+              <form onSubmit={handleAssignSubmit}>
+                <div className="modal-body p-4">
+                  <div className="form-group mb-3">
+                    <label className="form-label">1. เลือกสถานศึกษา <span className="text-danger">*</span></label>
+                    <SearchableSelect
+                      options={schoolOptions}
+                      value={modalSchoolId}
+                      onChange={(val) => setModalSchoolId(val)}
+                      placeholder="-- ค้นหาและเลือกสถานศึกษา --"
+                      searchPlaceholder="พิมพ์ชื่อโรงเรียน..."
+                      required
+                    />
                   </div>
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="ค้นหา ชื่อ / สกุล / เลขบัตร / โรงเรียน"
-                    value={searchText}
-                    onChange={(e) => setSearchText(e.target.value)}
-                  />
-                  {searchText && (
-                    <div className="input-group-append">
-                      <button className="btn btn-outline-secondary" type="button" onClick={() => setSearchText('')}>
-                        <i className="fas fa-times"></i>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
 
-              <div className="col-lg-4 text-right">
-                <span className="badge badge-warning p-2 font-weight-normal" style={{ fontSize: '0.95rem' }}>
-                  <i className="fas fa-user-shield mr-1"></i> จำนวน School Admin: <strong>{filteredRows.length}</strong> คน
-                </span>
-              </div>
-            </div>
-
-            {loading ? (
-              <div className="text-center p-4">
-                <div className="spinner-border text-warning" role="status"></div>
-                <p className="mt-2">กำลังโหลดรายชื่อผู้ดูแลระบบ...</p>
-              </div>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-bordered table-striped table-hover">
-                  <thead className="thead-light">
-                    <tr>
-                      <th width="5%" className="text-center">ที่</th>
-                      <th width="15%">เลขประจำตัวประชาชน</th>
-                      <th width="20%">ชื่อ - นามสกุล</th>
-                      <th width="25%">โรงเรียน</th>
-                      <th width="15%">กลุ่มสาระ</th>
-                      <th width="10%" className="text-center">สถานะ</th>
-                      <th width="10%" className="text-center">การจัดการ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredRows.length === 0 ? (
-                      <tr>
-                        <td colSpan="7" className="text-center text-danger py-4">
-                          <i className="fas fa-info-circle fa-2x mb-2 text-muted"></i>
-                          <p className="mb-0">
-                            {searchText || schoolId
-                              ? 'ไม่พบข้อมูลผู้ดูแลระบบระดับสถานศึกษาตามเงื่อนไขที่ค้นหา'
-                              : 'ยังไม่มีผู้ได้รับการแต่งตั้งเป็น School Admin (สามารถไปที่เมนู "ครู" และกดแก้ไขเพื่อแต่งตั้งได้)'}
-                          </p>
-                        </td>
-                      </tr>
+                  <div className="form-group mb-2">
+                    <label className="form-label">2. เลือกครูผู้สอนที่จะแต่งตั้งเป็น School Admin <span className="text-danger">*</span></label>
+                    {loadingTeachers ? (
+                      <div className="form-control bg-light text-muted small">
+                        <i className="fa-solid fa-spinner fa-spin mr-2"></i>กำลังโหลดรายชื่อครู...
+                      </div>
                     ) : (
-                      filteredRows.map((row, idx) => (
-                        <tr key={row.id}>
-                          <td className="text-center">{idx + 1}</td>
-                          <td><code>{row.people_id}</code></td>
-                          <td className="font-weight-bold">
-                            {(lookups.prefix[row.prefix] || '') + row.name + ' ' + row.lastname}
-                          </td>
-                          <td>{lookups.school[row.school] || row.school}</td>
-                          <td>{lookups.teachSubject[row.teach_subject] || '-'}</td>
-                          <td className="text-center">
-                            <span className="badge badge-success px-2 py-1">
-                              <i className="fas fa-check-circle mr-1"></i> Active
-                            </span>
-                          </td>
-                          <td className="text-center">
-                            <div className="btn-group">
-                              <Link
-                                to={`/teacher_edit?people_id=${row.people_id}`}
-                                className="btn btn-sm btn-warning"
-                                title="แก้ไขข้อมูล/สิทธิ์"
-                              >
-                                <i className="fa-solid fa-pen-to-square"></i>
-                              </Link>
-                              <Link
-                                to={`/reset_user_password?people_id=${row.people_id}`}
-                                className="btn btn-sm btn-info"
-                                title="Reset รหัสผ่าน"
-                              >
-                                <i className="fa-solid fa-key"></i>
-                              </Link>
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-outline-danger"
-                                title="ยกเลิกสิทธิ์ School Admin"
-                                onClick={() => handleRevoke(row)}
-                              >
-                                <i className="fa-solid fa-user-xmark"></i>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
+                      <SearchableSelect
+                        options={teacherOptions}
+                        value={selectedTeacherId}
+                        onChange={(val) => setSelectedTeacherId(val)}
+                        placeholder={
+                          modalSchoolId
+                            ? `-- เลือกครูผู้สอน (${teacherOptions.length} คน) --`
+                            : '-- กรุณาเลือกสถานศึกษาก่อน --'
+                        }
+                        searchPlaceholder="พิมพ์ชื่อครู..."
+                        disabled={!modalSchoolId}
+                        required
+                      />
                     )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  </div>
+                </div>
 
-            {/* Information Notice */}
-            <div className="alert alert-info mt-4 mb-0">
-              <h6 className="font-weight-bold"><i className="fas fa-info-circle mr-2"></i> เกี่ยวกับสิทธิ์ School Admin (ผู้ดูแลระบบระดับสถานศึกษา)</h6>
-              <p className="small mb-0">
-                • <strong>ขอบเขตสิทธิ์:</strong> สามารถอนุมัติการสมัครของครูในโรงเรียนตนเอง, จัดการข้อมูลครู, ย้ายครูออก, และ Reset รหัสผ่านให้ครูในโรงเรียนได้ทันที<br/>
-                • <strong>การแต่งตั้ง:</strong> Admin เขตสามารถแต่งตั้งครู/เจ้าหน้าที่ธุรการเป็น School Admin ได้ผ่านหน้า <em>"จัดการครู ➔ แก้ไขข้อมูลครู"</em>
-              </p>
+                <div className="modal-footer bg-light py-2">
+                  <button
+                    type="button"
+                    className="btn btn-light"
+                    onClick={() => setShowModal(false)}
+                    disabled={saving}
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary px-4"
+                    disabled={saving || !selectedTeacherId}
+                  >
+                    <i className="fa-solid fa-user-check mr-1"></i>
+                    {saving ? 'กำลังบันทึก...' : 'ยืนยันแต่งตั้ง School Admin'}
+                  </button>
+                </div>
+              </form>
             </div>
-
           </div>
         </div>
-      </div>
-    </div>
+      )}
+    </>
   );
 };
 

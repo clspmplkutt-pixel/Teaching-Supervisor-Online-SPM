@@ -21,7 +21,7 @@ const ApproveEvaluator = () => {
 
             if (nomError) {
                 if (nomError.code === '42P01') {
-                    console.warn("Table tbl_EvaluatorNominations does not exist yet. Please run the SQL schema script.");
+                    console.warn("Table tbl_EvaluatorNominations does not exist yet.");
                     setNominations([]);
                 } else {
                     throw nomError;
@@ -32,13 +32,15 @@ const ApproveEvaluator = () => {
                     rawNoms.flatMap(n => [n.nominee_people_id, n.nominated_by]).filter(Boolean)
                 ));
 
-                // Fetch only users referenced in the nominations, along with prefix and school lookups
-                const [userRes, prefixRes, schoolRes] = await Promise.all([
+                // Fetch referenced users, prefix, school, academic standing, and subject
+                const [userRes, prefixRes, schoolRes, academicRes, subjectRes] = await Promise.all([
                     peopleIds.length > 0
-                        ? supabase.from('tbl_Users').select('people_id, prefix, name, lastname, school').in('people_id', peopleIds)
+                        ? supabase.from('tbl_Users').select('people_id, prefix, name, lastname, school, academic_id, teach_subject').in('people_id', peopleIds)
                         : Promise.resolve({ data: [] }),
                     supabase.from('tbl_system_prefix').select('prefix_id, prefix'),
-                    supabase.from('tbl_school').select('school_id, school_name')
+                    supabase.from('tbl_school').select('school_id, school_name'),
+                    supabase.from('tbl_system_Academic_Standing').select('academic_id, academic_standing'),
+                    supabase.from('tbl_system_Teach_Subject').select('teach_subject_id, teach_subject')
                 ]);
 
                 const prefixMap = {};
@@ -47,16 +49,24 @@ const ApproveEvaluator = () => {
                 const schoolMap = {};
                 schoolRes.data?.forEach(s => { schoolMap[s.school_id] = s.school_name; });
 
+                const academicMap = {};
+                academicRes.data?.forEach(a => { academicMap[a.academic_id] = a.academic_standing; });
+
+                const subjectMap = {};
+                subjectRes.data?.forEach(sub => { subjectMap[sub.teach_subject_id] = sub.teach_subject; });
+
                 const userMap = {};
                 userRes.data?.forEach(u => { userMap[u.people_id] = u; });
 
                 const formatUser = (peopleId) => {
                     const u = userMap[peopleId];
-                    if (!u) return { name: 'ไม่ทราบชื่อ', school: '' };
+                    if (!u) return { name: 'ไม่ทราบชื่อ', school: '', academic: '-', subject: '-' };
                     const prefix = prefixMap[u.prefix] || '';
                     return {
                         name: `${prefix}${u.name} ${u.lastname}`.trim() || 'ไม่ทราบชื่อ',
-                        school: schoolMap[u.school] || ''
+                        school: schoolMap[u.school] || '',
+                        academic: academicMap[u.academic_id] || '-',
+                        subject: subjectMap[u.teach_subject] || '-'
                     };
                 };
 
@@ -67,6 +77,8 @@ const ApproveEvaluator = () => {
                         ...nom,
                         nominee_name: nominee.name,
                         nominee_school: nominee.school,
+                        nominee_academic: nominee.academic,
+                        nominee_subject: nominee.subject,
                         nominator_name: nominator.name,
                         nominator_school: nominator.school
                     };
@@ -85,17 +97,20 @@ const ApproveEvaluator = () => {
         fetchData();
     }, []);
 
-    const handleAction = async (id, newStatus) => {
+    const handleAction = async (nom, newStatus) => {
+        const id = nom.id;
+        const nomineePeopleId = nom.nominee_people_id;
         const actionText = newStatus === 'approved' ? 'อนุมัติ' : 'ปฏิเสธ';
         const actionIcon = newStatus === 'approved' ? 'success' : 'warning';
         
         const result = await Swal.fire({
             title: `ยืนยันการ${actionText}?`,
-            text: `คุณต้องการ${actionText}การเสนอแต่งตั้งนี้ใช่หรือไม่?`,
+            text: `คุณต้องการ${actionText}การเสนอแต่งตั้งของ "${nom.nominee_name}" ใช่หรือไม่?`,
             icon: actionIcon,
             showCancelButton: true,
             confirmButtonText: 'ยืนยัน',
-            cancelButtonText: 'ยกเลิก'
+            cancelButtonText: 'ยกเลิก',
+            confirmButtonColor: newStatus === 'approved' ? '#10b981' : '#ef4444'
         });
 
         if (result.isConfirmed) {
@@ -107,6 +122,14 @@ const ApproveEvaluator = () => {
                     .eq('id', id);
                 
                 if (error) throw error;
+
+                // If approved, mark is_evaluator in tbl_Users
+                if (newStatus === 'approved' && nomineePeopleId) {
+                    await supabase
+                        .from('tbl_Users')
+                        .update({ is_evaluator: 1 })
+                        .eq('people_id', nomineePeopleId);
+                }
 
                 Swal.fire('สำเร็จ', `ทำรายการ${actionText}เรียบร้อยแล้ว`, 'success');
                 setSelectedIds(prev => prev.filter(item => item !== id));
@@ -149,6 +172,20 @@ const ApproveEvaluator = () => {
 
                 if (error) throw error;
 
+                // If approved, update is_evaluator in tbl_Users for nominees
+                if (newStatus === 'approved') {
+                    const nominees = nominations
+                        .filter(n => targetIds.includes(n.id))
+                        .map(n => n.nominee_people_id)
+                        .filter(Boolean);
+                    if (nominees.length > 0) {
+                        await supabase
+                            .from('tbl_Users')
+                            .update({ is_evaluator: 1 })
+                            .in('people_id', nominees);
+                    }
+                }
+
                 Swal.fire('สำเร็จ', `ทำรายการ${actionText} ${targetIds.length} รายการเรียบร้อยแล้ว`, 'success');
                 setSelectedIds([]);
                 fetchData();
@@ -165,7 +202,7 @@ const ApproveEvaluator = () => {
         switch (status) {
             case 'approved': return <span className="badge badge-success px-2 py-1"><i className="fas fa-check-circle mr-1"></i> อนุมัติแล้ว</span>;
             case 'rejected': return <span className="badge badge-danger px-2 py-1"><i className="fas fa-times-circle mr-1"></i> ไม่อนุมัติ</span>;
-            default: return <span className="badge badge-warning px-2 py-1"><i className="fas fa-clock mr-1"></i> รออนุมัติ</span>;
+            default: return <span className="badge badge-warning px-2 py-1 text-dark"><i className="fas fa-clock mr-1"></i> รออนุมัติ</span>;
         }
     };
 
@@ -219,330 +256,212 @@ const ApproveEvaluator = () => {
         );
     }
 
-    const isAllSelected = filteredPendingNoms.length > 0 && selectedIds.length === filteredPendingNoms.length;
-
     return (
-        <div className="container-fluid">
-            <div className="row">
-                <div className="col-12">
-                    {/* Pending Nominations Card */}
-                    <div className="card card-warning card-outline">
-                        <div className="card-header d-flex flex-wrap justify-content-between align-items-center py-2">
-                            <h3 className="card-title m-0 font-weight-bold">
-                                <i className="fa-solid fa-user-check mr-2 text-warning"></i>
-                                รายการรออนุมัติ
-                                <span className="badge badge-warning ml-2 font-weight-normal" style={{ fontSize: '0.9rem' }}>
-                                    {pendingNoms.length} รายการ
-                                </span>
-                            </h3>
+        <div className="container-fluid py-3">
+            <div className="d-flex align-items-center justify-content-between mb-3">
+                <div>
+                    <h4 className="font-weight-bold text-dark mb-1">
+                        <i className="fa-solid fa-user-check text-success mr-2"></i> พิจารณาแต่งตั้งผู้นิเทศ / คณะกรรมการประเมิน
+                    </h4>
+                    <p className="text-muted small mb-0">
+                        สำหรับผู้ดูแลระบบเขตพื้นที่ฯ อนุมัติรายชื่อผู้นิเทศที่ผู้บริหารสถานศึกษาเสนอเข้ามา
+                    </p>
+                </div>
+            </div>
 
-                            {/* Action Buttons Toolbar */}
-                            <div className="card-tools ml-auto d-flex flex-wrap align-items-center" style={{ gap: '0.5rem' }}>
-                                {pendingNoms.length > 0 && (
-                                    <>
-                                        <button
-                                            type="button"
-                                            className="btn btn-sm btn-outline-success font-weight-bold"
-                                            onClick={() => handleBulkAction(pendingNoms.map(n => n.id), 'approved')}
-                                            disabled={actionLoading}
-                                            title="อนุมัติทุกรายการที่รออยู่ทันที"
-                                        >
-                                            <i className="fa-solid fa-circle-check mr-1"></i> อนุมัติทั้งหมด ({pendingNoms.length})
-                                        </button>
-
-                                        <button
-                                            type="button"
-                                            className={`btn btn-sm ${selectedIds.length > 0 ? 'btn-success' : 'btn-secondary'} font-weight-bold`}
-                                            onClick={() => handleBulkAction(selectedIds, 'approved')}
-                                            disabled={selectedIds.length === 0 || actionLoading}
-                                            title="อนุมัติเฉพาะรายการที่เลือก"
-                                        >
-                                            <i className="fa-solid fa-check-double mr-1"></i> อนุมัติที่เลือก ({selectedIds.length})
-                                        </button>
-
-                                        {selectedIds.length > 0 && (
-                                            <button
-                                                type="button"
-                                                className="btn btn-sm btn-outline-danger"
-                                                onClick={() => handleBulkAction(selectedIds, 'rejected')}
-                                                disabled={actionLoading}
-                                                title="ปฏิเสธรายการที่เลือก"
-                                            >
-                                                <i className="fa-solid fa-times mr-1"></i> ปฏิเสธที่เลือก
-                                            </button>
-                                        )}
-                                    </>
-                                )}
+            {/* Pending Nominations Card */}
+            <div className="card shadow-sm border-0 mb-4" style={{ borderRadius: '12px' }}>
+                <div className="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h5 className="font-weight-bold mb-0 text-dark">
+                        <i className="fa-solid fa-hourglass-start text-warning mr-2"></i> รายการรอการพิจารณา
+                        <span className="badge badge-warning ml-2 text-dark font-weight-bold">{pendingNoms.length}</span>
+                    </h5>
+                    
+                    <div className="d-flex align-items-center gap-2">
+                        {selectedIds.length > 0 && (
+                            <div className="btn-group btn-group-sm">
+                                <button
+                                    type="button"
+                                    className="btn btn-success font-weight-bold"
+                                    disabled={actionLoading}
+                                    onClick={() => handleBulkAction(selectedIds, 'approved')}
+                                >
+                                    <i className="fa-solid fa-check-double mr-1"></i> อนุมัติที่เลือก ({selectedIds.length})
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn btn-danger font-weight-bold"
+                                    disabled={actionLoading}
+                                    onClick={() => handleBulkAction(selectedIds, 'rejected')}
+                                >
+                                    <i className="fa-solid fa-times mr-1"></i> ปฏิเสธที่เลือก
+                                </button>
                             </div>
-                        </div>
+                        )}
+                        <input
+                            type="text"
+                            className="form-control form-control-sm"
+                            placeholder="ค้นหาชื่อ, โรงเรียน..."
+                            style={{ maxWidth: '220px' }}
+                            value={searchPending}
+                            onChange={(e) => setSearchPending(e.target.value)}
+                        />
+                    </div>
+                </div>
 
-                        <div className="card-body p-3">
-                            {/* Filter & Selection Summary */}
-                            <div className="row g-2 mb-3 align-items-center">
-                                <div className="col-md-6 col-lg-5">
-                                    <div className="input-group input-group-sm">
-                                        <div className="input-group-prepend">
-                                            <span className="input-group-text"><i className="fas fa-search"></i></span>
-                                        </div>
+                <div className="card-body p-0">
+                    <div className="table-responsive">
+                        <table className="table table-hover align-middle mb-0">
+                            <thead className="bg-light">
+                                <tr>
+                                    <th style={{ width: '40px' }} className="text-center">
                                         <input
-                                            type="text"
-                                            className="form-control"
-                                            placeholder="ค้นหาชื่อครู, โรงเรียน, เลขบัตร, หรือผู้เสนอ..."
-                                            value={searchPending}
-                                            onChange={(e) => setSearchPending(e.target.value)}
+                                            type="checkbox"
+                                            onChange={handleSelectAll}
+                                            checked={filteredPendingNoms.length > 0 && selectedIds.length === filteredPendingNoms.length}
+                                            disabled={filteredPendingNoms.length === 0}
                                         />
-                                        {searchPending && (
-                                            <div className="input-group-append">
-                                                <button className="btn btn-outline-secondary" type="button" onClick={() => setSearchPending('')}>
-                                                    <i className="fas fa-times"></i>
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="col-md-6 col-lg-7 text-md-right mt-2 mt-md-0">
-                                    {selectedIds.length > 0 ? (
-                                        <span className="badge badge-info p-2 font-weight-normal mr-2" style={{ fontSize: '0.85rem' }}>
-                                            <i className="fas fa-check-square mr-1"></i> เลือกแล้ว <strong>{selectedIds.length}</strong> จาก {filteredPendingNoms.length} รายการ
-                                        </span>
-                                    ) : (
-                                        <small className="text-muted mr-2">
-                                            ติ๊กเลือกรายการเพื่ออนุมัติพร้อมกันหลายคน หรือกดปุ่ม <strong>"อนุมัติทั้งหมด"</strong> ได้ทันที
-                                        </small>
-                                    )}
-
-                                    {selectedIds.length > 0 && (
-                                        <button
-                                            type="button"
-                                            className="btn btn-xs btn-outline-secondary"
-                                            onClick={() => setSelectedIds([])}
-                                        >
-                                            ยกเลิกการเลือก
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Pending Table */}
-                            <div className="table-responsive">
-                                <table className="table table-bordered table-hover text-nowrap">
-                                    <thead className="thead-light">
-                                        <tr>
-                                            <th width="4%" className="text-center">
+                                    </th>
+                                    <th>ผู้ได้รับการเสนอชื่อ</th>
+                                    <th>วิทยฐานะ / กลุ่มสาระ</th>
+                                    <th>สถานศึกษา</th>
+                                    <th>ผู้เสนอชื่อ (ผอ.)</th>
+                                    <th>วันที่เสนอ</th>
+                                    <th style={{ width: '160px' }} className="text-center">การจัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredPendingNoms.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="7" className="text-center py-4 text-muted">
+                                            {searchPending ? 'ไม่พบข้อมูลที่ตรงกับคำค้นหา' : 'ไม่มีรายการรอการอนุมัติในขณะนี้'}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    filteredPendingNoms.map((nom) => (
+                                        <tr key={nom.id}>
+                                            <td className="text-center">
                                                 <input
                                                     type="checkbox"
-                                                    onChange={handleSelectAll}
-                                                    checked={isAllSelected}
-                                                    disabled={filteredPendingNoms.length === 0}
-                                                    title={isAllSelected ? "ยกเลิกเลือกทั้งหมด" : "เลือกทั้งหมด"}
-                                                    style={{ cursor: 'pointer', transform: 'scale(1.2)' }}
+                                                    checked={selectedIds.includes(nom.id)}
+                                                    onChange={() => handleSelectRow(nom.id)}
                                                 />
-                                            </th>
-                                            <th width="5%" className="text-center">ที่</th>
-                                            <th width="12%">วันที่เสนอ</th>
-                                            <th width="32%">ผู้ถูกเสนอแต่งตั้ง (ครูผู้นิเทศ)</th>
-                                            <th width="27%">เสนอโดย (ผู้บริหาร)</th>
-                                            <th width="20%" className="text-center">การจัดการ</th>
+                                            </td>
+                                            <td>
+                                                <div className="font-weight-bold text-dark">{nom.nominee_name}</div>
+                                                <div className="text-muted small" style={{ fontSize: '11px' }}>
+                                                    {nom.nominee_people_id}
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span className="badge badge-light border text-dark font-weight-normal d-block mb-1">
+                                                    {nom.nominee_academic}
+                                                </span>
+                                                <span className="text-muted small">
+                                                    {nom.nominee_subject}
+                                                </span>
+                                            </td>
+                                            <td className="small">{nom.nominee_school || '-'}</td>
+                                            <td>
+                                                <div className="small font-weight-bold">{nom.nominator_name}</div>
+                                                <div className="text-muted small" style={{ fontSize: '11px' }}>
+                                                    {nom.nominator_school}
+                                                </div>
+                                            </td>
+                                            <td className="small text-muted">
+                                                {nom.created_at ? new Date(nom.created_at).toLocaleDateString('th-TH') : '-'}
+                                            </td>
+                                            <td className="text-center">
+                                                <div className="btn-group btn-group-sm">
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-success font-weight-bold px-2"
+                                                        disabled={actionLoading}
+                                                        onClick={() => handleAction(nom, 'approved')}
+                                                        title="อนุมัติแต่งตั้ง"
+                                                    >
+                                                        <i className="fa-solid fa-check mr-1"></i> อนุมัติ
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-outline-danger px-2"
+                                                        disabled={actionLoading}
+                                                        onClick={() => handleAction(nom, 'rejected')}
+                                                        title="ปฏิเสธ"
+                                                    >
+                                                        <i className="fa-solid fa-xmark"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
                                         </tr>
-                                    </thead>
-                                    <tbody>
-                                        {filteredPendingNoms.length > 0 ? filteredPendingNoms.map((nom, idx) => {
-                                            const isSelected = selectedIds.includes(nom.id);
-                                            return (
-                                                <tr
-                                                    key={nom.id}
-                                                    className={isSelected ? 'table-success' : ''}
-                                                    style={{ cursor: 'pointer' }}
-                                                    onClick={(e) => {
-                                                        // Prevent row click when clicking action buttons directly
-                                                        if (e.target.closest('button') || e.target.closest('a')) return;
-                                                        handleSelectRow(nom.id);
-                                                    }}
-                                                >
-                                                    <td className="text-center" onClick={(e) => e.stopPropagation()}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={isSelected}
-                                                            onChange={() => handleSelectRow(nom.id)}
-                                                            style={{ cursor: 'pointer', transform: 'scale(1.15)' }}
-                                                        />
-                                                    </td>
-                                                    <td className="text-center text-muted">{idx + 1}</td>
-                                                    <td>
-                                                        <i className="far fa-calendar-alt mr-1 text-muted"></i>
-                                                        {new Date(nom.created_at).toLocaleDateString('th-TH', {
-                                                            year: 'numeric',
-                                                            month: 'short',
-                                                            day: 'numeric'
-                                                        })}
-                                                    </td>
-                                                    <td>
-                                                        <div className="font-weight-bold text-primary" style={{ fontSize: '1rem' }}>
-                                                            {nom.nominee_name}
-                                                        </div>
-                                                        <div className="text-muted small">
-                                                            {nom.nominee_school ? (
-                                                                <>
-                                                                    <i className="fas fa-school mr-1 text-info"></i>
-                                                                    <strong>{nom.nominee_school}</strong>
-                                                                    <span className="mx-1">•</span>
-                                                                </>
-                                                            ) : null}
-                                                            <code>{nom.nominee_people_id}</code>
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <div className="font-weight-bold text-dark">
-                                                            {nom.nominator_name}
-                                                        </div>
-                                                        <div className="text-muted small">
-                                                            {nom.nominator_school ? (
-                                                                <>
-                                                                    <i className="fas fa-building mr-1"></i>
-                                                                    {nom.nominator_school}
-                                                                </>
-                                                            ) : null}
-                                                        </div>
-                                                    </td>
-                                                    <td className="text-center" onClick={(e) => e.stopPropagation()}>
-                                                        <div className="btn-group">
-                                                            <button 
-                                                                type="button"
-                                                                className="btn btn-sm btn-success"
-                                                                onClick={() => handleAction(nom.id, 'approved')}
-                                                                disabled={actionLoading}
-                                                                title="อนุมัติรายการนี้"
-                                                            >
-                                                                <i className="fas fa-check mr-1"></i> อนุมัติ
-                                                            </button>
-                                                            <button 
-                                                                type="button"
-                                                                className="btn btn-sm btn-outline-danger"
-                                                                onClick={() => handleAction(nom.id, 'rejected')}
-                                                                disabled={actionLoading}
-                                                                title="ปฏิเสธรายการนี้"
-                                                            >
-                                                                <i className="fas fa-times mr-1"></i> ปฏิเสธ
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        }) : (
-                                            <tr>
-                                                <td colSpan="6" className="text-center text-muted py-4">
-                                                    <i className="fas fa-inbox fa-2x mb-2 text-muted"></i>
-                                                    <p className="mb-0">
-                                                        {searchPending ? 'ไม่พบรายการรออนุมัติตามคำค้นหา' : 'ไม่มีรายการรออนุมัติในขณะนี้'}
-                                                    </p>
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
                     </div>
+                </div>
+            </div>
 
-                    {/* History Card */}
-                    <div className="card card-secondary card-outline mt-4">
-                        <div className="card-header d-flex flex-wrap justify-content-between align-items-center py-2">
-                            <h3 className="card-title m-0">
-                                <i className="fa-solid fa-clock-rotate-left mr-2 text-secondary"></i>
-                                ประวัติการอนุมัติ
-                                <span className="badge badge-secondary ml-2 font-weight-normal" style={{ fontSize: '0.85rem' }}>
-                                    {historyNoms.length} รายการ
-                                </span>
-                            </h3>
+            {/* History Table */}
+            <div className="card shadow-sm border-0" style={{ borderRadius: '12px' }}>
+                <div className="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h5 className="font-weight-bold mb-0 text-dark">
+                        <i className="fa-solid fa-clock-rotate-left text-secondary mr-2"></i> ประวัติการพิจารณาแต่งตั้ง
+                        <span className="badge badge-secondary ml-2">{historyNoms.length}</span>
+                    </h5>
+                    <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        placeholder="ค้นหาประวัติ..."
+                        style={{ maxWidth: '220px' }}
+                        value={searchHistory}
+                        onChange={(e) => setSearchHistory(e.target.value)}
+                    />
+                </div>
 
-                            {/* Search History */}
-                            <div className="card-tools ml-auto">
-                                <div className="input-group input-group-sm" style={{ width: '250px' }}>
-                                    <input
-                                        type="text"
-                                        className="form-control"
-                                        placeholder="ค้นหาในประวัติ..."
-                                        value={searchHistory}
-                                        onChange={(e) => setSearchHistory(e.target.value)}
-                                    />
-                                    {searchHistory && (
-                                        <div className="input-group-append">
-                                            <button className="btn btn-outline-secondary" type="button" onClick={() => setSearchHistory('')}>
-                                                <i className="fas fa-times"></i>
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="card-body p-3">
-                            <div className="table-responsive">
-                                <table className="table table-bordered table-striped table-hover text-nowrap">
-                                    <thead className="thead-light">
-                                        <tr>
-                                            <th width="5%" className="text-center">ที่</th>
-                                            <th width="12%">วันที่เสนอ</th>
-                                            <th width="30%">ผู้ถูกเสนอแต่งตั้ง (ครูผู้นิเทศ)</th>
-                                            <th width="28%">เสนอโดย (ผู้บริหาร)</th>
-                                            <th width="12%" className="text-center">สถานะ</th>
-                                            <th width="13%" className="text-center">อัพเดทล่าสุด</th>
+                <div className="card-body p-0">
+                    <div className="table-responsive">
+                        <table className="table table-hover align-middle mb-0">
+                            <thead className="bg-light">
+                                <tr>
+                                    <th style={{ width: '45px' }} className="text-center">#</th>
+                                    <th>ผู้ได้รับการเสนอชื่อ</th>
+                                    <th>สถานศึกษา</th>
+                                    <th>ผู้เสนอชื่อ</th>
+                                    <th>วันที่ดำเนินการ</th>
+                                    <th style={{ width: '130px' }} className="text-center">ผลการพิจารณา</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredHistoryNoms.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="6" className="text-center py-4 text-muted">
+                                            {searchHistory ? 'ไม่พบข้อมูลที่ตรงกับคำค้นหา' : 'ยังไม่มีประวัติการพิจารณา'}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    filteredHistoryNoms.map((nom, idx) => (
+                                        <tr key={nom.id}>
+                                            <td className="text-center text-muted small">{idx + 1}</td>
+                                            <td>
+                                                <div className="font-weight-bold text-dark">{nom.nominee_name}</div>
+                                                <div className="text-muted small" style={{ fontSize: '11px' }}>
+                                                    {nom.nominee_academic} • {nom.nominee_subject}
+                                                </div>
+                                            </td>
+                                            <td className="small">{nom.nominee_school || '-'}</td>
+                                            <td className="small">{nom.nominator_name}</td>
+                                            <td className="small text-muted">
+                                                {nom.updated_at ? new Date(nom.updated_at).toLocaleDateString('th-TH') : '-'}
+                                            </td>
+                                            <td className="text-center">
+                                                {getStatusBadge(nom.status)}
+                                            </td>
                                         </tr>
-                                    </thead>
-                                    <tbody>
-                                        {filteredHistoryNoms.length > 0 ? filteredHistoryNoms.map((nom, idx) => (
-                                            <tr key={nom.id}>
-                                                <td className="text-center text-muted">{idx + 1}</td>
-                                                <td>
-                                                    <i className="far fa-calendar-alt mr-1 text-muted"></i>
-                                                    {new Date(nom.created_at).toLocaleDateString('th-TH', {
-                                                        year: 'numeric',
-                                                        month: 'short',
-                                                        day: 'numeric'
-                                                    })}
-                                                </td>
-                                                <td>
-                                                    <div className="font-weight-bold text-dark">
-                                                        {nom.nominee_name}
-                                                    </div>
-                                                    <div className="text-muted small">
-                                                        {nom.nominee_school ? `${nom.nominee_school} • ` : ''}
-                                                        <code>{nom.nominee_people_id}</code>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <div className="font-weight-bold text-dark">
-                                                        {nom.nominator_name}
-                                                    </div>
-                                                    <div className="text-muted small">
-                                                        {nom.nominator_school || '-'}
-                                                    </div>
-                                                </td>
-                                                <td className="text-center">{getStatusBadge(nom.status)}</td>
-                                                <td className="text-center text-muted small">
-                                                    {nom.updated_at ? new Date(nom.updated_at).toLocaleDateString('th-TH', {
-                                                        year: 'numeric',
-                                                        month: 'short',
-                                                        day: 'numeric',
-                                                        hour: '2-digit',
-                                                        minute: '2-digit'
-                                                    }) : '-'}
-                                                </td>
-                                            </tr>
-                                        )) : (
-                                            <tr>
-                                                <td colSpan="6" className="text-center text-muted py-4">
-                                                    <i className="fas fa-history fa-2x mb-2 text-muted"></i>
-                                                    <p className="mb-0">
-                                                        {searchHistory ? 'ไม่พบประวัติตามคำค้นหา' : 'ไม่มีประวัติการทำรายการ'}
-                                                    </p>
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>

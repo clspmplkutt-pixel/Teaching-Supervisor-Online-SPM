@@ -16,11 +16,19 @@ const InfoDirectorSchool = () => {
   const [plans, setPlans] = useState([]);
   const [planScores, setPlanScores] = useState([]);
   const [evaluatorNominees, setEvaluatorNominees] = useState([]);
+  const [learningModelMap, setLearningModelMap] = useState({});
+  const [fetchError, setFetchError] = useState(null);
 
   // Filters & Tabs
   const [selectedYear, setSelectedYear] = useState('ALL');
   const [activeTab, setActiveTab] = useState('unsubmitted');
   const [searchDirectory, setSearchDirectory] = useState('');
+
+  const schoolDisplayName = useMemo(() => {
+    const raw = schoolData?.school_name || '';
+    if (!raw) return 'สถานศึกษา';
+    return raw.startsWith('โรงเรียน') ? raw : `โรงเรียน${raw}`;
+  }, [schoolData]);
 
   const loadDashboardData = async () => {
     if (!profile?.school) {
@@ -29,8 +37,9 @@ const InfoDirectorSchool = () => {
     }
 
     setLoading(true);
+    setFetchError(null);
     try {
-      const [schoolRes, teachersRes, plansRes, nomineesRes] = await Promise.all([
+      const [schoolRes, teachersRes, plansRes, nomineesRes, modelRes] = await Promise.all([
         supabase
           .from('tbl_school')
           .select('school_id, school_name, khet_code')
@@ -50,6 +59,9 @@ const InfoDirectorSchool = () => {
           .from('tbl_EvaluatorNominations')
           .select('nominee_people_id, status')
           .eq('status', 'approved'),
+        supabase
+          .from('tbl_learningModel')
+          .select('model_id, model_name'),
       ]);
 
       setSchoolData(schoolRes.data || null);
@@ -58,6 +70,10 @@ const InfoDirectorSchool = () => {
       setPersonnel(userList);
       setPlans(planList);
       setEvaluatorNominees(nomineesRes.data || []);
+
+      const mMap = {};
+      modelRes.data?.forEach((m) => { mMap[String(m.model_id)] = m.model_name; });
+      setLearningModelMap(mMap);
 
       // Fetch Scores for Plans
       const planIds = planList.map((p) => String(p.planid));
@@ -74,6 +90,7 @@ const InfoDirectorSchool = () => {
       }
     } catch (err) {
       console.error('Executive Dashboard load error:', err);
+      setFetchError(err.message || 'ไม่สามารถโหลดข้อมูลสารสนเทศสถานศึกษาได้');
     } finally {
       setLoading(false);
     }
@@ -100,9 +117,14 @@ const InfoDirectorSchool = () => {
     return plans.filter((p) => String(p.edu_year).trim() === String(selectedYear).trim());
   }, [plans, selectedYear]);
 
-  // Only teachers (for plan submission rate)
+  // Only teachers (for plan submission rate) - include headdepartment, exclude administrative directors
   const teachersOnly = useMemo(() => {
-    return personnel.filter((p) => p.level === 'teacher' || !p.level || p.level === 'admin_school');
+    return personnel.filter((p) => {
+      const pos = String(p.position_id);
+      // Exclude school director and deputy director from teacher submission denominator
+      if (pos === '10007' || pos === '10006' || p.level === 'directorschool') return false;
+      return true;
+    });
   }, [personnel]);
 
   // ==========================================
@@ -286,8 +308,12 @@ const InfoDirectorSchool = () => {
   const learningModelStats = useMemo(() => {
     const counts = {};
     filteredPlans.forEach((p) => {
-      let model = p.learning_model ? String(p.learning_model).trim() : 'ไม่ระบุรูปแบบ';
-      if (model.includes('Active') || model === '6') model = 'Active Learning';
+      let model = p.learning_model ? String(p.learning_model).trim() : '';
+      if (model && learningModelMap[model]) {
+        model = learningModelMap[model];
+      } else if (!model || model === '0') {
+        model = 'Active Learning (ทั่วไป)';
+      } else if (model.includes('Active') || model === '6') model = 'Active Learning';
       else if (model.includes('5E') || model.includes('Inquiry') || model.includes('สืบเสาะ')) model = '5E / Inquiry Process';
       else if (model.includes('GPAS') || model.includes('5 Step') || model.includes('5Steps')) model = 'GPAS 5 Steps';
       else if (model.includes('CIPPA') || model.includes('ซิปปา')) model = 'CIPPA Model';
@@ -298,7 +324,7 @@ const InfoDirectorSchool = () => {
     });
 
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  }, [filteredPlans]);
+  }, [filteredPlans, learningModelMap]);
 
   const clipStats = useMemo(() => {
     let withClip = 0;
@@ -308,6 +334,13 @@ const InfoDirectorSchool = () => {
     const total = filteredPlans.length;
     const rate = total > 0 ? Math.round((withClip / total) * 100) : 0;
     return { withClip, withoutClip: total - withClip, total, rate };
+  }, [filteredPlans]);
+
+  const pdfStats = useMemo(() => {
+    const withPdf = filteredPlans.filter((p) => Boolean(p.plan_file)).length;
+    const total = filteredPlans.length;
+    const rate = total > 0 ? Math.round((withPdf / total) * 100) : 0;
+    return { withPdf, rate };
   }, [filteredPlans]);
 
   // ==========================================
@@ -507,10 +540,22 @@ const InfoDirectorSchool = () => {
         </div>
       </header>
 
+      {fetchError && (
+        <div className="alert alert-danger d-flex justify-content-between align-items-center mb-4 rounded-lg shadow-sm">
+          <div>
+            <i className="fa-solid fa-triangle-exclamation mr-2"></i>
+            <strong>เกิดข้อผิดพลาด:</strong> {fetchError}
+          </div>
+          <button type="button" className="btn btn-sm btn-outline-danger font-weight-bold" onClick={loadDashboardData}>
+            <i className="fa-solid fa-arrows-rotate mr-1"></i> ลองใหม่อีกครั้ง
+          </button>
+        </div>
+      )}
+
       {/* Print-only Formal Header */}
       <div className="print-only text-center mb-4">
         <h3 className="fw-bold mb-1">รายงานสารสนเทศเพื่อการบริหารจัดการสถานศึกษา</h3>
-        <h4>โรงเรียน{schoolData?.school_name || ''} สพม.อุบลราชธานี อำนาจเจริญ</h4>
+        <h4>{schoolDisplayName} สพม.พิษณุโลก อุตรดิตถ์</h4>
         <p className="text-muted">ข้อมูล ณ วันที่ {new Date().toLocaleDateString('th-TH', { dateStyle: 'long' })}</p>
         <hr />
       </div>
@@ -900,8 +945,8 @@ const InfoDirectorSchool = () => {
                 <div className="col-6">
                   <div className="p-3 border rounded text-center bg-light">
                     <i className="fa-solid fa-file-pdf text-primary fa-2x mb-2"></i>
-                    <h4 className="fw-bold text-dark mb-0">{totalPlansCount} <span className="fs-6 fw-normal">แผน</span></h4>
-                    <small className="text-muted">มีไฟล์เอกสารแผนการสอน (100%)</small>
+                    <h4 className="fw-bold text-dark mb-0">{pdfStats.withPdf} <span className="fs-6 fw-normal">แผน</span></h4>
+                    <small className="text-muted">มีไฟล์เอกสารแผนการสอน ({pdfStats.rate}%)</small>
                   </div>
                 </div>
               </div>
@@ -1088,7 +1133,7 @@ const InfoDirectorSchool = () => {
                           <td>{p.subject_name_plan || p.subject_content || '-'}</td>
                           <td>{lookups.teachSubject[p.teach_subject_id] || '-'}</td>
                           <td>
-                            {p.plan_status === 1 || p.plan_status === '1' ? (
+                            {p.plan_status === 1 || p.plan_status === '1' || p.plan_status === 4 || p.plan_status === '4' ? (
                               <span className="badge bg-danger">รอ ผอ. ตรวจอนุมัติ</span>
                             ) : !p.committee1 ? (
                               <span className="badge bg-warning text-dark">รอแต่งตั้งกรรมการ</span>
@@ -1097,7 +1142,7 @@ const InfoDirectorSchool = () => {
                             )}
                           </td>
                           <td className="text-center">
-                            {p.plan_status === 1 || p.plan_status === '1' ? (
+                            {p.plan_status === 1 || p.plan_status === '1' || p.plan_status === 4 || p.plan_status === '4' ? (
                               <Link to={`/appointment?planid=${p.planid}&from=info`} className="ed-btn ed-btn-primary">
                                 <i className="fa-solid fa-file-signature"></i> ตรวจ/อนุมัติแผน
                               </Link>

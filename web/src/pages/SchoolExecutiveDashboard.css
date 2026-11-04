@@ -293,6 +293,22 @@
   transform: scale(1.05);
 }
 
+/* Light container override for ed-btn-icon inside tables or cards */
+.table .ed-btn-icon,
+.ed-teacher-table .ed-btn-icon,
+.ed-card .ed-btn-icon {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+}
+
+.table .ed-btn-icon:hover,
+.ed-teacher-table .ed-btn-icon:hover,
+.ed-card .ed-btn-icon:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
 /* =========================================================================
    2. SECTION TITLES & DIMENSION BADGES
    ========================================================================= */

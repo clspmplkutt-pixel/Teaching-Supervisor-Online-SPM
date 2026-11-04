@@ -5,7 +5,8 @@ import { supabase } from '../supabaseClient';
 import { useUserProfile } from '../hooks/useUserProfile';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
-import { generateDirectorToCommitteeMessage, showLineShareDialog } from '../utils/lineNotifyHelper';
+import { showLineShareDialog } from '../utils/lineNotifyHelper';
+import { getYouTubeEmbedUrl, getYouTubeWatchUrl } from '../utils/scoreCalculator';
 
 const useQuery = () => {
   const { search } = useLocation();
@@ -16,7 +17,7 @@ const PlanScoring = () => {
   const navigate = useNavigate();
   const query = useQuery();
   const planid = query.get('planid') || '';
-  const committee = query.get('committee') || '';
+  const committeeParam = query.get('committee') || '';
   const { profile, loading: profileLoading } = useUserProfile();
 
   const [loading, setLoading] = useState(true);
@@ -29,12 +30,15 @@ const PlanScoring = () => {
   const [scores, setScores] = useState({});
   const [comment, setComment] = useState('');
   const [alreadyScored, setAlreadyScored] = useState(false);
+  const [activeMediaTab, setActiveMediaTab] = useState('clip'); // 'clip' | 'pdf' | 'reflection'
   const [lookups, setLookups] = useState({
     prefix: {},
     school: {},
+    academic: {},
   });
 
-  const draftKey = planid && profile?.people_id ? `lmss_scoring_draft_${planid}_${profile.people_id}` : null;
+  const userId = profile?.people_id || '';
+  const draftKey = planid && userId ? `lmss_scoring_draft_${planid}_${userId}` : null;
 
   useEffect(() => {
     let mounted = true;
@@ -46,10 +50,11 @@ const PlanScoring = () => {
       }
       setLoading(true);
       try {
-        const [planRes, prefixRes, schoolRes] = await Promise.all([
+        const [planRes, prefixRes, schoolRes, academicRes] = await Promise.all([
           supabase.from('tbl_sendplan').select('*').eq('planid', planid).maybeSingle(),
           supabase.from('tbl_system_prefix').select('prefix_id, prefix'),
           supabase.from('tbl_school').select('school_id, school_name'),
+          supabase.from('tbl_system_Academic_Standing').select('academic_id, academic_standing'),
         ]);
 
         const planData = planRes.data;
@@ -64,6 +69,9 @@ const PlanScoring = () => {
         const schoolMap = {};
         schoolRes.data?.forEach((s) => { schoolMap[s.school_id] = s.school_name; });
 
+        const academicMap = {};
+        academicRes.data?.forEach((a) => { academicMap[String(a.academic_id)] = a.academic_standing; });
+
         // Load teacher
         const { data: teacherData } = await supabase
           .from('tbl_Users')
@@ -76,7 +84,7 @@ const PlanScoring = () => {
         const [side1Res, side2Res, scoreRes] = await Promise.all([
           supabase.from('tbl_policy_number').select('*').eq('academic', academicId).eq('side', '1').order('auto_id', { ascending: true }),
           supabase.from('tbl_policy_number').select('*').eq('academic', academicId).eq('side', '2').order('auto_id', { ascending: true }),
-          supabase.from('tbl_sendplan_score').select('planid, supervision, policy_id, score').eq('planid', planid).eq('supervision', profile?.people_id || ''),
+          supabase.from('tbl_sendplan_score').select('planid, supervision, policy_id, score').eq('planid', planid).eq('supervision', userId),
         ]);
 
         const side1 = side1Res.data || [];
@@ -105,12 +113,17 @@ const PlanScoring = () => {
           });
         }
 
-        // Load committee comment if already saved
-        let savedComment = '';
-        if (committee) {
-          const cNum = committee.replace('committee', '');
-          savedComment = planData[`committee${cNum}_comment`] || '';
+        // Auto-detect committee slot
+        let detectedSlot = committeeParam.replace('committee', '');
+        if (!detectedSlot) {
+          [1, 2, 3, 4, 5].forEach((num) => {
+            if (planData[`committee${num}`] === userId) {
+              detectedSlot = String(num);
+            }
+          });
         }
+
+        let savedComment = detectedSlot ? (planData[`committee${detectedSlot}_comment`] || '') : '';
 
         // Check local draft if not scored yet
         if (!isScored && draftKey) {
@@ -121,7 +134,7 @@ const PlanScoring = () => {
               if (parsed.scores) {
                 Object.assign(prefilledScores, parsed.scores);
               }
-              if (parsed.comment) {
+              if (parsed.comment && !savedComment) {
                 savedComment = parsed.comment;
               }
             }
@@ -139,7 +152,7 @@ const PlanScoring = () => {
           setScores(prefilledScores);
           setComment(savedComment);
           setAlreadyScored(isScored);
-          setLookups({ prefix: prefixMap, school: schoolMap });
+          setLookups({ prefix: prefixMap, school: schoolMap, academic: academicMap });
         }
       } catch (err) {
         console.error('PlanScoring load error:', err);
@@ -151,7 +164,7 @@ const PlanScoring = () => {
     if (!profileLoading) loadData();
 
     return () => { mounted = false; };
-  }, [planid, profile, profileLoading, draftKey, committee]);
+  }, [planid, userId, profileLoading, draftKey, committeeParam]);
 
   const handleScoreChange = (policyId, value) => {
     if (alreadyScored) return;
@@ -255,7 +268,7 @@ const PlanScoring = () => {
       if (!scores[policy.auto_id]) {
         Swal.fire({
           title: 'ประเมินยังไม่ครบทุกข้อ',
-          text: `กรุณาให้คะแนนข้อ "${policy.text}" ก่อนบันทึก`,
+          text: `กรุณาให้คะแนนข้อ "${policy.text}" ก่อนส่งผลประเมิน`,
           icon: 'warning',
           confirmButtonColor: '#f59e0b',
         });
@@ -265,9 +278,28 @@ const PlanScoring = () => {
       }
     }
 
+    // Confirmation Summary Modal before permanent save
+    const confirmResult = await Swal.fire({
+      title: 'ยืนยันการส่งผลการประเมิน?',
+      html: `
+        <div class="text-left p-2">
+          <div class="mb-2">คะแนนรวมที่ได้: <strong>${scoreStats.currentWeightedSum} / ${scoreStats.maxWeightedSum} คะแนน</strong></div>
+          <div class="mb-2">คิดเป็นร้อยละ: <strong class="text-primary">${scoreStats.percentage}%</strong></div>
+          <div class="mb-2">ระดับคุณภาพ: <strong style="color: ${scoreStats.quality.color}">${scoreStats.quality.label}</strong></div>
+          ${comment.trim() ? `<div class="small text-muted border-top pt-2 mt-2">ข้อเสนอแนะ: ${comment.trim()}</div>` : ''}
+        </div>
+      `,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'ยืนยันการบันทึก',
+      cancelButtonText: 'กลับไปตรวจสอบ',
+      confirmButtonColor: '#10b981',
+    });
+
+    if (!confirmResult.isConfirmed) return;
+
     setSaving(true);
     try {
-      const userId = profile?.people_id || '';
       const insertPayload = allPolicies.map((policy) => ({
         planid: String(planid),
         policy_id: String(policy.auto_id),
@@ -281,20 +313,26 @@ const PlanScoring = () => {
       const { error: insertError } = await supabase.from('tbl_sendplan_score').insert(insertPayload);
       if (insertError) throw insertError;
 
-      // Update committee date and comments in tbl_sendplan
-      if (committee) {
-        const committeeNum = committee.replace('committee', '');
-        if (committeeNum) {
-          const updatePayload = {};
-          updatePayload[`date_scoring${committeeNum}`] = new Date().toISOString().slice(0, 10);
-          if (comment.trim()) {
-            updatePayload[`committee${committeeNum}_comment`] = comment.trim();
+      // Auto-detect committee slot
+      let slotToUpdate = committeeParam.replace('committee', '');
+      if (!slotToUpdate) {
+        [1, 2, 3, 4, 5].forEach((num) => {
+          if (plan?.[`committee${num}`] === userId) {
+            slotToUpdate = String(num);
           }
-          await supabase.from('tbl_sendplan').update(updatePayload).eq('planid', planid);
-        }
+        });
       }
 
-      // Check if all committees have scored to auto-update plan status to '7' (ประเมินเสร็จสิ้น)
+      if (slotToUpdate) {
+        const updatePayload = {};
+        updatePayload[`date_scoring${slotToUpdate}`] = new Date().toISOString().slice(0, 10);
+        if (comment.trim()) {
+          updatePayload[`committee${slotToUpdate}_comment`] = comment.trim();
+        }
+        await supabase.from('tbl_sendplan').update(updatePayload).eq('planid', planid);
+      }
+
+      // Check if all committees have scored to update status to '7' (completed) or '6' (in progress)
       try {
         const { data: updatedPlan } = await supabase
           .from('tbl_sendplan')
@@ -319,9 +357,8 @@ const PlanScoring = () => {
         if (userId) scoredSet.add(String(userId));
 
         const isAllScored = allCommittees.length > 0 && allCommittees.every((c) => scoredSet.has(String(c)));
-        if (isAllScored) {
-          await supabase.from('tbl_sendplan').update({ plan_status: '7' }).eq('planid', planid);
-        }
+        const nextStatus = isAllScored ? '7' : '6';
+        await supabase.from('tbl_sendplan').update({ plan_status: nextStatus }).eq('planid', planid);
       } catch (checkErr) {
         console.warn('Auto status check failed:', checkErr);
       }
@@ -331,11 +368,10 @@ const PlanScoring = () => {
         localStorage.removeItem(draftKey);
       }
 
-      // Prepare LINE notification message for teacher & admin
-      const teacherPrefix = lookups.prefix[teacher?.prefix] || teacher?.prefix || '';
+      // Prepare LINE notification message
+      const teacherPrefix = lookups.prefix[teacher?.prefix] || '';
       const teacherName = `${teacherPrefix}${teacher?.name || ''} ${teacher?.lastname || ''}`.trim();
-      const schoolName = lookups.school[plan?.school_code] || '';
-      const evaluatorPrefix = lookups.prefix[profile?.prefix] || profile?.prefix || '';
+      const evaluatorPrefix = lookups.prefix[profile?.prefix] || '';
       const evaluatorName = `${evaluatorPrefix}${profile?.name || ''} ${profile?.lastname || ''}`.trim();
 
       const lineMessage =
@@ -350,46 +386,49 @@ const PlanScoring = () => {
         `\n🔗 ตรวจสอบผลการประเมินได้ที่:\n${window.location.origin}/view_scoring?planid=${planid}`;
 
       showLineShareDialog({
-        title: 'บันทึกการประเมินสำเร็จ!',
-        subtitle: 'ท่านสามารถส่งผลการประเมินและข้อเสนอแนะแจ้งเตือนครูผู้สอนผ่าน LINE ได้ทันที',
+        title: 'บันทึกผลการประเมินสำเร็จ!',
+        subtitle: `ประเมินเรียบร้อยแล้ว (${scoreStats.percentage}% - ระดับ ${scoreStats.quality.label})`,
         messageText: lineMessage,
         onClose: () => {
-          navigate('/Plan_Check');
+          navigate(`/view_scoring?planid=${planid}`);
         },
       });
     } catch (err) {
-      console.error(err);
-      Swal.fire('Error', 'ไม่สามารถบันทึกคะแนนได้', 'error');
+      console.error('PlanScoring submit error:', err);
+      Swal.fire('ข้อผิดพลาด', 'ไม่สามารถบันทึกคะแนนได้ กรุณาลองใหม่อีกครั้ง: ' + (err.message || ''), 'error');
     } finally {
       setSaving(false);
     }
   };
 
   if (loading || profileLoading) {
-    return <LoadingSpinner text="กำลังโหลดแบบประเมินแผนการสอน..." />;
+    return <LoadingSpinner message="กำลังโหลดแบบประเมินและเกณฑ์ ว.PA..." />;
   }
 
   if (!plan) {
     return (
-      <div className="container-fluid p-4">
-        <EmptyState message="ไม่พบข้อมูลแผนการสอนที่ต้องการประเมิน" fullPage={false} />
-      </div>
+      <EmptyState
+        title="ประเมินแผนการจัดการเรียนรู้"
+        message="ไม่พบข้อมูลแผนการสอน หรือรหัสแผนไม่ถูกต้อง"
+        actionLabel="กลับหน้าตรวจแผน"
+        actionTo="/Plan_Check"
+      />
     );
   }
 
-  const teacherFullName = teacher
-    ? `${lookups.prefix[teacher.prefix] || ''}${teacher.name || ''} ${teacher.lastname || ''}`.trim()
-    : plan.people_id;
-
-  const schoolFullName = lookups.school[plan.school_code] || plan.school_code;
+  const pfx = lookups.prefix[teacher?.prefix] || '';
+  const teacherFullName = teacher?.name ? `${pfx}${teacher.name} ${teacher.lastname || ''}`.trim() : plan.people_id;
+  const schoolFullName = lookups.school[plan.school_code] ? `โรงเรียน${lookups.school[plan.school_code]}` : '';
+  const embedVideoUrl = plan.plan_clip ? getYouTubeEmbedUrl(plan.plan_clip) : '';
+  const watchVideoUrl = plan.plan_clip ? getYouTubeWatchUrl(plan.plan_clip) : '';
 
   return (
-    <div className="container-fluid p-0">
+    <div className="container-fluid py-3">
       {/* ─── Hero Information Card ─── */}
       <div
         className="card mb-4 border-0 shadow-sm text-white"
         style={{
-          background: 'linear-gradient(135deg, #065f46 0%, #059669 60%, #10b981 100%)',
+          background: 'linear-gradient(135deg, #064e3b 0%, #059669 60%, #10b981 100%)',
           borderRadius: '12px',
         }}
       >
@@ -400,44 +439,32 @@ const PlanScoring = () => {
                 <span className="badge badge-warning text-dark font-weight-bold px-2 py-1">
                   รหัสแผน #{plan.planid}
                 </span>
-                <span className="text-white-50" style={{ fontSize: '13px' }}>
+                <span className="text-white-50 small">
                   {schoolFullName}
                 </span>
               </div>
-              <h2 className="font-weight-bold mb-1" style={{ fontSize: '22px' }}>
-                {plan.subject_name} ({plan.subject_code})
-              </h2>
-              <p className="text-white mb-2 font-weight-light" style={{ fontSize: '15px' }}>
+              <h3 className="font-weight-bold mb-1">
+                {plan.subject_name} ({plan.subject_code || '-'})
+              </h3>
+              <p className="text-white mb-2" style={{ fontSize: '15px' }}>
                 <strong>ชื่อแผน:</strong> {plan.subject_name_plan || '-'} | <strong>หน่วย:</strong> {plan.subject_content || '-'}
               </p>
-              <div className="d-flex align-items-center flex-wrap text-white-50" style={{ gap: '15px', fontSize: '13px' }}>
+              <div className="d-flex align-items-center flex-wrap text-white-50 small" style={{ gap: '15px' }}>
                 <span><i className="fa-solid fa-chalkboard-user mr-1 text-warning"></i> ครูผู้สอน: <strong className="text-white">{teacherFullName}</strong></span>
-                <span><i className="fa-regular fa-calendar mr-1"></i> ปี {plan.edu_year}/{plan.edu_term} (งบฯ {plan.budget_year})</span>
+                <span><i className="fa-regular fa-calendar mr-1"></i> ปีการศึกษา {plan.edu_year}/{plan.edu_term}</span>
               </div>
             </div>
 
             <div className="col-lg-4 text-lg-right">
-              <div className="d-flex flex-wrap justify-content-lg-end" style={{ gap: '8px' }}>
+              <div className="d-flex flex-wrap justify-content-lg-end gap-2">
                 {plan.plan_file && (
-                  <a
-                    href={plan.plan_file}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn btn-light font-weight-bold shadow-sm"
-                    title="เปิดอ่านไฟล์แผนการจัดการเรียนรู้ PDF"
-                  >
-                    <i className="fa-regular fa-file-pdf text-danger mr-1"></i> เปิดดูไฟล์แผน (PDF)
+                  <a href={plan.plan_file} target="_blank" rel="noreferrer" className="btn btn-light btn-sm font-weight-bold shadow-sm">
+                    <i className="fa-regular fa-file-pdf text-danger mr-1"></i> ดู PDF
                   </a>
                 )}
-                {plan.plan_clip && (
-                  <a
-                    href={`https://www.youtube.com/watch?v=${plan.plan_clip}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn btn-outline-light font-weight-bold"
-                    title="เปิดดูคลิปวิดีโอการสอนบน YouTube"
-                  >
-                    <i className="fa-brands fa-youtube text-danger mr-1"></i> คลิปการสอน
+                {watchVideoUrl && (
+                  <a href={watchVideoUrl} target="_blank" rel="noreferrer" className="btn btn-outline-light btn-sm font-weight-bold">
+                    <i className="fa-brands fa-youtube text-danger mr-1"></i> เปิด YouTube
                   </a>
                 )}
               </div>
@@ -446,399 +473,333 @@ const PlanScoring = () => {
         </div>
       </div>
 
-      {/* ─── Sticky Score Meter Bar ─── */}
-      <div
-        className="card mb-4 shadow-sm border-0"
-        style={{
-          borderRadius: '10px',
-          position: 'sticky',
-          top: '65px',
-          zIndex: 1020,
-          background: '#ffffff',
-          boxShadow: '0 4px 15px rgba(0,0,0,0.08)',
-        }}
-      >
-        <div className="card-body py-3 px-4">
-          <div className="row align-items-center">
-            {/* Progress Counter */}
-            <div className="col-md-4 col-sm-6 mb-2 mb-md-0">
-              <div className="d-flex align-items-center">
+      {/* ─── Flagship Split-Screen Evaluation Studio ─── */}
+      <div className="row g-4">
+        {/* LEFT COLUMN: Sticky Media & Teaching Reflection Panel */}
+        <div className="col-lg-5 col-12">
+          <div style={{ position: 'sticky', top: '76px', zIndex: 10 }}>
+            <div className="card shadow-sm border-0 overflow-hidden mb-3" style={{ borderRadius: '12px' }}>
+              <div className="card-header bg-white border-bottom p-0">
+                <ul className="nav nav-tabs border-0" role="tablist">
+                  <li className="nav-item flex-fill text-center">
+                    <button
+                      type="button"
+                      className={`nav-link border-0 w-100 py-3 font-weight-bold ${activeMediaTab === 'clip' ? 'active text-danger border-bottom border-danger' : 'text-muted'}`}
+                      onClick={() => setActiveMediaTab('clip')}
+                      style={{ background: 'none' }}
+                    >
+                      <i className="fa-brands fa-youtube mr-1 text-danger"></i> คลิปการสอน
+                    </button>
+                  </li>
+                  <li className="nav-item flex-fill text-center">
+                    <button
+                      type="button"
+                      className={`nav-link border-0 w-100 py-3 font-weight-bold ${activeMediaTab === 'reflection' ? 'active text-primary border-bottom border-primary' : 'text-muted'}`}
+                      onClick={() => setActiveMediaTab('reflection')}
+                      style={{ background: 'none' }}
+                    >
+                      <i className="fa-solid fa-pen-nib mr-1 text-primary"></i> บันทึกหลังสอน
+                    </button>
+                  </li>
+                  <li className="nav-item flex-fill text-center">
+                    <button
+                      type="button"
+                      className={`nav-link border-0 w-100 py-3 font-weight-bold ${activeMediaTab === 'pdf' ? 'active text-danger border-bottom border-danger' : 'text-muted'}`}
+                      onClick={() => setActiveMediaTab('pdf')}
+                      style={{ background: 'none' }}
+                    >
+                      <i className="fa-regular fa-file-pdf mr-1 text-danger"></i> แผน PDF
+                    </button>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="card-body p-3">
+                {activeMediaTab === 'clip' && (
+                  <div>
+                    {embedVideoUrl ? (
+                      <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: '8px' }}>
+                        <iframe
+                          title="Evaluation YouTube Player"
+                          src={embedVideoUrl}
+                          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        />
+                      </div>
+                    ) : (
+                      <div className="p-4 text-center text-muted bg-light rounded">
+                        <i className="fa-brands fa-youtube fa-2x mb-2 text-secondary"></i>
+                        <p className="mb-0 small">ยังไม่ได้ระบุคลิปวิดีโอการสอน</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeMediaTab === 'reflection' && (
+                  <div>
+                    <h6 className="font-weight-bold text-dark mb-2">
+                      <i className="fa-solid fa-chalkboard-user mr-1 text-primary"></i> บันทึกผลการจัดการเรียนรู้ของครู:
+                    </h6>
+                    {plan.plan_after_teaching ? (
+                      <div
+                        className="p-3 bg-light rounded border text-dark small"
+                        style={{ whiteSpace: 'pre-line', maxHeight: '350px', overflowY: 'auto' }}
+                      >
+                        {plan.plan_after_teaching}
+                      </div>
+                    ) : (
+                      <div className="p-4 text-center text-muted bg-light rounded">
+                        <i className="fa-solid fa-comment-slash fa-2x mb-2 text-secondary"></i>
+                        <p className="mb-0 small">ครูยังไม่ได้บันทึกผลการจัดการเรียนรู้หลังสอน</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeMediaTab === 'pdf' && (
+                  <div>
+                    {plan.plan_file ? (
+                      <div>
+                        <div className="mb-2 text-center">
+                          <a
+                            href={plan.plan_file}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn btn-outline-danger btn-sm font-weight-bold"
+                          >
+                            <i className="fa-regular fa-file-pdf mr-1"></i> เปิดดูไฟล์เต็มหน้าต่างใหม่
+                          </a>
+                        </div>
+                        <iframe
+                          title="Plan PDF Preview"
+                          src={plan.plan_file}
+                          style={{ width: '100%', height: '360px', border: '1px solid #e2e8f0', borderRadius: '8px' }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="p-4 text-center text-muted bg-light rounded">
+                        <i className="fa-regular fa-file-excel fa-2x mb-2 text-secondary"></i>
+                        <p className="mb-0 small">ยังไม่มีไฟล์แผนการสอน PDF แนบมา</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Score Progress Sticky Meter */}
+            <div className="card shadow-sm border-0 p-3" style={{ borderRadius: '12px' }}>
+              <div className="d-flex justify-content-between align-items-center mb-2">
+                <span className="small text-muted font-weight-bold">ความก้าวหน้าการประเมิน:</span>
+                <span className="badge badge-primary">{scoreStats.answeredCount} / {scoreStats.totalCount} ข้อ</span>
+              </div>
+              <div className="progress mb-3" style={{ height: '6px' }}>
                 <div
-                  className="d-flex align-items-center justify-content-center text-white rounded-circle mr-3 shadow-sm"
-                  style={{
-                    width: '42px',
-                    height: '42px',
-                    fontSize: '18px',
-                    backgroundColor: scoreStats.isComplete ? '#059669' : '#3b82f6',
-                  }}
-                >
-                  <i className={`fa-solid ${scoreStats.isComplete ? 'fa-check' : 'fa-list-check'}`}></i>
-                </div>
+                  className={`progress-bar ${scoreStats.isComplete ? 'bg-success' : 'bg-primary'}`}
+                  style={{ width: `${scoreStats.totalCount > 0 ? (scoreStats.answeredCount / scoreStats.totalCount) * 100 : 0}%` }}
+                />
+              </div>
+
+              <div className="d-flex justify-content-between align-items-center pt-2 border-top">
                 <div>
-                  <span className="text-muted d-block" style={{ fontSize: '11px' }}>
-                    ความคืบหน้าการประเมิน
-                  </span>
-                  <strong style={{ fontSize: '15px' }}>
-                    {scoreStats.answeredCount} / {scoreStats.totalCount} ข้อ
-                  </strong>
-                  <span className="text-muted ml-1" style={{ fontSize: '12px' }}>
-                    ({scoreStats.totalCount > 0 ? Math.round((scoreStats.answeredCount / scoreStats.totalCount) * 100) : 0}%)
-                  </span>
+                  <span className="text-muted small d-block">คะแนนรวมเบื้องต้น:</span>
+                  <strong className="fs-5 text-success">{scoreStats.currentWeightedSum} / {scoreStats.maxWeightedSum}</strong>
+                  <span className="badge badge-warning text-dark ml-2">{scoreStats.percentage}%</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-muted small d-block">ระดับคุณภาพ:</span>
+                  <strong style={{ color: scoreStats.quality.color }}>{scoreStats.quality.label}</strong>
                 </div>
               </div>
             </div>
-
-            {/* Score & Percentage */}
-            <div className="col-md-4 col-sm-6 mb-2 mb-md-0">
-              <div className="d-flex align-items-center">
-                <div
-                  className="d-flex align-items-center justify-content-center text-white rounded-circle mr-3 shadow-sm"
-                  style={{ width: '42px', height: '42px', fontSize: '18px', backgroundColor: '#f59e0b' }}
-                >
-                  <i className="fa-solid fa-award"></i>
-                </div>
-                <div>
-                  <span className="text-muted d-block" style={{ fontSize: '11px' }}>
-                    คะแนนรวม (คิดเป็นร้อยละ)
-                  </span>
-                  <strong style={{ fontSize: '15px', color: '#059669' }}>
-                    {scoreStats.currentWeightedSum} / {scoreStats.maxWeightedSum} คะแนน
-                  </strong>
-                  <span className="badge badge-warning text-dark font-weight-bold ml-2">
-                    {scoreStats.percentage}%
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Quality Grade Level */}
-            <div className="col-md-4 col-12 text-md-right mt-2 mt-md-0">
-              <div className="d-inline-flex align-items-center p-2 rounded" style={{ backgroundColor: scoreStats.quality.bg }}>
-                <i className="fa-solid fa-medal mr-2" style={{ color: scoreStats.quality.color, fontSize: '18px' }}></i>
-                <div className="text-left">
-                  <span className="d-block text-muted" style={{ fontSize: '10px' }}>ระดับคุณภาพ</span>
-                  <strong style={{ color: scoreStats.quality.color, fontSize: '14px' }}>
-                    {scoreStats.quality.label}
-                  </strong>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Mini progress bar */}
-          <div className="progress mt-2" style={{ height: '4px' }}>
-            <div
-              className={`progress-bar ${scoreStats.isComplete ? 'bg-success' : 'bg-primary'}`}
-              role="progressbar"
-              style={{
-                width: `${scoreStats.totalCount > 0 ? (scoreStats.answeredCount / scoreStats.totalCount) * 100 : 0}%`,
-              }}
-              aria-valuenow={scoreStats.answeredCount}
-              aria-valuemin="0"
-              aria-valuemax={scoreStats.totalCount}
-            ></div>
           </div>
         </div>
-      </div>
 
-      {/* ─── Scoring Form ─── */}
-      <form onSubmit={handleSubmit}>
-        {alreadyScored && (
-          <div className="alert alert-info shadow-sm mb-4" style={{ borderRadius: '8px' }}>
-            <i className="fa-solid fa-circle-info mr-2"></i>
-            <strong>แผนการจัดการเรียนรู้นี้ได้รับการประเมินคะแนนแล้ว</strong> (แสดงในโหมดดูข้อมูล)
-          </div>
-        )}
+        {/* RIGHT COLUMN: Rubric Questions & Submit Form */}
+        <div className="col-lg-7 col-12">
+          <form onSubmit={handleSubmit}>
+            {alreadyScored && (
+              <div className="alert alert-info shadow-sm mb-4" style={{ borderRadius: '8px' }}>
+                <i className="fa-solid fa-circle-info mr-2"></i>
+                <strong>แผนการจัดการเรียนรู้นี้ได้รับการประเมินคะแนนแล้ว</strong> (แสดงในโหมดดูข้อมูล)
+              </div>
+            )}
 
-        {/* ── ด้านที่ 1 ── */}
-        <div className="card shadow-sm border-0 mb-4" style={{ borderRadius: '10px' }}>
-          <div className="card-header bg-success text-white py-3">
-            <h4 className="card-title m-0 font-weight-bold" style={{ fontSize: '17px' }}>
-              <i className="fa-solid fa-chalkboard-user mr-2"></i>
-              ด้านที่ 1: ด้านทักษะการจัดการเรียนรู้และการจัดการชั้นเรียน
-              <span className="badge badge-light text-dark ml-2">
-                {scoreStats.side1Answered}/{scoreStats.side1Total} ข้อ
-              </span>
-            </h4>
-          </div>
+            {/* ด้านที่ 1 */}
+            <div className="card shadow-sm border-0 mb-4" style={{ borderRadius: '12px' }}>
+              <div className="card-header bg-success text-white py-3">
+                <h5 className="card-title m-0 font-weight-bold">
+                  <i className="fa-solid fa-chalkboard-user mr-2"></i>
+                  ด้านที่ 1: ด้านทักษะการจัดการเรียนรู้และการจัดการชั้นเรียน
+                  <span className="badge badge-light text-dark ml-2">
+                    {scoreStats.side1Answered}/{scoreStats.side1Total} ข้อ
+                  </span>
+                </h5>
+              </div>
 
-          <div className="card-body p-4">
-            {/* Rubric Info Box */}
-            <div
-              className="alert alert-light border mb-4"
-              style={{
-                borderRadius: '8px',
-                borderLeft: '4px solid #059669',
-                backgroundColor: '#f8fafc',
-                fontSize: '13px',
-                color: '#334155',
-                lineHeight: 1.6,
-              }}
-            >
-              <strong className="text-success d-block mb-1">
-                <i className="fa-solid fa-circle-question mr-1"></i> เกณฑ์การให้คะแนนด้านที่ 1 (Scoring Rubric):
-              </strong>
-              <div>• <strong>1 คะแนน:</strong> เมื่อปรากฏชัดเจนว่าสามารถปฏิบัติตามข้อ 1 ถึง ข้อ 3 ได้ 1 ข้อ</div>
-              <div>• <strong>2 คะแนน:</strong> เมื่อปรากฏชัดเจนว่าสามารถปฏิบัติตามข้อ 1 ถึง ข้อ 3 ได้ 2 ข้อ</div>
-              <div>• <strong>3 คะแนน:</strong> เมื่อปรากฏชัดเจนว่าสามารถปฏิบัติตามข้อ 1 ถึง ข้อ 3 ได้ทั้ง 3 ข้อ</div>
-              <div>• <strong>4 คะแนน:</strong> เมื่อปฏิบัติตามข้อ 1 ถึง ข้อ 3 ได้ครบ 3 ข้อ และปฏิบัติตามข้อ 4 หรือ ข้อ 5 ได้ 1 ข้อ</div>
-              <div>• <strong>5 คะแนน:</strong> เมื่อปฏิบัติตามข้อ 1 ถึง ข้อ 3 ได้ครบ 3 ข้อ และปฏิบัติตามข้อ 4 และ ข้อ 5 ได้ทั้ง 2 ข้อ</div>
-            </div>
-
-            {/* Questions for Side 1 */}
-            {policySide1.map((policy, idx) => {
-              const selectedValue = scores[policy.auto_id];
-              return (
-                <div
-                  key={policy.auto_id}
-                  id={`policy-row-${policy.auto_id}`}
-                  className="p-3 mb-3 border rounded shadow-none"
-                  style={{
-                    backgroundColor: selectedValue ? '#f0fdf4' : '#ffffff',
-                    borderColor: selectedValue ? '#bbf7d0' : '#e2e8f0',
-                    borderRadius: '8px',
-                    transition: 'background-color 0.2s',
-                  }}
-                >
-                  <div className="row align-items-center">
-                    <div className="col-lg-8 mb-3 mb-lg-0">
-                      <h5 className="font-weight-bold text-dark mb-2" style={{ fontSize: '15px' }}>
+              <div className="card-body p-4">
+                {policySide1.map((policy, idx) => {
+                  const selectedValue = scores[policy.auto_id];
+                  return (
+                    <div
+                      key={policy.auto_id}
+                      id={`policy-row-${policy.auto_id}`}
+                      className="p-3 mb-3 border rounded shadow-none"
+                      style={{
+                        backgroundColor: selectedValue ? '#f0fdf4' : '#ffffff',
+                        borderColor: selectedValue ? '#bbf7d0' : '#e2e8f0',
+                        borderRadius: '8px',
+                      }}
+                    >
+                      <h6 className="font-weight-bold text-dark mb-2">
                         {idx + 1}. {policy.text}
-                      </h5>
-                      <div className="text-muted pl-2" style={{ fontSize: '13px', lineHeight: 1.5, borderLeft: '2px solid #cbd5e1' }}>
-                        <strong className="text-secondary d-block mb-1">ตัวชี้วัดย่อย:</strong>
+                      </h6>
+                      <div className="text-muted pl-2 mb-3 small" style={{ borderLeft: '2px solid #cbd5e1' }}>
                         {(policyItems[policy.auto_id] || []).map((item) => (
                           <div key={item.id} className="mb-1">
                             {item.no_order}. {item.text}
                           </div>
                         ))}
                       </div>
-                    </div>
 
-                    {/* Touch-Friendly Score Selector */}
-                    <div className="col-lg-4 text-lg-right">
-                      <span className="text-muted d-block mb-2 font-weight-bold" style={{ fontSize: '12px' }}>
-                        เลือกระดับคะแนน (1 - 5):
-                      </span>
-                      <div className="d-flex flex-wrap justify-content-lg-end" style={{ gap: '8px' }}>
-                        {[1, 2, 3, 4, 5].map((v) => {
-                          const isSelected = Number(selectedValue) === v;
-                          const colors = {
-                            1: { bg: '#ef4444', text: '#fff', border: '#ef4444' },
-                            2: { bg: '#f97316', text: '#fff', border: '#f97316' },
-                            3: { bg: '#f59e0b', text: '#fff', border: '#f59e0b' },
-                            4: { bg: '#10b981', text: '#fff', border: '#10b981' },
-                            5: { bg: '#059669', text: '#fff', border: '#059669' },
-                          };
-                          return (
-                            <button
-                              key={v}
-                              type="button"
-                              disabled={alreadyScored}
-                              onClick={() => handleScoreChange(policy.auto_id, v)}
-                              className="btn font-weight-bold d-flex flex-column align-items-center justify-content-center"
-                              style={{
-                                width: '50px',
-                                height: '44px',
-                                borderRadius: '8px',
-                                border: `2px solid ${isSelected ? colors[v].border : '#cbd5e1'}`,
-                                backgroundColor: isSelected ? colors[v].bg : '#ffffff',
-                                color: isSelected ? colors[v].text : '#475569',
-                                transition: 'all 0.15s ease',
-                                boxShadow: isSelected ? `0 4px 10px ${colors[v].bg}40` : 'none',
-                                cursor: alreadyScored ? 'default' : 'pointer',
-                              }}
-                            >
-                              <span style={{ fontSize: '16px', lineHeight: 1 }}>{v}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {selectedValue && (
-                        <div className="mt-1" style={{ fontSize: '11px', color: '#059669' }}>
-                          <i className="fa-solid fa-circle-check mr-1"></i> ให้ {selectedValue} คะแนน
+                      <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2 border-top">
+                        <span className="small text-muted font-weight-bold">เลือกระดับคะแนน (1 - 5):</span>
+                        <div className="btn-group">
+                          {[1, 2, 3, 4, 5].map((v) => {
+                            const isSel = Number(selectedValue) === v;
+                            return (
+                              <button
+                                key={v}
+                                type="button"
+                                disabled={alreadyScored}
+                                onClick={() => handleScoreChange(policy.auto_id, v)}
+                                className={`btn font-weight-bold ${isSel ? 'btn-success' : 'btn-outline-secondary'}`}
+                                style={{ width: '44px', height: '38px' }}
+                              >
+                                {v}
+                              </button>
+                            );
+                          })}
                         </div>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ── ด้านที่ 2 ── */}
-        <div className="card shadow-sm border-0 mb-4" style={{ borderRadius: '10px' }}>
-          <div className="card-header bg-primary text-white py-3">
-            <h4 className="card-title m-0 font-weight-bold" style={{ fontSize: '17px' }}>
-              <i className="fa-solid fa-graduation-cap mr-2"></i>
-              ด้านที่ 2: ด้านผลลัพธ์การเรียนรู้ของผู้เรียน
-              <span className="badge badge-light text-dark ml-2">
-                {scoreStats.side2Answered}/{scoreStats.side2Total} ข้อ
-              </span>
-            </h4>
-          </div>
-
-          <div className="card-body p-4">
-            {/* Rubric Info Box */}
-            <div
-              className="alert alert-light border mb-4"
-              style={{
-                borderRadius: '8px',
-                borderLeft: '4px solid #2563eb',
-                backgroundColor: '#f8fafc',
-                fontSize: '13px',
-                color: '#334155',
-                lineHeight: 1.6,
-              }}
-            >
-              <strong className="text-primary d-block mb-1">
-                <i className="fa-solid fa-circle-question mr-1"></i> เกณฑ์การให้คะแนนด้านที่ 2 (Scoring Rubric):
-              </strong>
-              <div>• <strong>1 คะแนน:</strong> เมื่อปฏิบัติได้หรือปรากฏผลชัดเจน 1 ข้อ จาก 5 ข้อ</div>
-              <div>• <strong>2 คะแนน:</strong> เมื่อปฏิบัติได้หรือปรากฏผลชัดเจน 2 ข้อ จาก 5 ข้อ</div>
-              <div>• <strong>3 คะแนน:</strong> เมื่อปฏิบัติได้หรือปรากฏผลชัดเจน 3 ข้อ จาก 5 ข้อ</div>
-              <div>• <strong>4 คะแนน:</strong> เมื่อปฏิบัติได้หรือปรากฏผลชัดเจน 4 ข้อ จาก 5 ข้อ</div>
-              <div>• <strong>5 คะแนน:</strong> เมื่อปฏิบัติได้หรือปรากฏผลชัดเจนครบทั้ง 5 ข้อ</div>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Questions for Side 2 */}
-            {policySide2.map((policy, idx) => {
-              const selectedValue = scores[policy.auto_id];
-              return (
-                <div
-                  key={policy.auto_id}
-                  id={`policy-row-${policy.auto_id}`}
-                  className="p-3 mb-3 border rounded shadow-none"
-                  style={{
-                    backgroundColor: selectedValue ? '#eff6ff' : '#ffffff',
-                    borderColor: selectedValue ? '#bfdbfe' : '#e2e8f0',
-                    borderRadius: '8px',
-                    transition: 'background-color 0.2s',
-                  }}
-                >
-                  <div className="row align-items-center">
-                    <div className="col-lg-8 mb-3 mb-lg-0">
-                      <h5 className="font-weight-bold text-dark mb-2" style={{ fontSize: '15px' }}>
+            {/* ด้านที่ 2 */}
+            <div className="card shadow-sm border-0 mb-4" style={{ borderRadius: '12px' }}>
+              <div className="card-header bg-primary text-white py-3">
+                <h5 className="card-title m-0 font-weight-bold">
+                  <i className="fa-solid fa-graduation-cap mr-2"></i>
+                  ด้านที่ 2: ด้านผลลัพธ์การเรียนรู้ของผู้เรียน
+                  <span className="badge badge-light text-dark ml-2">
+                    {scoreStats.side2Answered}/{scoreStats.side2Total} ข้อ
+                  </span>
+                </h5>
+              </div>
+
+              <div className="card-body p-4">
+                {policySide2.map((policy, idx) => {
+                  const selectedValue = scores[policy.auto_id];
+                  return (
+                    <div
+                      key={policy.auto_id}
+                      id={`policy-row-${policy.auto_id}`}
+                      className="p-3 mb-3 border rounded shadow-none"
+                      style={{
+                        backgroundColor: selectedValue ? '#eff6ff' : '#ffffff',
+                        borderColor: selectedValue ? '#bfdbfe' : '#e2e8f0',
+                        borderRadius: '8px',
+                      }}
+                    >
+                      <h6 className="font-weight-bold text-dark mb-2">
                         {idx + 1}. {policy.text}
-                      </h5>
-                      <div className="text-muted pl-2" style={{ fontSize: '13px', lineHeight: 1.5, borderLeft: '2px solid #cbd5e1' }}>
-                        <strong className="text-secondary d-block mb-1">ตัวชี้วัดย่อย:</strong>
+                      </h6>
+                      <div className="text-muted pl-2 mb-3 small" style={{ borderLeft: '2px solid #cbd5e1' }}>
                         {(policyItems[policy.auto_id] || []).map((item) => (
                           <div key={item.id} className="mb-1">
                             {item.no_order}. {item.text}
                           </div>
                         ))}
                       </div>
-                    </div>
 
-                    {/* Touch-Friendly Score Selector */}
-                    <div className="col-lg-4 text-lg-right">
-                      <span className="text-muted d-block mb-2 font-weight-bold" style={{ fontSize: '12px' }}>
-                        เลือกระดับคะแนน (1 - 5):
-                      </span>
-                      <div className="d-flex flex-wrap justify-content-lg-end" style={{ gap: '8px' }}>
-                        {[1, 2, 3, 4, 5].map((v) => {
-                          const isSelected = Number(selectedValue) === v;
-                          const colors = {
-                            1: { bg: '#ef4444', text: '#fff', border: '#ef4444' },
-                            2: { bg: '#f97316', text: '#fff', border: '#f97316' },
-                            3: { bg: '#f59e0b', text: '#fff', border: '#f59e0b' },
-                            4: { bg: '#10b981', text: '#fff', border: '#10b981' },
-                            5: { bg: '#059669', text: '#fff', border: '#059669' },
-                          };
-                          return (
-                            <button
-                              key={v}
-                              type="button"
-                              disabled={alreadyScored}
-                              onClick={() => handleScoreChange(policy.auto_id, v)}
-                              className="btn font-weight-bold d-flex flex-column align-items-center justify-content-center"
-                              style={{
-                                width: '50px',
-                                height: '44px',
-                                borderRadius: '8px',
-                                border: `2px solid ${isSelected ? colors[v].border : '#cbd5e1'}`,
-                                backgroundColor: isSelected ? colors[v].bg : '#ffffff',
-                                color: isSelected ? colors[v].text : '#475569',
-                                transition: 'all 0.15s ease',
-                                boxShadow: isSelected ? `0 4px 10px ${colors[v].bg}40` : 'none',
-                                cursor: alreadyScored ? 'default' : 'pointer',
-                              }}
-                            >
-                              <span style={{ fontSize: '16px', lineHeight: 1 }}>{v}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {selectedValue && (
-                        <div className="mt-1" style={{ fontSize: '11px', color: '#2563eb' }}>
-                          <i className="fa-solid fa-circle-check mr-1"></i> ให้ {selectedValue} คะแนน
+                      <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2 border-top">
+                        <span className="small text-muted font-weight-bold">เลือกระดับคะแนน (1 - 5):</span>
+                        <div className="btn-group">
+                          {[1, 2, 3, 4, 5].map((v) => {
+                            const isSel = Number(selectedValue) === v;
+                            return (
+                              <button
+                                key={v}
+                                type="button"
+                                disabled={alreadyScored}
+                                onClick={() => handleScoreChange(policy.auto_id, v)}
+                                className={`btn font-weight-bold ${isSel ? 'btn-primary' : 'btn-outline-secondary'}`}
+                                style={{ width: '44px', height: '38px' }}
+                              >
+                                {v}
+                              </button>
+                            );
+                          })}
                         </div>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                  );
+                })}
+              </div>
+            </div>
 
-        {/* ── ข้อเสนอแนะจากกรรมการ ── */}
-        <div className="card shadow-sm border-0 mb-4" style={{ borderRadius: '10px' }}>
-          <div className="card-header bg-warning py-3">
-            <h4 className="card-title m-0 font-weight-bold text-dark" style={{ fontSize: '16px' }}>
-              <i className="fa-solid fa-comment-dots mr-2"></i> ข้อเสนอแนะ / ความคิดเห็นเชิงพัฒนาของกรรมการ
-            </h4>
-          </div>
-          <div className="card-body p-4">
-            <textarea
-              className="form-control"
-              rows="4"
-              placeholder="กรอกข้อเสนอแนะ เทคนิควิธีการสอน หรือจุดเด่นจุดควรพัฒนาสำหรับครูผู้สอน..."
-              value={comment}
-              onChange={handleCommentChange}
-              disabled={alreadyScored}
-              style={{ fontSize: '14px', borderRadius: '8px' }}
-            />
-            <small className="text-muted d-block mt-2">
-              <i className="fa-solid fa-circle-info mr-1 text-primary"></i>
-              ข้อเสนอแนะนี้จะปรากฏในรายงานผลการนิเทศและเกียรติบัตร เพื่อให้ครูนำไปปรับใช้ในการจัดการเรียนรู้ Active Coding
-            </small>
-          </div>
-        </div>
+            {/* Feedback Comment */}
+            <div className="card shadow-sm border-0 mb-4" style={{ borderRadius: '12px' }}>
+              <div className="card-header bg-warning py-3">
+                <h6 className="font-weight-bold text-dark m-0">
+                  <i className="fa-solid fa-comment-dots mr-2"></i> ข้อเสนอแนะ / ความคิดเห็นเชิงพัฒนาของกรรมการ
+                </h6>
+              </div>
+              <div className="card-body p-4">
+                <textarea
+                  className="form-control"
+                  rows={4}
+                  placeholder="กรอกข้อเสนอแนะ เทคนิควิธีการสอน หรือจุดเด่นจุดควรพัฒนาสำหรับครูผู้สอน..."
+                  value={comment}
+                  onChange={handleCommentChange}
+                  disabled={alreadyScored}
+                  style={{ borderRadius: '8px' }}
+                />
+              </div>
+            </div>
 
-        {/* ── Action Buttons ── */}
-        <div className="d-flex justify-content-center align-items-center mb-5 flex-wrap" style={{ gap: '12px' }}>
-          {!alreadyScored && (
-            <button
-              type="submit"
-              className="btn btn-success btn-lg font-weight-bold px-4 py-2 shadow-sm"
-              disabled={saving}
-              style={{ borderRadius: '8px', minWidth: '180px' }}
-            >
-              {saving ? (
-                <>
-                  <span className="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span>
-                  กำลังบันทึกคะแนน...
-                </>
-              ) : (
-                <>
-                  <i className="fa-regular fa-floppy-disk mr-2"></i> บันทึกผลการประเมิน
-                </>
+            {/* Action Buttons */}
+            <div className="d-flex justify-content-between align-items-center mb-5 gap-2">
+              <Link to="/Plan_Check" className="btn btn-outline-secondary px-4 py-2 font-weight-bold">
+                <i className="fa-solid fa-arrow-left mr-1"></i> ย้อนกลับ
+              </Link>
+
+              {!alreadyScored && (
+                <button
+                  type="submit"
+                  className="btn btn-success btn-lg font-weight-bold px-4 py-2 shadow-sm"
+                  disabled={saving || !scoreStats.isComplete}
+                >
+                  {saving ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true" />
+                      กำลังบันทึกคะแนน...
+                    </>
+                  ) : (
+                    <>
+                      <i className="fa-solid fa-floppy-disk mr-2"></i> ยืนยันการส่งผลประเมิน
+                    </>
+                  )}
+                </button>
               )}
-            </button>
-          )}
-
-          <Link
-            to="/Plan_Check"
-            className="btn btn-outline-secondary btn-lg font-weight-bold px-4 py-2"
-            style={{ borderRadius: '8px' }}
-          >
-            <i className="fa-solid fa-arrow-left mr-2"></i> ย้อนกลับ
-          </Link>
+            </div>
+          </form>
         </div>
-      </form>
+      </div>
     </div>
   );
 };

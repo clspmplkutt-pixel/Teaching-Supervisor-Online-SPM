@@ -3,9 +3,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
+import { useUserProfile } from '../hooks/useUserProfile';
 import useUserLookups from '../hooks/useUserLookups';
-import useSelect2 from '../hooks/useSelect2';
 import useAppConfig from '../hooks/useAppConfig';
+import ThaiDatePicker from '../components/ThaiDatePicker';
 import { isValidThaiId } from '../utils/thaiId';
 
 const getLocalTimestamp = () => {
@@ -38,6 +39,7 @@ const normalizeBirthdayToAD = (val) => {
 const UserEdit = ({ variant }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { profile } = useUserProfile();
   const [searchParams] = useSearchParams();
   const peopleIdParam = searchParams.get('people_id') || '';
   const idParam = searchParams.get('id') || '';
@@ -90,53 +92,6 @@ const UserEdit = ({ variant }) => {
     return 'info';
   }, [variant]);
 
-  useSelect2([
-    lookupsLoading,
-    lists.prefix.length,
-    lists.position.length,
-    lists.academic.length,
-    lists.personType.length,
-    lists.school.length,
-    lists.teachSubject.length,
-    lists.eduLevel.length,
-    lists.gradeLevel.length,
-    lists.khet.length,
-    lists.gender.length,
-  ]);
-
-  useEffect(() => {
-    const $ = window.$;
-    if (!$ || !$.fn || !$.fn.datepicker) return;
-    const picker = $('#birthday');
-    picker.datepicker({
-      format: 'yyyy-mm-dd',
-      autoclose: true,
-      language: 'th-th',
-      thaiyear: false,
-    }).on('changeDate', function () {
-      if (this.value) {
-        let val = this.value;
-        const bParts = val.split('-');
-        if (bParts.length === 3) {
-          let bYear = parseInt(bParts[0], 10);
-          if (bYear >= 2400 && bYear <= 2600) {
-            bYear -= 543;
-            val = `${bYear}-${bParts[1]}-${bParts[2]}`;
-            this.value = val;
-          }
-        }
-        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-        if (nativeInputValueSetter) {
-          nativeInputValueSetter.call(this, val);
-        }
-        this.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-    });
-    return () => {
-      try { picker.datepicker('destroy'); } catch { /* noop */ }
-    };
-  }, [loading]);
-
   useEffect(() => {
     let mounted = true;
     const loadUser = async () => {
@@ -155,6 +110,14 @@ const UserEdit = ({ variant }) => {
           Swal.fire('Error', 'ไม่พบข้อมูลผู้ใช้งาน', 'error');
           return;
         }
+
+        // Scope check for admin_school
+        if (profile?.level === 'admin_school' && profile?.school && String(data.school) !== String(profile.school)) {
+          Swal.fire('ไม่มีสิทธิ์', 'คุณสามารถแก้ไขได้เฉพาะบุคลากรในสถานศึกษาของคุณเท่านั้น', 'warning');
+          navigate(`/${backModule}`);
+          return;
+        }
+
         if (!mounted) return;
         setOriginalPeopleId(data.people_id || '');
         setForm({
@@ -200,7 +163,7 @@ const UserEdit = ({ variant }) => {
     };
     loadUser();
     return () => { mounted = false; };
-  }, [peopleIdParam, idParam, peopleIdError]);
+  }, [peopleIdParam, idParam, peopleIdError, profile, backModule, navigate]);
 
   const validatePeopleId = async (value) => {
     const trimmed = String(value || '').trim();
@@ -255,11 +218,11 @@ const UserEdit = ({ variant }) => {
     e.preventDefault();
     if (saving) return;
     if (!form.people_id || !isValidThaiId(form.people_id)) {
-      Swal.fire('Error', 'เลขประจำตัวประชาชนไม่ถูกต้อง', 'error');
+      Swal.fire('ข้อผิดพลาด', 'เลขประจำตัวประชาชนไม่ถูกต้อง', 'error');
       return;
     }
     if (peopleIdStatus.duplicate) {
-      Swal.fire('Error', 'เลขประจำตัวประชาชนซ้ำ', 'error');
+      Swal.fire('ข้อผิดพลาด', 'เลขประจำตัวประชาชนซ้ำกับผู้อื่นในระบบ', 'error');
       return;
     }
 
@@ -271,16 +234,16 @@ const UserEdit = ({ variant }) => {
 
     const payload = {
       prefix: form.prefix,
-      name: form.name,
-      lastname: form.lastname,
+      name: form.name.trim(),
+      lastname: form.lastname.trim(),
       persontype_id: form.persontype_id,
       position_id: form.position_id,
       academic_id: form.academic_id,
       gender: form.gender,
       birthday: normalizeBirthdayToAD(form.birthday),
       edu_level: form.edu_level,
-      phone: form.phone,
-      email: form.email,
+      phone: form.phone.trim(),
+      email: form.email.trim(),
       level,
       lastupdate: getLocalTimestamp(),
       update_by: user?.email || user?.user_metadata?.people_id || user?.id || '',
@@ -289,7 +252,6 @@ const UserEdit = ({ variant }) => {
     if (variant === 'teacher') {
       payload.school = schoolValue;
       payload.headDepartment = form.headDepartment;
-      payload.chairman = '0';
       payload.teach_subject = form.teach_subject;
       payload.teach_subject_name = form.teach_subject_name;
       payload.teach_level = Array.isArray(form.teach_level) ? form.teach_level.join(',') : form.teach_level;
@@ -337,11 +299,11 @@ const UserEdit = ({ variant }) => {
         if (error) throw error;
       }
 
-      Swal.fire('สำเร็จ', 'เพิ่มข้อมูลสำเร็จ', 'success');
+      Swal.fire('สำเร็จ', 'บันทึกการแก้ไขข้อมูลเรียบร้อยแล้ว', 'success');
       navigate(`/${backModule}`);
     } catch (err) {
       console.error(err);
-      Swal.fire('Error', 'ไม่สามารถเพิ่มข้อมูลได้ เกิดข้อผิดพลาด', 'error');
+      Swal.fire('Error', 'ไม่สามารถบันทึกข้อมูลได้: ' + err.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -351,7 +313,7 @@ const UserEdit = ({ variant }) => {
     return (
       <div className="text-center p-4">
         <div className="spinner-border text-primary" role="status"></div>
-        <p className="mt-2">กำลังโหลดข้อมูล...</p>
+        <p className="mt-2">กำลังโหลดข้อมูลผู้ใช้งาน...</p>
       </div>
     );
   }
@@ -369,262 +331,379 @@ const UserEdit = ({ variant }) => {
   const showKhet = variant === 'supervisor';
 
   return (
-    <div className="row">
-      <div className="col-sm-12 col-md-12 col-lg-12 col-xl-12">
-        <form onSubmit={handleSubmit}>
-          <div className="card card-success">
-            <div className="card-header">
-              <h4 className="card-title">{title}</h4>
-            </div>
-            <div className="card-body">
-              <div className="mb-3 mt-3">
-                <label htmlFor="people_id">เลขประจำตัวประชาชน ** <span id="msg_people_id" className="text-danger">{peopleIdStatus.message}</span></label>
-                <input type="text" className="form-control" id="people_id" name="people_id" value={form.people_id} onChange={handleChange} required readOnly={isPeopleIdReadonly} />
+    <div className="container-fluid py-3">
+      <div className="row justify-content-center">
+        <div className="col-12 col-xl-10">
+          <form onSubmit={handleSubmit}>
+            <div className="card shadow-sm border-0 mb-4" style={{ borderRadius: '12px' }}>
+              <div className="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                <h5 className="font-weight-bold mb-0 text-dark">
+                  <i className="fa-solid fa-user-pen text-primary mr-2"></i> {title}
+                </h5>
+                <span className="badge badge-light border">
+                  ID #{idParam || form.people_id}
+                </span>
               </div>
 
-              <div className="row">
-                <div className="col-lg-2">
-                  <div className="mb-3 mt-3">
-                    <label htmlFor="prefix">คำนำหน้า</label>
-                    <select name="prefix" id="prefix" className="custom-select select2bs4" value={form.prefix} onChange={handleChange} required>
-                      <option value="">คำนำหน้า</option>
-                      {lists.prefix.map((row) => (
-                        <option key={row.prefix_id} value={row.prefix_id}>{row.prefix}</option>
-                      ))}
-                    </select>
+              <div className="card-body p-4">
+                {/* 1. Identification Section */}
+                <div className="mb-4 pb-3 border-bottom">
+                  <h6 className="font-weight-bold text-muted mb-3" style={{ fontSize: '13px', textTransform: 'uppercase' }}>
+                    1. ข้อมูลประจำตัวและชื่อ-สกุล
+                  </h6>
+                  <div className="row">
+                    <div className="col-md-6 mb-3">
+                      <label className="font-weight-bold small text-muted">
+                        เลขประจำตัวประชาชน: <span className="text-danger">{peopleIdStatus.message}</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        id="people_id"
+                        name="people_id"
+                        value={form.people_id}
+                        onChange={handleChange}
+                        required
+                        readOnly={isPeopleIdReadonly}
+                      />
+                    </div>
                   </div>
-                </div>
-                <div className="col-lg-5">
-                  <div className="mb-3 mt-3">
-                    <label htmlFor="name">ชื่อ</label>
-                    <input type="text" className="form-control" id="name" name="name" value={form.name} onChange={handleChange} required />
-                  </div>
-                </div>
-                <div className="col-lg-5">
-                  <div className="mb-3 mt-3">
-                    <label htmlFor="lastname">นามสกุล</label>
-                    <input type="text" className="form-control" id="lastname" name="lastname" value={form.lastname} onChange={handleChange} required />
-                  </div>
-                </div>
-              </div>
 
-              <div className="row">
-                <div className="col-lg-4">
-                  <div className="mb-3 mt-3">
-                    <label htmlFor="gender">เพศ</label>
-                    <select name="gender" id="gender" className="custom-select select2bs4" value={form.gender} onChange={handleChange} required>
-                      <option value="">เพศ</option>
-                      {lists.gender.map((row) => (
-                        <option key={row.gender_id} value={row.gender_id}>{row.gender}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="col-lg-4">
-                  <div className="mb-3 mt-3">
-                    <label htmlFor="birthday">วันเกิด</label> <span className="text-danger">เช่น 1979-07-19</span>
-                    <input className="form-control" type="text" id="birthday" name="birthday" value={form.birthday} onChange={handleChange} required />
-                  </div>
-                </div>
-                <div className="col-lg-4">
-                  <div className="mb-3 mt-3">
-                    <label htmlFor="edu_level">วุฒิการศึกษาสูงสุด</label>
-                    <select name="edu_level" id="edu_level" className="custom-select select2bs4" value={form.edu_level} onChange={handleChange} required>
-                      <option value="">วุฒิการศึกษาสูงสุด</option>
-                      {lists.eduLevel.map((row) => (
-                        <option key={row.educationlevel_id} value={row.educationlevel_id}>{row.educationlevel_name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
+                  <div className="row">
+                    <div className="col-md-2 mb-3">
+                      <label className="font-weight-bold small text-muted">คำนำหน้า:</label>
+                      <select
+                        name="prefix"
+                        className="form-control"
+                        value={form.prefix}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="">คำนำหน้า</option>
+                        {lists.prefix.map((row) => (
+                          <option key={row.prefix_id} value={row.prefix_id}>{row.prefix}</option>
+                        ))}
+                      </select>
+                    </div>
 
-              <div className="row">
-                <div className="col-lg-6">
-                  <div className="mb-3 mt-3">
-                    <label htmlFor="phone">เบอร์โทรศัพท์</label>
-                    <input className="form-control" type="text" id="phone" name="phone" placeholder="เบอร์โทรศัพท์" value={form.phone} onChange={handleChange} />
-                  </div>
-                </div>
-                <div className="col-lg-6">
-                  <div className="mb-3 mt-3">
-                    <label htmlFor="email">Email</label>
-                    <input className="form-control" type="email" id="email" name="email" placeholder="E-mail" value={form.email} onChange={handleChange} />
-                  </div>
-                </div>
-              </div>
+                    <div className="col-md-5 mb-3">
+                      <label className="font-weight-bold small text-muted">ชื่อ:</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        name="name"
+                        value={form.name}
+                        onChange={handleChange}
+                        required
+                      />
+                    </div>
 
-              <div className="row">
-                <div className="col-lg-4">
-                  <div className="mb-3 mt-3">
-                    <label htmlFor="persontype_id">ประเภทบุคลากร</label>
-                    <select name="persontype_id" id="persontype_id" className="custom-select select2bs4" value={form.persontype_id} onChange={handleChange} required>
-                      <option value="">ประเภทบุคลากร</option>
-                      {lists.personType.map((row) => (
-                        <option key={row.persontype_id} value={row.persontype_id}>{row.persontype_name}</option>
-                      ))}
-                    </select>
+                    <div className="col-md-5 mb-3">
+                      <label className="font-weight-bold small text-muted">นามสกุล:</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        name="lastname"
+                        value={form.lastname}
+                        onChange={handleChange}
+                        required
+                      />
+                    </div>
                   </div>
-                </div>
-                <div className="col-lg-4">
-                  <div className="mb-3 mt-3">
-                    <label htmlFor="position_id">ตำแหน่ง</label>
-                    <select name="position_id" id="position_id" className="custom-select select2bs4" value={form.position_id} onChange={handleChange} required>
-                      <option value="">ตำแหน่ง</option>
-                      {lists.position.map((row) => (
-                        <option key={row.position_id} value={row.position_id}>{row.position_name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="col-lg-4">
-                  <div className="mb-3 mt-3">
-                    <label htmlFor="academic_id">วิทยฐานะ</label>
-                    <select name="academic_id" id="academic_id" className="custom-select select2bs4" value={form.academic_id} onChange={handleChange} required>
-                      <option value="">วิทยฐานะ</option>
-                      {lists.academic.map((row) => (
-                        <option key={row.academic_id} value={row.academic_id}>{row.academic_standing}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
 
-              {showSchool && (
-                <div className="row">
-                  <div className="col-lg-4">
-                    <div className="mb-3 mt-3">
-                      <label htmlFor="school">โรงเรียน</label>
-                      <select name="school" id="school" className="custom-select select2bs4" value={form.school} onChange={handleChange} required>
-                        <option value="">โรงเรียน</option>
-                        {lists.school.map((row) => (
-                          <option key={row.school_id} value={row.school_id}>{row.school_name}</option>
+                  <div className="row">
+                    <div className="col-md-4 mb-3">
+                      <label className="font-weight-bold small text-muted">เพศ:</label>
+                      <select
+                        name="gender"
+                        className="form-control"
+                        value={form.gender}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="">เพศ</option>
+                        {lists.gender.map((row) => (
+                          <option key={row.gender_id} value={row.gender_id}>{row.gender}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="col-md-4 mb-3">
+                      <label className="font-weight-bold small text-muted">วันเกิด:</label>
+                      <ThaiDatePicker
+                        mode="birthday"
+                        value={form.birthday}
+                        onChange={(isoVal) => setForm(prev => ({ ...prev, birthday: isoVal }))}
+                      />
+                    </div>
+
+                    <div className="col-md-4 mb-3">
+                      <label className="font-weight-bold small text-muted">วุฒิการศึกษาสูงสุด:</label>
+                      <select
+                        name="edu_level"
+                        className="form-control"
+                        value={form.edu_level}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="">วุฒิการศึกษา</option>
+                        {lists.eduLevel.map((row) => (
+                          <option key={row.educationlevel_id} value={row.educationlevel_id}>{row.educationlevel_name}</option>
                         ))}
                       </select>
                     </div>
                   </div>
 
-                  {showHeadDepartment && (
-                    <>
-                      <div className="col-lg-4">
-                        <div className="mb-3 mt-3">
-                          <label htmlFor="headDepartment">หัวหน้ากลุ่มสาระ</label>
-                          <select name="headDepartment" id="headDepartment" className="custom-select select2bs4" value={form.headDepartment || '0'} onChange={handleChange} required>
-                            <option value="0">ไม่ได้เป็นหัวหน้ากลุ่มสาระ</option>
-                            <option value="1">เป็นหัวหน้ากลุ่มสาระ</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="col-lg-4">
-                        <div className="mb-3 mt-3">
-                          <label htmlFor="school_admin_level">สิทธิ์ผู้ดูแลระบบระดับสถานศึกษา (School Admin)</label>
-                          <select
-                            name="school_admin_level"
-                            id="school_admin_level"
-                            className="custom-select select2bs4"
-                            value={form.level === 'admin_school' ? '1' : '0'}
-                            onChange={(e) => setForm(prev => ({ ...prev, level: e.target.value === '1' ? 'admin_school' : 'teacher' }))}
-                          >
-                            <option value="0">ผู้ใช้ทั่วไป (ครู)</option>
-                            <option value="1">ผู้ดูแลระบบระดับสถานศึกษา (School Admin)</option>
-                          </select>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {showChairman && (
-                    <div className="col-lg-4">
-                      <div className="mb-3 mt-3">
-                        <label htmlFor="chairman">ประธานสหวิทยาเขต</label>
-                        <select name="chairman" id="chairman" className="custom-select select2bs4" value={form.chairman || '0'} onChange={handleChange} required>
-                          <option value="0">ไม่ได้เป็นประธานสหวิทยาเขต</option>
-                          <option value="1">เป็นประธานสหวิทยาเขต</option>
-                        </select>
-                      </div>
+                  <div className="row">
+                    <div className="col-md-6 mb-3">
+                      <label className="font-weight-bold small text-muted">เบอร์โทรศัพท์:</label>
+                      <input
+                        className="form-control"
+                        type="tel"
+                        name="phone"
+                        placeholder="08xxxxxxxx"
+                        value={form.phone}
+                        onChange={handleChange}
+                      />
                     </div>
-                  )}
+                    <div className="col-md-6 mb-3">
+                      <label className="font-weight-bold small text-muted">อีเมล:</label>
+                      <input
+                        className="form-control"
+                        type="email"
+                        name="email"
+                        placeholder="user@example.com"
+                        value={form.email}
+                        onChange={handleChange}
+                      />
+                    </div>
+                  </div>
                 </div>
-              )}
 
-              {showTeachSubject && (
-                <div className="row">
-                  <div className="col-lg-4">
-                    <div className="mb-3 mt-3">
-                      <label htmlFor="teach_subject">กลุ่มสาระ</label>
-                      <select name="teach_subject" id="teach_subject" className="custom-select select2bs4" value={form.teach_subject} onChange={handleChange} required>
-                        <option value="">กลุ่มสาระ</option>
-                        {lists.teachSubject.map((row) => (
-                          <option key={row.teach_subject_id} value={row.teach_subject_id}>{row.teach_subject}</option>
+                {/* 2. Position & School Section */}
+                <div className="mb-4 pb-3 border-bottom">
+                  <h6 className="font-weight-bold text-muted mb-3" style={{ fontSize: '13px', textTransform: 'uppercase' }}>
+                    2. ตำแหน่ง วิทยฐานะ และสังกัด
+                  </h6>
+                  <div className="row">
+                    <div className="col-md-4 mb-3">
+                      <label className="font-weight-bold small text-muted">ประเภทบุคลากร:</label>
+                      <select
+                        name="persontype_id"
+                        className="form-control"
+                        value={form.persontype_id}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="">ประเภทบุคลากร</option>
+                        {lists.personType.map((row) => (
+                          <option key={row.persontype_id} value={row.persontype_id}>{row.persontype_name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="col-md-4 mb-3">
+                      <label className="font-weight-bold small text-muted">ตำแหน่ง:</label>
+                      <select
+                        name="position_id"
+                        className="form-control"
+                        value={form.position_id}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="">ตำแหน่ง</option>
+                        {lists.position.map((row) => (
+                          <option key={row.position_id} value={row.position_id}>{row.position_name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="col-md-4 mb-3">
+                      <label className="font-weight-bold small text-muted">วิทยฐานะ:</label>
+                      <select
+                        name="academic_id"
+                        className="form-control"
+                        value={form.academic_id}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="">วิทยฐานะ</option>
+                        {lists.academic.map((row) => (
+                          <option key={row.academic_id} value={row.academic_id}>{row.academic_standing}</option>
                         ))}
                       </select>
                     </div>
                   </div>
 
-                  {showKhet && (
-                    <div className="col-lg-4">
-                      <div className="mb-3 mt-3">
-                        <label htmlFor="khet_code">สหวิทยาเขต</label>
-                        <select name="khet_code" id="khet_code" className="custom-select select2bs4" value={form.khet_code} onChange={handleChange} required>
-                          <option value=""></option>
-                          {lists.khet.map((row) => (
-                            <option key={row.khet_code} value={row.khet_code}>{row.khet_name}</option>
+                  {showSchool && (
+                    <div className="row">
+                      <div className="col-md-4 mb-3">
+                        <label className="font-weight-bold small text-muted">สถานศึกษา:</label>
+                        <select
+                          name="school"
+                          className="form-control"
+                          value={form.school}
+                          onChange={handleChange}
+                          required
+                          disabled={profile?.level === 'admin_school'}
+                        >
+                          <option value="">โรงเรียน</option>
+                          {lists.school.map((row) => (
+                            <option key={row.school_id} value={row.school_id}>{row.school_name}</option>
                           ))}
                         </select>
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
 
-              {showTeachSubjectName && (
-                <div className="row">
-                  <div className="col-lg-4">
-                    <div className="mb-3 mt-3">
-                      <label htmlFor="teach_subject_name">วิชาที่ทำการสอน</label>
-                      <input className="form-control" type="text" id="teach_subject_name" name="teach_subject_name" placeholder="วิชาที่ทำการสอน" value={form.teach_subject_name} onChange={handleChange} required />
-                    </div>
-                  </div>
+                      {showHeadDepartment && (
+                        <>
+                          <div className="col-md-4 mb-3">
+                            <label className="font-weight-bold small text-muted">หัวหน้ากลุ่มสาระฯ:</label>
+                            <select
+                              name="headDepartment"
+                              className="form-control"
+                              value={form.headDepartment || '0'}
+                              onChange={handleChange}
+                              required
+                            >
+                              <option value="0">ไม่ได้เป็นหัวหน้ากลุ่มสาระ</option>
+                              <option value="1">เป็นหัวหน้ากลุ่มสาระ</option>
+                            </select>
+                          </div>
 
-                  {showTeachLevel && (
-                    <div className="col-lg-4">
-                      <div className="mb-3 mt-3">
-                        <label htmlFor="teach_level">ระดับชั้นที่ทำการสอน (เลือกได้มากกว่า 1)</label>
-                        <div className="border p-2 rounded" style={{ maxHeight: '150px', overflowY: 'auto', backgroundColor: '#f8f9fa' }}>
-                            {lists.gradeLevel.filter((row) => row.grade_level_id !== '499').map((row) => (
-                                <div className="custom-control custom-checkbox mb-1" key={row.grade_level_id}>
-                                    <input 
-                                        type="checkbox" 
-                                        className="custom-control-input" 
-                                        id={`grade_${row.grade_level_id}`} 
-                                        name="teach_level"
-                                        value={row.grade_level_id}
-                                        checked={Array.isArray(form.teach_level) && form.teach_level.includes(String(row.grade_level_id))}
-                                        onChange={handleChange}
-                                    />
-                                    <label className="custom-control-label" htmlFor={`grade_${row.grade_level_id}`}>
-                                        {row.grade_level_name}
-                                    </label>
-                                </div>
-                            ))}
+                          <div className="col-md-4 mb-3">
+                            <label className="font-weight-bold small text-muted">สิทธิ์ School Admin:</label>
+                            <select
+                              name="school_admin_level"
+                              className="form-control"
+                              value={form.level === 'admin_school' ? '1' : '0'}
+                              onChange={(e) => setForm(prev => ({ ...prev, level: e.target.value === '1' ? 'admin_school' : 'teacher' }))}
+                            >
+                              <option value="0">ผู้ใช้ทั่วไป (ครู)</option>
+                              <option value="1">ผู้ดูแลระบบสถานศึกษา (School Admin)</option>
+                            </select>
+                          </div>
+                        </>
+                      )}
+
+                      {showChairman && (
+                        <div className="col-md-4 mb-3">
+                          <label className="font-weight-bold small text-muted">ประธานสหวิทยาเขต:</label>
+                          <select
+                            name="chairman"
+                            className="form-control"
+                            value={form.chairman || '0'}
+                            onChange={handleChange}
+                            required
+                          >
+                            <option value="0">ไม่ได้เป็นประธานสหวิทยาเขต</option>
+                            <option value="1">เป็นประธานสหวิทยาเขต</option>
+                          </select>
                         </div>
+                      )}
+                    </div>
+                  )}
+
+                  {showTeachSubject && (
+                    <div className="row">
+                      <div className="col-md-4 mb-3">
+                        <label className="font-weight-bold small text-muted">กลุ่มสาระการเรียนรู้:</label>
+                        <select
+                          name="teach_subject"
+                          className="form-control"
+                          value={form.teach_subject}
+                          onChange={handleChange}
+                          required
+                        >
+                          <option value="">กลุ่มสาระ</option>
+                          {lists.teachSubject.map((row) => (
+                            <option key={row.teach_subject_id} value={row.teach_subject_id}>{row.teach_subject}</option>
+                          ))}
+                        </select>
                       </div>
+
+                      {showKhet && (
+                        <div className="col-md-4 mb-3">
+                          <label className="font-weight-bold small text-muted">สหวิทยาเขต:</label>
+                          <select
+                            name="khet_code"
+                            className="form-control"
+                            value={form.khet_code}
+                            onChange={handleChange}
+                            required
+                          >
+                            <option value="">สหวิทยาเขต</option>
+                            {lists.khet.map((row) => (
+                              <option key={row.khet_code} value={row.khet_code}>{row.khet_name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {showTeachSubjectName && (
+                    <div className="row">
+                      <div className="col-md-4 mb-3">
+                        <label className="font-weight-bold small text-muted">วิชาที่ทำการสอน:</label>
+                        <input
+                          className="form-control"
+                          type="text"
+                          name="teach_subject_name"
+                          placeholder="เช่น คณิตศาสตร์เพิ่มเติม"
+                          value={form.teach_subject_name}
+                          onChange={handleChange}
+                          required
+                        />
+                      </div>
+
+                      {showTeachLevel && (
+                        <div className="col-md-8 mb-3">
+                          <label className="font-weight-bold small text-muted">ระดับชั้นที่ทำการสอน:</label>
+                          <div className="d-flex flex-wrap gap-2 p-2 border rounded bg-light">
+                            {lists.gradeLevel.filter((row) => row.grade_level_id !== '499').map((row) => (
+                              <div className="custom-control custom-checkbox mr-3" key={row.grade_level_id}>
+                                <input
+                                  type="checkbox"
+                                  className="custom-control-input"
+                                  id={`grade_${row.grade_level_id}`}
+                                  name="teach_level"
+                                  value={row.grade_level_id}
+                                  checked={Array.isArray(form.teach_level) && form.teach_level.includes(String(row.grade_level_id))}
+                                  onChange={handleChange}
+                                />
+                                <label className="custom-control-label small" htmlFor={`grade_${row.grade_level_id}`}>
+                                  {row.grade_level_name}
+                                </label>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
+
+                {/* Actions Toolbar */}
+                <div className="d-flex justify-content-end gap-2 pt-3">
+                  <button
+                    type="button"
+                    className="btn btn-secondary px-3"
+                    onClick={() => navigate(`/${backModule}`)}
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-success font-weight-bold px-4"
+                    disabled={saving || !peopleIdStatus.valid || peopleIdStatus.duplicate}
+                  >
+                    <i className="fa-solid fa-save mr-1"></i> {saving ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="card-footer text-center">
-              <button type="submit" className="btn btn-success" id="btn_submit" disabled={saving || !peopleIdStatus.valid || peopleIdStatus.duplicate}>
-                <i className="fa-solid fa-user-pen"></i> แก้ไขข้อมูล
-              </button>
-              <button type="button" className="btn btn-danger ml-2" onClick={() => navigate(`/${backModule}`)}>
-                <i className="fa-solid fa-ban"></i> ยกเลิก
-              </button>
-            </div>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   );

@@ -1,26 +1,37 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import InfoSimple from './InfoSimple';
-import InfoDirectorSchool from './InfoDirectorSchool';
-import InfoTeacher from './InfoTeacher';
+import LoadingSpinner from '../components/LoadingSpinner';
+
+const InfoTeacher = lazy(() => import('./InfoTeacher'));
+const InfoDirectorSchool = lazy(() => import('./InfoDirectorSchool'));
+const InfoSimple = lazy(() => import('./InfoSimple'));
 
 const getRoleId = (user) => {
-  return user?.level_id || user?.user_metadata?.role || user?.user_metadata?.level || user?.role || user?.level || 'teacher';
+  return (
+    user?.level_id ||
+    user?.user_metadata?.role ||
+    user?.user_metadata?.level ||
+    user?.role ||
+    user?.level ||
+    'teacher'
+  );
 };
 
 const InfoPage = () => {
   const { user } = useAuth();
-  const roleId = getRoleId(user);
+  const activeRole = getRoleId(user);
 
-  if (roleId === 'directorschool' || roleId === 'admin_school') {
-    return <InfoDirectorSchool />;
-  }
-
-  if (roleId === 'teacher' || roleId === 'headdepartment') {
-    return <InfoTeacher />;
-  }
-
-  return <InfoSimple />;
+  return (
+    <Suspense fallback={<LoadingSpinner message="กำลังโหลดแดชบอร์ด..." />}>
+      {activeRole === 'directorschool' || activeRole === 'admin_school' ? (
+        <InfoDirectorSchool roleId={activeRole} />
+      ) : activeRole === 'teacher' || activeRole === 'headdepartment' ? (
+        <InfoTeacher roleId={activeRole} />
+      ) : (
+        <InfoSimple roleId={activeRole} />
+      )}
+    </Suspense>
+  );
 };
 
 export default InfoPage;

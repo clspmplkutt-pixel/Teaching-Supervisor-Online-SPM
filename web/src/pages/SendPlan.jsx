@@ -2,16 +2,24 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
+import { useAuth } from '../contexts/AuthContext';
 import { useUserProfile } from '../hooks/useUserProfile';
-import useSelect2 from '../hooks/useSelect2';
+import ThaiDatePicker from '../components/ThaiDatePicker';
+import SearchableSelect from '../components/SearchableSelect';
+import LoadingSpinner from '../components/LoadingSpinner';
+import EmptyState from '../components/EmptyState';
+import StatusBadge from '../components/StatusBadge';
 import { uploadToDrive } from '../utils/driveUpload';
 import { showToast } from '../utils/toast';
 import { generateTeacherToDirectorMessage, showLineShareDialog } from '../utils/lineNotifyHelper';
 import './SendPlan.css';
 
+const MAX_PDF_MB = 25;
+const MAX_PDF_BYTES = MAX_PDF_MB * 1024 * 1024;
+
 const normalizeThaiDate = (value) => {
   if (!value) return '';
-  const raw = value.trim();
+  const raw = String(value).trim();
   if (raw.includes('/')) {
     const [d, m, y] = raw.split('/');
     if (!d || !m || !y) return raw;
@@ -20,7 +28,7 @@ const normalizeThaiDate = (value) => {
     return `${year}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   }
   if (raw.includes('-')) {
-    const [y, m, d] = raw.split('-');
+    const [y, m, d] = raw.slice(0, 10).split('-');
     if (!y || !m || !d) return raw;
     let year = parseInt(y, 10);
     if (year > 2400) year -= 543;
@@ -41,19 +49,75 @@ const getFileTimestamp = () => {
   return `${pad(dt.getDate())}${pad(dt.getMonth() + 1)}${dt.getFullYear()}${pad(dt.getHours())}${pad(dt.getMinutes())}${pad(dt.getSeconds())}`;
 };
 
+const INITIAL_FORM = {
+  teach_subject_id: '',
+  grade_level_id: '',
+  subject_type: '01',
+  subject_code: '',
+  subject_name: '',
+  subject_content: '',
+  subject_name_plan: '',
+  teach_date: '',
+  teach_timestart: '',
+  teach_timeend: '',
+  teach_minute: '',
+  learning_model: '',
+  competency: [],
+  ability21: [],
+  desirable: [],
+  objectives_knowledge: '',
+  objectives_process: '',
+  objectives_attribute: '',
+  learning_outcomes: '',
+  learning_content: '',
+  learning_activities: '',
+  instructional_media: '',
+  Measurement_how: '',
+  Measurement_tools: '',
+  Measurement_scoring: '',
+  Measurement_outcomes: '',
+  indicators_mid: [],
+  indicators_final: [],
+};
+
+const WIZARD_STEPS = [
+  { id: 1, title: 'ข้อมูลรายวิชา', subtitle: 'กลุ่มสาระ, ชั้น, วันเวลา', icon: 'fa-book-open' },
+  { id: 2, title: 'จุดประสงค์ & กิจกรรม', subtitle: 'K-P-A, สาระ, 3 ขั้นตอน', icon: 'fa-bullseye' },
+  { id: 3, title: 'สมรรถนะ & สื่อ', subtitle: 'สมรรถนะ, ทักษะ 21, สื่อ', icon: 'fa-award' },
+  { id: 4, title: 'ตัวชี้วัดหลักสูตร', subtitle: 'ระหว่างทาง & ปลายทาง', icon: 'fa-list-check' },
+  { id: 5, title: 'การวัดและประเมินผล', subtitle: 'วิธีวัด, เครื่องมือ, เกณฑ์', icon: 'fa-clipboard-check' },
+  { id: 6, title: 'ตรวจสอบ & แนบ PDF', subtitle: 'สรุปแผน & ส่งอนุมัติ', icon: 'fa-file-arrow-up' },
+];
+
 const SendPlan = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
-  const planid = query.get('planid');
+  // Support both ?planid= and ?edit= seamlessly
+  const planid = query.get('planid') || query.get('edit') || '';
 
   const { profile, loading: profileLoading } = useUserProfile();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadStage, setUploadStage] = useState(0); // 0: idle, 1: reading, 2: uploading PDF, 3: saving DB
+  const [uploadPercent, setUploadPercent] = useState(0);
   const [file, setFile] = useState(null);
+  const [fileError, setFileError] = useState('');
   const [autoComplete, setAutoComplete] = useState({ subjectCodes: [], subjectNames: [] });
   const [existingPlanFile, setExistingPlanFile] = useState('');
   const [existingPlanStatus, setExistingPlanStatus] = useState('1');
+  const [existingDsComment, setExistingDsComment] = useState('');
+  const [existingOwnerId, setExistingOwnerId] = useState('');
+
+  // Step & per-step validation state (NEVER apply .was-validated on mount!)
+  const [currentStep, setCurrentStep] = useState(1);
+  const [maxCompletedStep, setMaxCompletedStep] = useState(0);
+  const [validatedSteps, setValidatedSteps] = useState({});
+
+  // Step 4 Indicator search filters
+  const [midSearch, setMidSearch] = useState('');
+  const [finalSearch, setFinalSearch] = useState('');
 
   const [options, setOptions] = useState({
     teachSubject: [],
@@ -75,46 +139,7 @@ const SendPlan = () => {
     teachSubject: {},
   });
 
-  const [form, setForm] = useState({
-    teach_subject_id: '',
-    grade_level_id: '',
-    subject_type: '01',
-    subject_code: '',
-    subject_name: '',
-    subject_content: '',
-    subject_name_plan: '',
-    teach_date: '',
-    teach_timestart: '',
-    teach_timeend: '',
-    teach_minute: '',
-    learning_model: '',
-    competency: [],
-    ability21: [],
-    desirable: [],
-    objectives_knowledge: '',
-    objectives_process: '',
-    objectives_attribute: '',
-    learning_outcomes: '',
-    learning_content: '',
-    learning_activities: '',
-    instructional_media: '',
-    Measurement_how: '',
-    Measurement_tools: '',
-    Measurement_scoring: '',
-    Measurement_outcomes: '',
-    indicators_mid: [],
-    indicators_final: [],
-  });
-
-  // Smart 4-Step Wizard State
-  const [currentStep, setCurrentStep] = useState(1);
-
-  const WIZARD_STEPS = [
-    { id: 1, title: 'ข้อมูลวิชา & เวลาสอน', subtitle: 'กลุ่มสาระ, ชั้น, เวลา', icon: 'fa-book-open' },
-    { id: 2, title: 'จุดประสงค์ & สาระ (K-P-A)', subtitle: 'K-P-A, กิจกรรม', icon: 'fa-bullseye' },
-    { id: 3, title: 'สมรรถนะ & วัดผล', subtitle: 'สมรรถนะ, การประเมิน', icon: 'fa-clipboard-check' },
-    { id: 4, title: 'ตัวชี้วัด & แนบไฟล์', subtitle: 'ตัวชี้วัด, ส่งแผน PDF', icon: 'fa-file-arrow-up' },
-  ];
+  const [form, setForm] = useState(INITIAL_FORM);
 
   // Draft & Autosave state
   const [draftInfo, setDraftInfo] = useState(null);
@@ -122,6 +147,8 @@ const SendPlan = () => {
   const [lastSavedTime, setLastSavedTime] = useState('');
 
   const draftKey = profile?.people_id ? `lmss_sendplan_draft_${profile.people_id}` : null;
+  const activeRole = user?.level_id || user?.user_metadata?.role || profile?.level || 'teacher';
+  const isAdmin = activeRole === 'admin' || activeRole === 'root';
 
   // Check existing draft on mount (only for new plan)
   useEffect(() => {
@@ -153,11 +180,13 @@ const SendPlan = () => {
         };
         localStorage.setItem(draftKey, JSON.stringify(payload));
         const dt = new Date();
-        setLastSavedTime(`${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}:${String(dt.getSeconds()).padStart(2, '0')}`);
+        setLastSavedTime(
+          `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}:${String(dt.getSeconds()).padStart(2, '0')}`
+        );
       } catch (e) {
         console.warn('Autosave failed', e);
       }
-    }, 1200);
+    }, 1000);
 
     return () => clearTimeout(timer);
   }, [form, draftKey, planid, loading]);
@@ -169,46 +198,38 @@ const SendPlan = () => {
         ...draftInfo.form,
       }));
       setIsDraftDismissed(true);
-      showToast('กู้คืนข้อมูลร่างเรียบร้อยแล้ว');
+      showToast('กู้คืนข้อมูลร่างเรียบร้อยแล้ว', 'success');
     }
   };
 
-  const handleDiscardDraft = () => {
+  const handleDiscardDraft = async () => {
+    const confirmRes = await Swal.fire({
+      title: 'ยืนยันการล้างข้อมูลร่าง?',
+      text: 'ข้อมูลที่กรอกค้างไว้ในแบบร่างจะถูกล้างทั้งหมดเพื่อเริ่มต้นใหม่',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'ใช่, ล้างข้อมูลร่าง',
+      cancelButtonText: 'ยกเลิก',
+    });
+
+    if (!confirmRes.isConfirmed) return;
+
     if (draftKey) {
       localStorage.removeItem(draftKey);
     }
     setDraftInfo(null);
     setIsDraftDismissed(true);
     setLastSavedTime('');
+    setValidatedSteps({});
+    setCurrentStep(1);
+    setMaxCompletedStep(0);
+    setFile(null);
+    setFileError('');
     setForm({
-      teach_subject_id: '',
-      grade_level_id: '',
-      subject_type: '01',
-      subject_code: '',
-      subject_name: '',
-      subject_content: '',
-      subject_name_plan: '',
-      teach_date: '',
-      teach_timestart: '',
-      teach_timeend: '',
-      teach_minute: '',
-      learning_model: '',
-      competency: [],
-      ability21: [],
-      desirable: [],
-      objectives_knowledge: '',
-      objectives_process: '',
-      objectives_attribute: '',
-      learning_outcomes: '',
-      learning_content: '',
-      learning_activities: '',
-      instructional_media: '',
-      Measurement_how: '',
-      Measurement_tools: '',
-      Measurement_scoring: '',
-      Measurement_outcomes: '',
-      indicators_mid: [],
-      indicators_final: [],
+      ...INITIAL_FORM,
+      teach_subject_id: profile?.teach_subject ? String(profile.teach_subject) : '',
     });
     showToast('ล้างข้อมูลร่างเรียบร้อยแล้ว', 'info');
   };
@@ -217,41 +238,97 @@ const SendPlan = () => {
   const SUBJECT_TYPES_NO_INDICATORS = ['02', '08', '09'];
   const needsIndicators = !SUBJECT_TYPES_NO_INDICATORS.includes(form.subject_type);
 
+  // Load master lookups
   useEffect(() => {
     let mounted = true;
 
     const loadData = async () => {
       setLoading(true);
       try {
-        const [configRes, subjectRes, gradeRes, competencyRes, abilityRes, desirableRes, modelRes, prefixRes, positionRes, academicRes, schoolRes, teachSubjectRes, subjectTypeRes] = await Promise.all([
+        const [
+          configRes,
+          subjectRes,
+          gradeRes,
+          competencyRes,
+          abilityRes,
+          desirableRes,
+          modelRes,
+          prefixRes,
+          positionRes,
+          academicRes,
+          schoolRes,
+          teachSubjectRes,
+          subjectTypeRes,
+        ] = await Promise.all([
           supabase.from('tbl_config').select('config_name, config_value'),
-          supabase.from('tbl_system_Teach_Subject').select('teach_subject_id, teach_subject').eq('teach_subject_status', '1').order('teach_subject_id', { ascending: true }),
-          supabase.from('tbl_system_GradeLevel').select('grade_level_id, grade_level_name').eq('grade_level_status', '1').neq('grade_level_id', '499').order('grade_level_id', { ascending: true }),
-          supabase.from('tbl_system_Competency').select('competency_id, competency_name').eq('competency_status', '1').order('competency_id', { ascending: true }),
-          supabase.from('tbl_ability21').select('ability21_id, ability21_name_th').eq('ability21_status', '1').order('id', { ascending: true }),
-          supabase.from('tbl_system_Desirable').select('desirable_id, desirable_name').eq('desirable_status', '1').order('desirable_id', { ascending: true }),
-          supabase.from('tbl_learningModel').select('model_id, model_name').eq('model_status', '1').order('model_name', { ascending: true }),
+          supabase
+            .from('tbl_system_Teach_Subject')
+            .select('teach_subject_id, teach_subject')
+            .eq('teach_subject_status', '1')
+            .order('teach_subject_id', { ascending: true }),
+          supabase
+            .from('tbl_system_GradeLevel')
+            .select('grade_level_id, grade_level_name')
+            .eq('grade_level_status', '1')
+            .neq('grade_level_id', '499')
+            .order('grade_level_id', { ascending: true }),
+          supabase
+            .from('tbl_system_Competency')
+            .select('competency_id, competency_name')
+            .eq('competency_status', '1')
+            .order('competency_id', { ascending: true }),
+          supabase
+            .from('tbl_ability21')
+            .select('ability21_id, ability21_name_th')
+            .eq('ability21_status', '1')
+            .order('id', { ascending: true }),
+          supabase
+            .from('tbl_system_Desirable')
+            .select('desirable_id, desirable_name')
+            .eq('desirable_status', '1')
+            .order('desirable_id', { ascending: true }),
+          supabase
+            .from('tbl_learningModel')
+            .select('model_id, model_name')
+            .eq('model_status', '1')
+            .order('model_name', { ascending: true }),
           supabase.from('tbl_system_prefix').select('prefix_id, prefix'),
           supabase.from('tbl_system_PersonPositionType').select('position_id, position_name'),
           supabase.from('tbl_system_Academic_Standing').select('academic_id, academic_standing'),
           supabase.from('tbl_school').select('school_id, school_name'),
           supabase.from('tbl_system_Teach_Subject').select('teach_subject_id, teach_subject'),
-          supabase.from('tbl_system_SubjectType').select('subjecttype_id, subjecttype_name').eq('subjecttype_status', '1').order('id', { ascending: true }),
+          supabase
+            .from('tbl_system_SubjectType')
+            .select('subjecttype_id, subjecttype_name')
+            .eq('subjecttype_status', '1')
+            .order('id', { ascending: true }),
         ]);
 
         const configMap = {};
-        configRes.data?.forEach((c) => { configMap[c.config_name] = c.config_value; });
+        configRes.data?.forEach((c) => {
+          configMap[c.config_name] = c.config_value;
+        });
 
         const prefixMap = {};
-        prefixRes.data?.forEach((p) => { prefixMap[p.prefix_id] = p.prefix; });
+        prefixRes.data?.forEach((p) => {
+          prefixMap[p.prefix_id] = p.prefix;
+        });
         const positionMap = {};
-        positionRes.data?.forEach((p) => { positionMap[p.position_id] = p.position_name; });
+        positionRes.data?.forEach((p) => {
+          positionMap[p.position_id] = p.position_name;
+        });
         const academicMap = {};
-        academicRes.data?.forEach((a) => { academicMap[a.academic_id] = a.academic_standing; });
+        academicRes.data?.forEach((a) => {
+          academicMap[a.academic_id] = a.academic_standing;
+        });
         const schoolMap = {};
-        schoolRes.data?.forEach((s) => { schoolMap[s.school_id] = s.school_name; });
+        schoolRes.data?.forEach((s) => {
+          schoolMap[s.school_id] = s.school_name;
+        });
         const teachSubjectMap = {};
-        teachSubjectRes.data?.forEach((t) => { teachSubjectMap[t.teach_subject_id] = t.teach_subject; });
+        teachSubjectRes.data?.forEach((t) => {
+          teachSubjectMap[t.teach_subject_id] = t.teach_subject;
+        });
 
         if (mounted) {
           setConfig(configMap);
@@ -280,118 +357,20 @@ const SendPlan = () => {
     };
 
     loadData();
-
-    return () => { mounted = false; };
-  }, []);
-
-  useEffect(() => {
-    const $ = window.$;
-    if (!$ || !$.fn || !$.fn.datepicker) return;
-    const picker = $('#teach_date');
-    if (picker.attr('type') === 'date') return;
-    picker.datepicker({
-      format: 'dd/mm/yyyy',
-      autoclose: true,
-      language: 'th-th',
-      thaiyear: true,
-    }).on('changeDate', function () {
-      if (this.value) {
-        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-        if (nativeInputValueSetter) {
-          nativeInputValueSetter.call(this, this.value);
-        }
-        this.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-    });
     return () => {
-      try { picker.datepicker('destroy'); } catch { /* noop */ }
+      mounted = false;
     };
   }, []);
 
-  useSelect2([
-    loading,
-    options.teachSubject.length,
-    options.gradeLevel.length,
-    options.competency.length,
-    options.ability21.length,
-    options.desirable.length,
-  ]);
-
-  // Prefill teach_subject from profile to match legacy PHP behavior
+  // Prefill teach_subject from profile on new plan
   useEffect(() => {
-    if (!profile || !options.teachSubject.length) return;
+    if (planid || !profile || !options.teachSubject.length) return;
     if (!form.teach_subject_id && profile.teach_subject) {
       setForm((prev) => ({ ...prev, teach_subject_id: String(profile.teach_subject) }));
     }
-  }, [profile, options.teachSubject.length, form.teach_subject_id]);
+  }, [planid, profile, options.teachSubject.length, form.teach_subject_id]);
 
-  // Keep select2 UI in sync when state changes programmatically
-  useEffect(() => {
-    const $ = window.$;
-    if (!$ || !$.fn || !$.fn.select2) return;
-    $('#teach_subject_id').val(form.teach_subject_id || '').trigger('change.select2');
-    $('#grade_level_id').val(form.grade_level_id || '').trigger('change.select2');
-    $('#competency').val(form.competency || []).trigger('change.select2');
-    $('[name="ability21"]').val(form.ability21 || []).trigger('change.select2');
-    $('[name="desirable"]').val(form.desirable || []).trigger('change.select2');
-  }, [
-    form.teach_subject_id,
-    form.grade_level_id,
-    form.competency,
-    form.ability21,
-    form.desirable,
-    options.teachSubject.length,
-    options.gradeLevel.length,
-    options.competency.length,
-    options.ability21.length,
-    options.desirable.length,
-  ]);
-
-  useEffect(() => {
-    const $ = window.$;
-    if (!$) return;
-    const $teach = $('#teach_subject_id');
-    const $grade = $('#grade_level_id');
-    const $competency = $('#competency');
-    const $ability21 = $('[name="ability21"]');
-    const $desirable = $('[name="desirable"]');
-
-    const handleTeach = (e) => {
-      const value = e.target?.value ?? '';
-      setForm((prev) => ({ ...prev, teach_subject_id: value }));
-    };
-    const handleGrade = (e) => {
-      const value = e.target?.value ?? '';
-      setForm((prev) => ({ ...prev, grade_level_id: value }));
-    };
-    const handleCompetency = () => {
-      const values = $competency.val() || [];
-      setForm((prev) => ({ ...prev, competency: Array.isArray(values) ? values : [values] }));
-    };
-    const handleAbility21 = () => {
-      const values = $ability21.val() || [];
-      setForm((prev) => ({ ...prev, ability21: Array.isArray(values) ? values : [values] }));
-    };
-    const handleDesirable = () => {
-      const values = $desirable.val() || [];
-      setForm((prev) => ({ ...prev, desirable: Array.isArray(values) ? values : [values] }));
-    };
-
-    $teach.on('change', handleTeach);
-    $grade.on('change', handleGrade);
-    $competency.on('change', handleCompetency);
-    $ability21.on('change', handleAbility21);
-    $desirable.on('change', handleDesirable);
-
-    return () => {
-      $teach.off('change', handleTeach);
-      $grade.off('change', handleGrade);
-      $competency.off('change', handleCompetency);
-      $ability21.off('change', handleAbility21);
-      $desirable.off('change', handleDesirable);
-    };
-  }, []);
-
+  // Subject autocomplete hints from teacher's past plans
   useEffect(() => {
     let mounted = true;
     const loadSubjectHints = async () => {
@@ -405,9 +384,12 @@ const SendPlan = () => {
       if (mounted) setAutoComplete({ subjectCodes, subjectNames });
     };
     loadSubjectHints();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [profile]);
 
+  // Load existing plan when editing (?planid= or ?edit=)
   useEffect(() => {
     if (!planid) return;
     let mounted = true;
@@ -421,7 +403,10 @@ const SendPlan = () => {
         if (error) throw error;
         if (data && mounted) {
           setExistingPlanFile(data.plan_file || '');
-          setExistingPlanStatus(data.plan_status || '1');
+          setExistingPlanStatus(String(data.plan_status || '1'));
+          setExistingDsComment(data.plan_ds_comment || '');
+          setExistingOwnerId(data.people_id || '');
+          setMaxCompletedStep(6);
           setForm({
             teach_subject_id: data.teach_subject_id ? String(data.teach_subject_id) : '',
             grade_level_id: data.grade_level_id ? String(data.grade_level_id) : '',
@@ -430,14 +415,14 @@ const SendPlan = () => {
             subject_name: data.subject_name || '',
             subject_content: data.subject_content || '',
             subject_name_plan: data.subject_name_plan || '',
-            teach_date: data.teach_date || '',
+            teach_date: normalizeThaiDate(data.teach_date || ''),
             teach_timestart: data.teach_timestart || '',
             teach_timeend: data.teach_timeend || '',
             teach_minute: data.teach_minute ? String(data.teach_minute) : '',
             learning_model: data.learning_model || '',
-            competency: data.competency ? data.competency.split(',') : [],
-            ability21: data.ability21 ? data.ability21.split(',') : [],
-            desirable: data.desirable ? data.desirable.split(',') : [],
+            competency: data.competency ? String(data.competency).split(',').filter(Boolean) : [],
+            ability21: data.ability21 ? String(data.ability21).split(',').filter(Boolean) : [],
+            desirable: data.desirable ? String(data.desirable).split(',').filter(Boolean) : [],
             objectives_knowledge: data.objectives_knowledge || '',
             objectives_process: data.objectives_process || '',
             objectives_attribute: data.objectives_attribute || '',
@@ -445,23 +430,26 @@ const SendPlan = () => {
             learning_content: data.learning_content || '',
             learning_activities: data.learning_activities || '',
             instructional_media: data.instructional_media || '',
-            Measurement_how: data.measurement_how || '',
-            Measurement_tools: data.measurement_tools || '',
-            Measurement_scoring: data.measurement_scoring || '',
-            Measurement_outcomes: data.measurement_outcomes || '',
-            indicators_mid: data.indicators_mid ? data.indicators_mid.split(',') : [],
-            indicators_final: data.indicators_final ? data.indicators_final.split(',') : [],
+            Measurement_how: data.measurement_how ?? data.Measurement_how ?? '',
+            Measurement_tools: data.measurement_tools ?? data.Measurement_tools ?? '',
+            Measurement_scoring: data.measurement_scoring ?? data.Measurement_scoring ?? '',
+            Measurement_outcomes: data.measurement_outcomes ?? data.Measurement_outcomes ?? '',
+            indicators_mid: data.indicators_mid ? String(data.indicators_mid).split(',').filter(Boolean) : [],
+            indicators_final: data.indicators_final ? String(data.indicators_final).split(',').filter(Boolean) : [],
           });
         }
       } catch (err) {
         console.error('Error fetching existing plan:', err);
-        Swal.fire('Error', 'ไม่สามารถโหลดข้อมูลแผนการสอนเดิมได้', 'error');
+        Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถโหลดข้อมูลแผนการสอนเดิมได้', 'error');
       }
     };
     fetchExistingPlan();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [planid]);
 
+  // Load curriculum indicators when subject area & grade level change
   const teachSubjectId = form.teach_subject_id;
   const gradeLevelId = form.grade_level_id;
 
@@ -499,23 +487,52 @@ const SendPlan = () => {
     };
 
     loadIndicators();
-
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [teachSubjectId, gradeLevelId]);
 
-  // Adjust Select2 width after switching steps
-  useEffect(() => {
-    const $ = window.$;
-    if (!$ || !$.fn || !$.fn.select2) return;
-    const timer = setTimeout(() => {
-      $('.select2bs4').each(function () {
-        if ($(this).data('select2')) {
-          $(this).trigger('change.select2');
-        }
-      });
-    }, 60);
-    return () => clearTimeout(timer);
-  }, [currentStep]);
+  // SearchableSelect option arrays
+  const teachSubjectSelectOptions = useMemo(
+    () =>
+      options.teachSubject.map((row) => ({
+        value: String(row.teach_subject_id),
+        label: row.teach_subject,
+      })),
+    [options.teachSubject]
+  );
+
+  const gradeLevelSelectOptions = useMemo(
+    () =>
+      options.gradeLevel.map((row) => ({
+        value: String(row.grade_level_id),
+        label: row.grade_level_name,
+      })),
+    [options.gradeLevel]
+  );
+
+  // Filtered indicators for Step 4 live search
+  const filteredMidIndicators = useMemo(() => {
+    const q = midSearch.trim().toLowerCase();
+    if (!q) return indicators.mid;
+    return indicators.mid.filter(
+      (ind) =>
+        String(ind.indicators_name || '').toLowerCase().includes(q) ||
+        String(ind.indicator_group || '').toLowerCase().includes(q) ||
+        String(ind.indicators_details || '').toLowerCase().includes(q)
+    );
+  }, [indicators.mid, midSearch]);
+
+  const filteredFinalIndicators = useMemo(() => {
+    const q = finalSearch.trim().toLowerCase();
+    if (!q) return indicators.final;
+    return indicators.final.filter(
+      (ind) =>
+        String(ind.indicators_name || '').toLowerCase().includes(q) ||
+        String(ind.indicator_group || '').toLowerCase().includes(q) ||
+        String(ind.indicators_details || '').toLowerCase().includes(q)
+    );
+  }, [indicators.final, finalSearch]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -524,13 +541,41 @@ const SendPlan = () => {
       if ((name === 'teach_timestart' || name === 'teach_timeend') && updated.teach_timestart && updated.teach_timeend) {
         const [sh, sm] = updated.teach_timestart.split(':').map(Number);
         const [eh, em] = updated.teach_timeend.split(':').map(Number);
-        const diff = (eh * 60 + em) - (sh * 60 + sm);
-        if (diff > 0 && (!prev.teach_minute || prev.teach_minute === '0')) {
+        const diff = eh * 60 + em - (sh * 60 + sm);
+        if (diff > 0) {
           updated.teach_minute = String(diff);
         }
       }
       return updated;
     });
+  };
+
+  const toggleArrayField = (fieldName, itemValue) => {
+    setForm((prev) => {
+      const current = new Set(Array.isArray(prev[fieldName]) ? prev[fieldName] : []);
+      if (current.has(itemValue)) {
+        current.delete(itemValue);
+      } else {
+        current.add(itemValue);
+      }
+      return { ...prev, [fieldName]: Array.from(current) };
+    });
+  };
+
+  const handleSelectVisibleIndicators = (fieldName, visibleList) => {
+    setForm((prev) => {
+      const next = new Set(Array.isArray(prev[fieldName]) ? prev[fieldName] : []);
+      visibleList.forEach((ind) => {
+        if (ind.indicators_name) next.add(ind.indicators_name);
+      });
+      return { ...prev, [fieldName]: Array.from(next) };
+    });
+    showToast(`เลือกตัวชี้วัดที่แสดงจำนวน ${visibleList.length} รายการแล้ว`, 'success');
+  };
+
+  const handleClearIndicators = (fieldName) => {
+    setForm((prev) => ({ ...prev, [fieldName]: [] }));
+    showToast('ล้างการเลือกตัวชี้วัดแล้ว', 'info');
   };
 
   const handleAutoCalcMinutes = () => {
@@ -540,7 +585,7 @@ const SendPlan = () => {
     }
     const [sh, sm] = form.teach_timestart.split(':').map(Number);
     const [eh, em] = form.teach_timeend.split(':').map(Number);
-    const diff = (eh * 60 + em) - (sh * 60 + sm);
+    const diff = eh * 60 + em - (sh * 60 + sm);
     if (diff > 0) {
       setForm((prev) => ({ ...prev, teach_minute: String(diff) }));
       showToast(`คำนวณเวลาสอนได้ ${diff} นาที`, 'success');
@@ -550,6 +595,8 @@ const SendPlan = () => {
   };
 
   const validateStep = (stepNumber) => {
+    setValidatedSteps((prev) => ({ ...prev, [stepNumber]: true }));
+
     if (stepNumber === 1) {
       if (!form.teach_subject_id) {
         showToast('กรุณาเลือกกลุ่มสาระการเรียนรู้', 'warning');
@@ -580,7 +627,7 @@ const SendPlan = () => {
         return false;
       }
       if (!form.teach_timestart || !form.teach_timeend) {
-        showToast('กรุณาระบุเวลาที่ทำการสอนให้ครบถ้วน', 'warning');
+        showToast('กรุณาระบุเวลาเริ่มและเวลาเสร็จให้ครบถ้วน', 'warning');
         return false;
       }
       if (!form.teach_minute || parseInt(form.teach_minute, 10) <= 0) {
@@ -596,6 +643,16 @@ const SendPlan = () => {
         showToast('กรุณาเลือกสมรรถนะสำคัญของผู้เรียนอย่างน้อย 1 รายการ', 'warning');
         return false;
       }
+    } else if (stepNumber === 6) {
+      if (!file && !existingPlanFile) {
+        setFileError('กรุณาเลือกไฟล์แผนการจัดการเรียนรู้ (.pdf) ขนาดไม่เกิน 25 MB');
+        showToast('กรุณาแนบไฟล์แผนการจัดการเรียนรู้ (PDF)', 'warning');
+        return false;
+      }
+      if (fileError) {
+        showToast(fileError, 'warning');
+        return false;
+      }
     }
     return true;
   };
@@ -603,11 +660,15 @@ const SendPlan = () => {
   const handleApplyKPAPreset = () => {
     setForm((prev) => ({
       ...prev,
-      objectives_knowledge: prev.objectives_knowledge || `ผู้เรียนมีความรู้ความเข้าใจเกี่ยวกับ ${prev.subject_content || 'เนื้อหาบทเรียน'} และสามารถอธิบายหลักการสำคัญได้อย่างถูกต้อง`,
-      objectives_process: prev.objectives_process || `ผู้เรียนสามารถฝึกปฏิบัติ คิดวิเคราะห์ และประยุกต์ใช้กระบวนการทำงานร่วมกับผู้อื่นได้อย่างมีประสิทธิภาพ`,
+      objectives_knowledge:
+        prev.objectives_knowledge ||
+        `ผู้เรียนมีความรู้ความเข้าใจเกี่ยวกับ ${prev.subject_content || 'เนื้อหาบทเรียน'} และสามารถอธิบายหลักการสำคัญได้อย่างถูกต้อง`,
+      objectives_process:
+        prev.objectives_process ||
+        `ผู้เรียนสามารถฝึกปฏิบัติ คิดวิเคราะห์ และประยุกต์ใช้กระบวนการทำงานร่วมกับผู้อื่นได้อย่างมีประสิทธิภาพ`,
       objectives_attribute: prev.objectives_attribute || `ผู้เรียนมีวินัย ใฝ่เรียนรู้ และมุ่งมั่นในการทำงาน`,
     }));
-    showToast('แทรกข้อความตัวอย่าง K-P-A เรียบร้อยแล้ว (สามารถแก้ไขเพิ่มเติมได้)', 'success');
+    showToast('แทรกข้อความตัวอย่าง K-P-A เรียบร้อยแล้ว', 'success');
   };
 
   const handleApplyActivitiesPreset = () => {
@@ -618,10 +679,11 @@ const SendPlan = () => {
 
     setForm((prev) => ({
       ...prev,
-      learning_activities: prev.learning_activities || 
+      learning_activities:
+        prev.learning_activities ||
         `1. ขั้นนำเข้าสู่บทเรียน (${introMin} นาที):\n- ครูทบทวนความรู้เดิม กระตุ้นความสนใจด้วยคำถามหรือสถานการณ์จำลอง\n- แจ้งจุดประสงค์การเรียนรู้และกิจกรรมที่จะปฏิบัติ\n\n` +
-        `2. ขั้นจัดกิจกรรมการเรียนรู้ (${bodyMin} นาที):\n- นักเรียนศึกษาใบความรู้/สื่อการเรียนรู้ และร่วมกันอภิปรายในกลุ่ม\n- นักเรียนลงมือปฏิบัติกิจกรรม/ทำใบงาน โดยครูคอยให้คำแนะนำและอำนวยความสะดวก\n- ตัวแทนกลุ่มนำเสนอผลงานและร่วมกันแลกเปลี่ยนเรียนรู้\n\n` +
-        `3. ขั้นสรุปและประเมินผล (${conclMin} นาที):\n- ครูและนักเรียนร่วมกันสรุปองค์ความรู้สำคัญของบทเรียน\n- ทำแบบทดสอบท้ายบทหรือประเมินผลงานตามเกณฑ์รูบริกส์`,
+          `2. ขั้นจัดกิจกรรมการเรียนรู้ (${bodyMin} นาที):\n- นักเรียนศึกษาใบความรู้/สื่อการเรียนรู้ และร่วมกันอภิปรายในกลุ่ม\n- นักเรียนลงมือปฏิบัติกิจกรรม/ทำใบงาน โดยครูคอยให้คำแนะนำและอำนวยความสะดวก\n- ตัวแทนกลุ่มนำเสนอผลงานและร่วมกันแลกเปลี่ยนเรียนรู้\n\n` +
+          `3. ขั้นสรุปและประเมินผล (${conclMin} นาที):\n- ครูและนักเรียนร่วมกันสรุปองค์ความรู้สำคัญของบทเรียน\n- ทำแบบทดสอบท้ายบทหรือประเมินผลงานตามเกณฑ์รูบริกส์`,
     }));
     showToast('แทรกตัวอย่างขั้นตอนการจัดกิจกรรม 3 ขั้น เรียบร้อยแล้ว', 'success');
   };
@@ -629,10 +691,18 @@ const SendPlan = () => {
   const handleApplyMeasurementPreset = () => {
     setForm((prev) => ({
       ...prev,
-      Measurement_how: prev.Measurement_how || `1. การตรวจใบงานและชิ้นงาน\n2. การสังเกตพฤติกรรมการมีส่วนร่วมในการจัดกิจกรรม\n3. การประเมินการนำเสนอผลงานกลุ่ม`,
-      Measurement_tools: prev.Measurement_tools || `1. แบบประเมินใบงาน/ชิ้นงาน\n2. แบบสังเกตพฤติกรรมการทำงานกลุ่ม\n3. แบบประเมินคุณลักษณะอันพึงประสงค์`,
-      Measurement_scoring: prev.Measurement_scoring || `เกณฑ์รูบริกส์ (Rubric Assessment) 4 ระดับคุณภาพ:\n- ระดับ 4 (ดีมาก) = ได้คะแนนร้อยละ 80 ขึ้นไป\n- ระดับ 3 (ดี) = ได้คะแนนร้อยละ 70 - 79\n- ระดับ 2 (พอใช้) = ได้คะแนนร้อยละ 60 - 69\n- ระดับ 1 (ปรับปรุง) = ได้คะแนนต่ำกว่าร้อยละ 60`,
-      Measurement_outcomes: prev.Measurement_outcomes || `ผู้เรียนต้องได้ผลการประเมินในระดับคุณภาพ 2 (พอใช้) ขึ้นไป หรือคิดเป็นร้อยละ 70 ของคะแนนเต็ม จึงจะถือว่าผ่านเกณฑ์การประเมิน`,
+      Measurement_how:
+        prev.Measurement_how ||
+        `1. การตรวจใบงานและชิ้นงาน\n2. การสังเกตพฤติกรรมการมีส่วนร่วมในการจัดกิจกรรม\n3. การประเมินการนำเสนอผลงานกลุ่ม`,
+      Measurement_tools:
+        prev.Measurement_tools ||
+        `1. แบบประเมินใบงาน/ชิ้นงาน\n2. แบบสังเกตพฤติกรรมการทำงานกลุ่ม\n3. แบบประเมินคุณลักษณะอันพึงประสงค์`,
+      Measurement_scoring:
+        prev.Measurement_scoring ||
+        `เกณฑ์รูบริกส์ (Rubric Assessment) 4 ระดับคุณภาพ:\n- ระดับ 4 (ดีมาก) = ได้คะแนนร้อยละ 80 ขึ้นไป\n- ระดับ 3 (ดี) = ได้คะแนนร้อยละ 70 - 79\n- ระดับ 2 (พอใช้) = ได้คะแนนร้อยละ 60 - 69\n- ระดับ 1 (ปรับปรุง) = ได้คะแนนต่ำกว่าร้อยละ 60`,
+      Measurement_outcomes:
+        prev.Measurement_outcomes ||
+        `ผู้เรียนต้องได้ผลการประเมินในระดับคุณภาพ 2 (พอใช้) ขึ้นไป หรือคิดเป็นร้อยละ 70 ของคะแนนเต็ม จึงจะถือว่าผ่านเกณฑ์การประเมิน`,
     }));
     showToast('แทรกตัวอย่างการวัดและประเมินผลเรียบร้อยแล้ว', 'success');
   };
@@ -640,138 +710,125 @@ const SendPlan = () => {
   const handleApplyMediaPreset = () => {
     setForm((prev) => ({
       ...prev,
-      instructional_media: prev.instructional_media || `1. สไลด์นำเสนอประกอบการสอน (Canva / PowerPoint)\n2. ใบความรู้และใบกิจกรรมการเรียนรู้\n3. วีดิทัศน์ประกอบการจัดการเรียนรู้ (YouTube)\n4. แหล่งเรียนรู้ออนไลน์และห้องสมุดโรงเรียน`,
+      instructional_media:
+        prev.instructional_media ||
+        `1. สไลด์นำเสนอประกอบการสอน (Canva / PowerPoint)\n2. ใบความรู้และใบกิจกรรมการเรียนรู้\n3. วีดิทัศน์ประกอบการจัดการเรียนรู้ (YouTube)\n4. แหล่งเรียนรู้ออนไลน์และห้องสมุดโรงเรียน`,
     }));
     showToast('แทรกตัวอย่างสื่อและแหล่งเรียนรู้เรียบร้อยแล้ว', 'success');
   };
 
   const handleNextStep = () => {
     if (!validateStep(currentStep)) return;
-    if (currentStep < 4) {
+    setMaxCompletedStep((prev) => Math.max(prev, currentStep));
+    if (currentStep < WIZARD_STEPS.length) {
       setCurrentStep((prev) => prev + 1);
-      window.scrollTo({ top: 120, behavior: 'smooth' });
+      window.scrollTo({ top: 100, behavior: 'smooth' });
     }
   };
 
   const handlePrevStep = () => {
     if (currentStep > 1) {
       setCurrentStep((prev) => prev - 1);
-      window.scrollTo({ top: 120, behavior: 'smooth' });
+      window.scrollTo({ top: 100, behavior: 'smooth' });
     }
   };
 
   const handleStepClick = (targetStep) => {
     if (targetStep === currentStep) return;
     if (targetStep > currentStep) {
-      for (let s = currentStep; s < targetStep; s++) {
-        if (!validateStep(s)) return;
+      for (let s = currentStep; s < targetStep; s += 1) {
+        if (!validateStep(s)) {
+          setCurrentStep(s);
+          return;
+        }
+        setMaxCompletedStep((prev) => Math.max(prev, s));
       }
     }
     setCurrentStep(targetStep);
-    window.scrollTo({ top: 120, behavior: 'smooth' });
-  };
-
-  const renderNavActions = (stepNum) => (
-    <div className="wizard-nav-actions mt-3">
-      <div className="d-flex align-items-center" style={{ gap: '8px' }}>
-        {stepNum > 1 && (
-          <button
-            type="button"
-            className="btn btn-secondary font-weight-bold"
-            onClick={handlePrevStep}
-          >
-            <i className="fa-solid fa-arrow-left mr-1"></i> ย้อนกลับ
-          </button>
-        )}
-        {lastSavedTime && (
-          <span className="text-success small font-weight-bold ml-2 d-none d-sm-inline">
-            <i className="fa-solid fa-cloud-arrow-up mr-1"></i>
-            บันทึกร่างแล้ว ({lastSavedTime})
-          </span>
-        )}
-      </div>
-
-      <div className="d-flex align-items-center flex-wrap" style={{ gap: '8px' }}>
-        {!planid && (
-          <button
-            type="button"
-            className="btn btn-outline-secondary btn-sm"
-            onClick={handleDiscardDraft}
-            title="ล้างข้อมูลในฟอร์มเพื่อเริ่มใหม่"
-          >
-            <i className="fa-solid fa-eraser mr-1"></i> ล้างร่าง
-          </button>
-        )}
-        <Link to="/statusplan" className="btn btn-outline-danger btn-sm">
-          <i className="fa-solid fa-ban mr-1"></i> ยกเลิก
-        </Link>
-        {stepNum < 4 ? (
-          <button
-            type="button"
-            className="btn btn-primary font-weight-bold px-4"
-            onClick={handleNextStep}
-          >
-            ขั้นตอนถัดไป <i className="fa-solid fa-arrow-right ml-1"></i>
-          </button>
-        ) : (
-          <button
-            type="submit"
-            className="btn btn-success font-weight-bold px-4 shadow-sm"
-            id="btn_submit"
-            disabled={saving}
-          >
-            <i className={planid ? "fa-solid fa-save mr-1" : "fa-solid fa-paper-plane mr-1"}></i>{' '}
-            {saving ? "กำลังส่งข้อมูล..." : (planid ? "บันทึกการแก้ไข" : "ส่งแผนการสอน")}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-
-  const handleMultiChange = (name, optionsList) => {
-    const values = Array.from(optionsList).map((opt) => opt.value).filter(Boolean);
-    setForm((prev) => ({ ...prev, [name]: values }));
+    window.scrollTo({ top: 100, behavior: 'smooth' });
   };
 
   const handleFileChange = (e) => {
     const selected = e.target.files?.[0] || null;
+    setFileError('');
+    if (!selected) {
+      setFile(null);
+      return;
+    }
+    if (!selected.name.toLowerCase().endsWith('.pdf') && selected.type !== 'application/pdf') {
+      setFile(null);
+      setFileError('อนุญาตเฉพาะไฟล์เอกสารนามสกุล .pdf เท่านั้น');
+      e.target.value = '';
+      showToast('ไฟล์ต้องเป็นนามสกุล .pdf เท่านั้น', 'error');
+      return;
+    }
+    if (selected.size > MAX_PDF_BYTES) {
+      const sizeMb = (selected.size / (1024 * 1024)).toFixed(2);
+      setFile(null);
+      setFileError(`ขนาดไฟล์ (${sizeMb} MB) เกินขีดจำกัดสูงสุด ${MAX_PDF_MB} MB กรุณาบีบอัดไฟล์ PDF ก่อนอัปโหลด`);
+      e.target.value = '';
+      showToast(`ขนาดไฟล์เกิน ${MAX_PDF_MB} MB`, 'error');
+      return;
+    }
     setFile(selected);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!profile?.people_id) {
-      Swal.fire('Error', 'ไม่พบข้อมูลผู้ใช้งาน', 'error');
-      return;
-    }
-    if (!file && !planid) {
-      Swal.fire('Error', 'กรุณาเลือกไฟล์แผนการสอน (PDF)', 'error');
-      return;
-    }
-    if (file) {
-      if (!file.name.toLowerCase().endsWith('.pdf')) {
-        Swal.fire('Error', 'ไฟล์ต้องเป็น PDF เท่านั้น', 'error');
-        return;
-      }
-      if (file.size > 31457280) {
-        Swal.fire('Error', 'ขนาดไฟล์ใหญ่กว่า 30MB', 'error');
+
+    for (let s = 1; s <= WIZARD_STEPS.length; s += 1) {
+      if (!validateStep(s)) {
+        setCurrentStep(s);
         return;
       }
     }
 
+    if (!profile?.people_id) {
+      Swal.fire('ข้อผิดพลาด', 'ไม่พบข้อมูลผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่อีกครั้ง', 'error');
+      return;
+    }
+
+    if (planid && existingOwnerId && !isAdmin && String(existingOwnerId) !== String(profile.people_id)) {
+      Swal.fire('ไม่มีสิทธิ์แก้ไข', 'ท่านสามารถแก้ไขได้เฉพาะแผนการจัดการเรียนรู้ของตนเองเท่านั้น', 'error');
+      return;
+    }
+
+    if (planid && !isAdmin && !['1', '3', '4'].includes(String(existingPlanStatus))) {
+      Swal.fire('ไม่สามารถแก้ไขได้', 'แผนการสอนนี้ผ่านการอนุมัติหรือเข้าสู่การประเมินแล้ว จึงถูกล็อคการแก้ไข', 'warning');
+      return;
+    }
+
     setSaving(true);
+    setUploadStage(file ? 1 : 3);
+    setUploadPercent(file ? 20 : 75);
+
     try {
       let driveUrl = existingPlanFile;
       if (file) {
+        setUploadStage(2);
+        setUploadPercent(55);
         const planFilename = `${profile.people_id}_${getFileTimestamp()}.pdf`;
         driveUrl = await uploadToDrive(file, { filename: planFilename });
+        setUploadPercent(85);
       }
-      const eduYear = parseInt(config.EDUYEAR) || new Date().getFullYear() + 543;
-      const eduTerm = parseInt(config.EDUROUND) || 1;
-      const budgetYear = parseInt(config.BUDGET_YEAR) || eduYear;
+
+      setUploadStage(3);
+      setUploadPercent(92);
+
+      const eduYear = parseInt(config.EDUYEAR, 10) || new Date().getFullYear() + 543;
+      const eduTerm = parseInt(config.EDUROUND, 10) || 1;
+      const budgetYear = parseInt(config.BUDGET_YEAR, 10) || eduYear;
       const teachDate = normalizeThaiDate(form.teach_date);
+
+      // Re-submitting a rejected plan (status '3') resets plan_status back to '1' (รอ ผอ. ตรวจ)
+      const nextStatus = planid
+        ? String(existingPlanStatus) === '3'
+          ? '1'
+          : String(existingPlanStatus || '1')
+        : '1';
+
       const payload = {
-        people_id: profile.people_id,
+        people_id: planid && existingOwnerId ? existingOwnerId : profile.people_id,
         school_code: profile.school,
         teach_subject_id: form.teach_subject_id,
         grade_level_id: form.grade_level_id,
@@ -779,15 +836,15 @@ const SendPlan = () => {
         edu_year: eduYear,
         edu_term: eduTerm,
         budget_year: budgetYear,
-        subject_code: form.subject_code,
-        subject_name: form.subject_name,
-        subject_content: form.subject_content,
-        subject_name_plan: form.subject_name_plan,
+        subject_code: form.subject_code.trim(),
+        subject_name: form.subject_name.trim(),
+        subject_content: form.subject_content.trim(),
+        subject_name_plan: form.subject_name_plan.trim(),
         teach_date: teachDate || null,
         teach_timestart: form.teach_timestart,
         teach_timeend: form.teach_timeend,
-        teach_minute: parseInt(form.teach_minute) || 0,
-        learning_model: form.learning_model,
+        teach_minute: parseInt(form.teach_minute, 10) || 0,
+        learning_model: form.learning_model.trim(),
         competency: form.competency.join(','),
         ability21: form.ability21.join(','),
         desirable: form.desirable.join(','),
@@ -806,28 +863,28 @@ const SendPlan = () => {
         objectives_attribute: form.objectives_attribute,
         plan_file: driveUrl,
         plan_senddate: getLocalTimestamp(),
-        plan_status: planid ? (existingPlanStatus === '3' ? '4' : existingPlanStatus) : '1',
+        plan_status: nextStatus,
+        ...(String(existingPlanStatus) === '3' ? { plan_approve: '' } : {}),
       };
 
       let insertedPlanId = planid;
       if (planid) {
-        const { error } = await supabase
-          .from('tbl_sendplan')
-          .update(payload)
-          .eq('planid', planid);
+        const { error } = await supabase.from('tbl_sendplan').update(payload).eq('planid', planid);
         if (error) throw error;
       } else {
         const { data: insertedData, error } = await supabase
           .from('tbl_sendplan')
-          .insert([{
-            ...payload,
-            plan_clip: '',
-            committee1: '',
-            committee2: '',
-            committee3: '',
-            committee4: '',
-            committee5: '',
-          }])
+          .insert([
+            {
+              ...payload,
+              plan_clip: '',
+              committee1: '',
+              committee2: '',
+              committee3: '',
+              committee4: '',
+              committee5: '',
+            },
+          ])
           .select('planid')
           .single();
         if (error) throw error;
@@ -836,7 +893,9 @@ const SendPlan = () => {
         }
       }
 
-      if (draftKey) {
+      setUploadPercent(100);
+
+      if (draftKey && !planid) {
         localStorage.removeItem(draftKey);
       }
 
@@ -854,8 +913,12 @@ const SendPlan = () => {
       });
 
       showLineShareDialog({
-        title: planid ? 'แก้ไขแผนสำเร็จแล้ว!' : 'ส่งแผนการสอนสำเร็จแล้ว!',
-        subtitle: 'ท่านสามารถส่งการแจ้งเตือนหาผู้อำนวยการโรงเรียนผ่าน LINE เพื่อให้ตรวจอนุมัติได้ทันท่วงที',
+        title: planid
+          ? String(existingPlanStatus) === '3'
+            ? 'แก้ไขและส่งแผนการสอนใหม่สำเร็จ!'
+            : 'บันทึกการแก้ไขแผนสำเร็จ!'
+          : 'ส่งแผนการจัดการเรียนรู้สำเร็จ!',
+        subtitle: 'ท่านสามารถส่งการแจ้งเตือนหาผู้อำนวยการโรงเรียนผ่าน LINE เพื่อให้ตรวจอนุมัติได้ทันที',
         messageText: lineMsg,
         onClose: () => {
           navigate('/statusplan');
@@ -863,76 +926,213 @@ const SendPlan = () => {
       });
     } catch (err) {
       console.error(err);
-      Swal.fire('Error', err.message || 'ไม่สามารถส่งแผนได้', 'error');
+      Swal.fire('เกิดข้อผิดพลาด', err.message || 'ไม่สามารถบันทึกแผนการสอนได้ กรุณาลองอีกครั้ง', 'error');
     } finally {
       setSaving(false);
+      setUploadStage(0);
     }
   };
 
-  if (profileLoading || loading) {
-    return (
-      <div className="text-center p-4">
-        <div className="spinner-border text-primary" role="status"></div>
-        <p className="mt-2">กำลังโหลดข้อมูล...</p>
+  const renderNavActions = (stepNum) => (
+    <div className="wizard-nav-actions mt-3">
+      <div className="d-flex align-items-center flex-wrap" style={{ gap: '8px' }}>
+        {stepNum > 1 && (
+          <button type="button" className="btn btn-light border font-weight-bold px-3" onClick={handlePrevStep} disabled={saving}>
+            <i className="fa-solid fa-arrow-left mr-1"></i> ย้อนกลับ
+          </button>
+        )}
+        <span className="text-muted small">
+          ขั้นตอนที่ <strong>{stepNum}</strong> จาก <strong>{WIZARD_STEPS.length}</strong>
+        </span>
       </div>
-    );
+
+      <div className="d-flex align-items-center flex-wrap" style={{ gap: '8px' }}>
+        {!planid && (
+          <button
+            type="button"
+            className="btn btn-outline-secondary btn-sm font-weight-semibold"
+            onClick={handleDiscardDraft}
+            disabled={saving}
+            title="ล้างข้อมูลร่างในฟอร์มเพื่อเริ่มใหม่"
+          >
+            <i className="fa-solid fa-eraser mr-1"></i> ล้างข้อมูลร่าง
+          </button>
+        )}
+        <Link to="/statusplan" className="btn btn-outline-danger btn-sm font-weight-semibold">
+          <i className="fa-solid fa-xmark mr-1"></i> ยกเลิก
+        </Link>
+        {stepNum < WIZARD_STEPS.length ? (
+          <button type="button" className="btn btn-primary font-weight-bold px-4 shadow-sm" onClick={handleNextStep}>
+            ถัดไป <i className="fa-solid fa-arrow-right ml-1"></i>
+          </button>
+        ) : (
+          <button
+            type="submit"
+            className="btn btn-success font-weight-bold px-4 shadow-sm"
+            id="btn_submit"
+            disabled={saving || (planid && !isAdmin && !['1', '3', '4'].includes(String(existingPlanStatus)))}
+          >
+            {saving ? (
+              <>
+                <span className="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span>
+                กำลังอัปโหลดและบันทึก...
+              </>
+            ) : (
+              <>
+                <i className={planid ? 'fa-solid fa-paper-plane mr-1' : 'fa-solid fa-paper-plane mr-1'}></i>
+                {planid
+                  ? String(existingPlanStatus) === '3'
+                    ? 'บันทึกการแก้ไขและส่งตรวจใหม่'
+                    : 'บันทึกการแก้ไขแผน'
+                  : 'ส่งแผนการจัดการเรียนรู้'}
+              </>
+            )}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  if (profileLoading || loading) {
+    return <LoadingSpinner message="กำลังเตรียมแบบฟอร์มแผนการจัดการเรียนรู้..." />;
   }
+
   if (!profile) {
-    return <div className="alert alert-warning">ไม่พบข้อมูลผู้ใช้งาน</div>;
+    return <EmptyState title="ไม่พบข้อมูลผู้ใช้งาน" message="กรุณาเข้าสู่ระบบใหม่อีกครั้งเพื่อจัดส่งแผนการจัดการเรียนรู้" type="warning" />;
   }
+
+  const isRevisionMode = Boolean(planid && (String(existingPlanStatus) === '3' || existingDsComment.trim()));
+  const isLockedEdit = Boolean(planid && !isAdmin && !['1', '3', '4'].includes(String(existingPlanStatus)));
+  const isStep1Validated = Boolean(validatedSteps[1]);
+  const isStep3Validated = Boolean(validatedSteps[3]);
+  const isStep6Validated = Boolean(validatedSteps[6]);
 
   return (
     <div className="sendplan">
       <div className="row">
         <div className="col-12">
+          {/* Revision Alert Banner for Rejected Plans (plan_status === '3' or plan_ds_comment) */}
+          {isRevisionMode && (
+            <div className="sendplan-revision-banner" role="alert">
+              <div className="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                <div className="d-flex align-items-center gap-2">
+                  <span
+                    className="rounded-circle d-inline-flex align-items-center justify-content-center bg-danger text-white flex-shrink-0"
+                    style={{ width: '36px', height: '36px' }}
+                  >
+                    <i className="fa-solid fa-rotate-left"></i>
+                  </span>
+                  <div>
+                    <h5 className="font-weight-bold text-danger mb-0" style={{ fontSize: '1.02rem' }}>
+                      {String(existingPlanStatus) === '3'
+                        ? `แผนการสอน #${planid} ถูกส่งกลับให้แก้ไขปรับปรุง`
+                        : `ข้อเสนอแนะจากผู้อำนวยการสถานศึกษา (แผน #${planid})`}
+                    </h5>
+                    <small className="text-muted">
+                      เมื่อท่านปรับปรุงข้อมูลหรืออัปโหลดไฟล์ PDF ใหม่แล้ว กดปุ่ม &ldquo;บันทึกการแก้ไขและส่งตรวจใหม่&rdquo; ระบบจะส่งให้ ผอ. พิจารณาอีกครั้งโดยอัตโนมัติ
+                    </small>
+                  </div>
+                </div>
+                <StatusBadge status={existingPlanStatus} />
+              </div>
+
+              {existingDsComment.trim() ? (
+                <div className="sendplan-revision-comment">
+                  <div className="small font-weight-bold text-danger mb-1">
+                    <i className="fa-solid fa-comment-dots mr-1"></i> ข้อเสนอแนะจากผู้อำนวยการ:
+                  </div>
+                  {existingDsComment}
+                </div>
+              ) : (
+                <div className="sendplan-revision-comment">
+                  กรุณาตรวจสอบความครบถ้วนของแผนการจัดการเรียนรู้และไฟล์แนบ PDF ก่อนส่งให้ผู้อำนวยการตรวจอีกครั้ง
+                </div>
+              )}
+            </div>
+          )}
+
+          {isLockedEdit && (
+            <div className="alert alert-warning border shadow-sm mb-3">
+              <i className="fa-solid fa-lock mr-2"></i>
+              <strong>แผนการสอนนี้ถูกล็อคการแก้ไข:</strong> เนื่องจากแผนได้รับการอนุมัติหรืออยู่ระหว่างการประเมินของคณะกรรมการแล้ว
+            </div>
+          )}
+
+          {/* Restore Draft Banner (New Plan Only) */}
           {draftInfo && !isDraftDismissed && !planid && (
             <div
-              className="alert alert-info shadow-sm mb-3 d-flex flex-wrap align-items-center justify-content-between p-3"
-              style={{ borderLeft: '5px solid #0ea5e9' }}
+              className="alert alert-light border shadow-sm mb-3 d-flex flex-wrap align-items-center justify-content-between p-3"
+              style={{ borderLeft: '4px solid #4f46e5', borderRadius: '12px' }}
             >
               <div>
                 <h6 className="font-weight-bold mb-1 text-dark">
-                  <i className="fa-solid fa-floppy-disk mr-2 text-info"></i>
-                  พบข้อมูลร่างแผนการสอนที่บันทึกไว้ในเครื่อง
+                  <i className="fa-solid fa-cloud-arrow-down mr-2 text-primary"></i>
+                  พบแบบร่างแผนการสอนที่บันทึกอัตโนมัติไว้ล่าสุด
                 </h6>
                 <div className="small text-muted">
-                  บันทึกล่าสุดเมื่อ: {new Date(draftInfo.savedAt).toLocaleDateString('th-TH')} เวลา{' '}
+                  บันทึกเมื่อ: {new Date(draftInfo.savedAt).toLocaleDateString('th-TH')} เวลา{' '}
                   {new Date(draftInfo.savedAt).toLocaleTimeString('th-TH')}
-                  {draftInfo.form?.subject_name_plan ? ` (แผน: "${draftInfo.form.subject_name_plan}")` : ''}
+                  {draftInfo.form?.subject_name_plan ? ` • แผน: "${draftInfo.form.subject_name_plan}"` : ''}
                 </div>
               </div>
               <div className="mt-2 mt-md-0 d-flex" style={{ gap: '8px' }}>
-                <button type="button" className="btn btn-sm btn-info text-white" onClick={handleRestoreDraft}>
+                <button type="button" className="btn btn-sm btn-primary font-weight-bold" onClick={handleRestoreDraft}>
                   <i className="fa-solid fa-rotate-left mr-1"></i> กู้คืนข้อมูลร่าง
                 </button>
                 <button type="button" className="btn btn-sm btn-outline-secondary" onClick={handleDiscardDraft}>
-                  <i className="fa-solid fa-trash mr-1"></i> ล้างร่าง/เริ่มใหม่
+                  <i className="fa-solid fa-trash-can mr-1"></i> ล้างข้อมูลร่าง
                 </button>
               </div>
             </div>
           )}
 
-          {/* Smart Wizard Stepper */}
+          {/* Unified SaaS Step Wizard */}
           <div className="wizard-stepper-container">
+            <div className="wizard-top-meta">
+              <div className="d-flex align-items-center flex-wrap" style={{ gap: '8px' }}>
+                <span className="wizard-step-counter">
+                  <i className="fa-solid fa-layer-group mr-1"></i>
+                  ขั้นตอนที่ {currentStep} จาก {WIZARD_STEPS.length}: {WIZARD_STEPS[currentStep - 1]?.title}
+                </span>
+                {planid && (
+                  <span className="badge badge-light border text-dark px-2 py-1">
+                    โหมดแก้ไขแผน #{planid}
+                  </span>
+                )}
+              </div>
+
+              {lastSavedTime ? (
+                <span className="wizard-autosave-pill">
+                  <i className="fa-solid fa-cloud-check mr-1"></i>
+                  บันทึกร่างอัตโนมัติเมื่อ {lastSavedTime}
+                </span>
+              ) : !planid ? (
+                <span className="text-muted small">
+                  <i className="fa-regular fa-floppy-disk mr-1"></i> ระบบบันทึกร่างให้อัตโนมัติขณะพิมพ์
+                </span>
+              ) : null}
+            </div>
+
             <div className="wizard-progress-bar">
               <div
                 className="wizard-progress-fill"
                 style={{ width: `${((currentStep - 1) / (WIZARD_STEPS.length - 1)) * 100}%` }}
               />
             </div>
+
             <div className="wizard-steps">
               {WIZARD_STEPS.map((step) => {
-                const isCompleted = currentStep > step.id;
+                const isCompleted = step.id < currentStep || step.id <= maxCompletedStep;
                 const isActive = currentStep === step.id;
                 return (
                   <button
                     key={step.id}
                     type="button"
-                    className={`wizard-step-item ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}`}
+                    className={`wizard-step-item ${isActive ? 'active' : ''} ${!isActive && isCompleted ? 'completed' : ''}`}
                     onClick={() => handleStepClick(step.id)}
                   >
                     <div className="wizard-step-badge">
-                      {isCompleted ? <i className="fa-solid fa-check text-white"></i> : step.id}
+                      {!isActive && isCompleted ? <i className="fa-solid fa-check"></i> : step.id}
                     </div>
                     <div className="wizard-step-text">
                       <span className="wizard-step-title">{step.title}</span>
@@ -944,553 +1144,1124 @@ const SendPlan = () => {
             </div>
           </div>
 
-          {/* Compact Teacher Profile Info */}
-          <div className="card card-outline card-success mb-3 shadow-sm">
+          {/* Compact Teacher Context Strip */}
+          <div className="card border shadow-none mb-3" style={{ borderRadius: '12px', background: '#f8fafc' }}>
             <div className="card-body py-2 px-3">
-              <div className="row align-items-center">
-                <div className="col-md-6 col-lg-3 small mb-1 mb-lg-0">
-                  <span className="text-muted">ผู้จัดทำ:</span> <strong className="text-dark">{lookups.prefix[profile.prefix] || ''}{profile.name} {profile.lastname}</strong>
+              <div className="row align-items-center small">
+                <div className="col-md-6 col-lg-3 py-1">
+                  <span className="text-muted">ผู้จัดทำแผน:</span>{' '}
+                  <strong className="text-dark">
+                    {lookups.prefix[profile.prefix] || ''}
+                    {profile.name} {profile.lastname}
+                  </strong>
                 </div>
-                <div className="col-md-6 col-lg-3 small mb-1 mb-lg-0">
-                  <span className="text-muted">ตำแหน่ง:</span> <span className="text-dark">{lookups.position[profile.position_id] || ''} ({lookups.academic[profile.academic_id] || ''})</span>
+                <div className="col-md-6 col-lg-3 py-1">
+                  <span className="text-muted">ตำแหน่ง/วิทยฐานะ:</span>{' '}
+                  <span className="text-dark">
+                    {lookups.position[profile.position_id] || 'ครู'}
+                    {lookups.academic[profile.academic_id] ? ` (${lookups.academic[profile.academic_id]})` : ''}
+                  </span>
                 </div>
-                <div className="col-md-6 col-lg-3 small mb-1 mb-lg-0">
-                  <span className="text-muted">โรงเรียน:</span> <span className="text-dark">{lookups.school[profile.school] || ''}</span>
+                <div className="col-md-6 col-lg-3 py-1">
+                  <span className="text-muted">สถานศึกษา:</span>{' '}
+                  <span className="text-dark">{lookups.school[profile.school] || '-'}</span>
                 </div>
-                <div className="col-md-6 col-lg-3 small">
-                  <span className="text-muted">กลุ่มสาระ:</span> <span className="text-dark">{lookups.teachSubject[profile.teach_subject] || ''}</span>
+                <div className="col-md-6 col-lg-3 py-1">
+                  <span className="text-muted">กลุ่มสาระฯ:</span>{' '}
+                  <span className="text-dark">{lookups.teachSubject[profile.teach_subject] || '-'}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="form-horizontal was-validated" autoComplete="off">
-            {/* ================= STEP 1: ข้อมูลวิชา & เวลาสอน ================= */}
-            <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
-              <div className="card card-teal">
-                <div className="card-header">
-                  <h4 className="card-title font-weight-bold">
-                    <i className="fa-solid fa-graduation-cap mr-2"></i> กลุ่มสาระ / ระดับชั้น / ประเภทวิชา
-                  </h4>
-                </div>
-                <div className="card-body">
-                  <div className="row">
-                    <div className="col-lg-4">
-                      <div className="mb-3 mt-1">
-                        <label htmlFor="teach_subject_id">กลุ่มสาระ : <span className="text-danger">*</span></label>
-                        <select name="teach_subject_id" id="teach_subject_id" className="select2bs4" value={form.teach_subject_id} onChange={handleChange} style={{ width: '100%' }} required>
-                          <option value=""></option>
-                          {options.teachSubject.map((row) => (
-                            <option key={row.teach_subject_id} value={row.teach_subject_id}>{row.teach_subject}</option>
-                          ))}
-                        </select>
+          {/* Main Wizard Form — NO premature .was-validated on mount! */}
+          <form onSubmit={handleSubmit} noValidate autoComplete="off">
+            {/* ================= STEP 1: ข้อมูลรายวิชา & กำหนดการสอน ================= */}
+            {currentStep === 1 && (
+              <div className={isStep1Validated ? 'step-validated' : ''}>
+                <div className="sendplan-section-card">
+                  <div className="sendplan-section-header">
+                    <h4 className="sendplan-section-title">
+                      <span className="sendplan-section-icon">
+                        <i className="fa-solid fa-graduation-cap"></i>
+                      </span>
+                      กลุ่มสาระการเรียนรู้ ระดับชั้น และประเภทรายวิชา
+                    </h4>
+                  </div>
+                  <div className="sendplan-section-body">
+                    <div className="row">
+                      <div className="col-lg-4 mb-3">
+                        <label className="font-weight-semibold">
+                          กลุ่มสาระการเรียนรู้ <span className="text-danger">*</span>
+                        </label>
+                        <SearchableSelect
+                          id="teach_subject_id"
+                          name="teach_subject_id"
+                          options={teachSubjectSelectOptions}
+                          value={form.teach_subject_id}
+                          onChange={(val) => setForm((prev) => ({ ...prev, teach_subject_id: val || '' }))}
+                          placeholder="-- เลือกกลุ่มสาระการเรียนรู้ --"
+                          searchPlaceholder="พิมพ์ชื่อกลุ่มสาระ..."
+                          className={isStep1Validated && !form.teach_subject_id ? 'sendplan-invalid-field rounded' : ''}
+                        />
+                        {isStep1Validated && !form.teach_subject_id && (
+                          <span className="sendplan-error-text">กรุณาเลือกกลุ่มสาระการเรียนรู้</span>
+                        )}
                       </div>
-                    </div>
-                    <div className="col-lg-4">
-                      <div className="mb-3 mt-1">
-                        <label htmlFor="grade_level_id">ระดับชั้นที่ทำการสอน : <span className="text-danger">*</span></label>
-                        <select name="grade_level_id" id="grade_level_id" className="select2bs4" value={form.grade_level_id} onChange={handleChange} style={{ width: '100%' }} required>
-                          <option value=""></option>
-                          {options.gradeLevel.map((row) => (
-                            <option key={row.grade_level_id} value={row.grade_level_id}>{row.grade_level_name}</option>
-                          ))}
-                        </select>
+
+                      <div className="col-lg-4 mb-3">
+                        <label className="font-weight-semibold">
+                          ระดับชั้นที่ทำการสอน <span className="text-danger">*</span>
+                        </label>
+                        <SearchableSelect
+                          id="grade_level_id"
+                          name="grade_level_id"
+                          options={gradeLevelSelectOptions}
+                          value={form.grade_level_id}
+                          onChange={(val) => setForm((prev) => ({ ...prev, grade_level_id: val || '' }))}
+                          placeholder="-- เลือกระดับชั้น --"
+                          searchPlaceholder="พิมพ์ระดับชั้น เช่น ม.1..."
+                          className={isStep1Validated && !form.grade_level_id ? 'sendplan-invalid-field rounded' : ''}
+                        />
+                        {isStep1Validated && !form.grade_level_id && (
+                          <span className="sendplan-error-text">กรุณาเลือกระดับชั้นที่ทำการสอน</span>
+                        )}
                       </div>
-                    </div>
-                    <div className="col-lg-4">
-                      <div className="mb-3 mt-1">
-                        <label htmlFor="subject_type">ประเภทวิชา : <span className="text-danger">*</span></label>
-                        <select name="subject_type" id="subject_type" className="form-control" value={form.subject_type} onChange={handleChange} required>
+
+                      <div className="col-lg-4 mb-3">
+                        <label htmlFor="subject_type" className="font-weight-semibold">
+                          ประเภทวิชา <span className="text-danger">*</span>
+                        </label>
+                        <select
+                          name="subject_type"
+                          id="subject_type"
+                          className="custom-select"
+                          value={form.subject_type}
+                          onChange={handleChange}
+                        >
                           {options.subjectTypes.map((row) => (
-                            <option key={row.subjecttype_id} value={row.subjecttype_id}>{row.subjecttype_name}</option>
+                            <option key={row.subjecttype_id} value={row.subjecttype_id}>
+                              {row.subjecttype_name}
+                            </option>
                           ))}
                         </select>
                         {!needsIndicators && (
                           <small className="text-info mt-1 d-block">
-                            <i className="fa-solid fa-info-circle"></i> ประเภทนี้ไม่จำเป็นต้องระบุตัวชี้วัดระหว่างทาง/ปลายทาง
+                            <i className="fa-solid fa-circle-info mr-1"></i>
+                            ประเภทรายวิชานี้ไม่บังคับระบุตัวชี้วัดระหว่างทาง/ปลายทาง
                           </small>
                         )}
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="card card-primary card-outline">
-                <div className="card-header">
-                  <h4 className="card-title font-weight-bold text-primary">
-                    <i className="fa-solid fa-book-bookmark mr-2"></i> ข้อมูลรายวิชาและกำหนดการสอน
-                  </h4>
-                </div>
-                <div className="card-body">
-                  <div className="row">
-                    <div className="col-lg-2">
-                      <div className="mb-3">
-                        <label htmlFor="subject_code">รหัสวิชา : <span className="text-danger">*</span></label>
-                        <input list="subject_code_list" type="text" id="subject_code" name="subject_code" className="form-control" placeholder="เช่น ท31101" value={form.subject_code} onChange={handleChange} required />
+                <div className="sendplan-section-card">
+                  <div className="sendplan-section-header">
+                    <h4 className="sendplan-section-title">
+                      <span className="sendplan-section-icon">
+                        <i className="fa-solid fa-book-bookmark"></i>
+                      </span>
+                      ข้อมูลรายวิชา วันเวลาที่สอน และรูปแบบการจัดการเรียนรู้
+                    </h4>
+                  </div>
+                  <div className="sendplan-section-body">
+                    <div className="row">
+                      <div className="col-lg-3 mb-3">
+                        <label htmlFor="subject_code" className="font-weight-semibold">
+                          รหัสวิชา <span className="text-danger">*</span>
+                        </label>
+                        <input
+                          list="subject_code_list"
+                          type="text"
+                          id="subject_code"
+                          name="subject_code"
+                          className={`form-control ${isStep1Validated && !form.subject_code.trim() ? 'sendplan-invalid-field' : ''}`}
+                          placeholder="เช่น ท21101, ว31101"
+                          value={form.subject_code}
+                          onChange={handleChange}
+                        />
                         <datalist id="subject_code_list">
                           {autoComplete.subjectCodes.map((code) => (
                             <option key={code} value={code} />
                           ))}
                         </datalist>
+                        {isStep1Validated && !form.subject_code.trim() && (
+                          <span className="sendplan-error-text">กรุณาระบุรหัสวิชา</span>
+                        )}
                       </div>
-                    </div>
-                    <div className="col-lg-4">
-                      <div className="mb-3">
-                        <label htmlFor="subject_name">ชื่อวิชา : <span className="text-danger">*</span></label>
-                        <input list="subject_name_list" type="text" id="subject_name" name="subject_name" className="form-control" placeholder="ชื่อรายวิชา" value={form.subject_name} onChange={handleChange} required />
+
+                      <div className="col-lg-3 mb-3">
+                        <label htmlFor="subject_name" className="font-weight-semibold">
+                          ชื่อรายวิชา <span className="text-danger">*</span>
+                        </label>
+                        <input
+                          list="subject_name_list"
+                          type="text"
+                          id="subject_name"
+                          name="subject_name"
+                          className={`form-control ${isStep1Validated && !form.subject_name.trim() ? 'sendplan-invalid-field' : ''}`}
+                          placeholder="เช่น ภาษาไทยพื้นฐาน 1"
+                          value={form.subject_name}
+                          onChange={handleChange}
+                        />
                         <datalist id="subject_name_list">
                           {autoComplete.subjectNames.map((name) => (
                             <option key={name} value={name} />
                           ))}
                         </datalist>
+                        {isStep1Validated && !form.subject_name.trim() && (
+                          <span className="sendplan-error-text">กรุณาระบุชื่อรายวิชา</span>
+                        )}
                       </div>
-                    </div>
-                    <div className="col-lg-3">
-                      <div className="mb-3">
-                        <label htmlFor="subject_content">หน่วยการเรียนรู้ : <span className="text-danger">*</span></label>
-                        <input type="text" id="subject_content" name="subject_content" className="form-control" placeholder="ชื่อหน่วยการเรียนรู้" value={form.subject_content} onChange={handleChange} required />
-                      </div>
-                    </div>
-                    <div className="col-lg-3">
-                      <div className="mb-3">
-                        <label htmlFor="subject_name_plan">ชื่อแผนการสอน : <span className="text-danger">*</span></label>
-                        <input type="text" id="subject_name_plan" name="subject_name_plan" className="form-control" placeholder="ชื่อแผนการสอน" value={form.subject_name_plan} onChange={handleChange} required />
-                      </div>
-                    </div>
-                  </div>
 
-                  <div className="row">
-                    <div className="col-lg-3">
-                      <div className="mb-3">
-                        <label htmlFor="teach_date">วันที่ทำการสอน : <span className="text-danger">*</span></label>
-                        <input className="form-control datethai" type="date" id="teach_date" name="teach_date" value={form.teach_date} onChange={handleChange} required />
+                      <div className="col-lg-3 mb-3">
+                        <label htmlFor="subject_content" className="font-weight-semibold">
+                          ชื่อหน่วยการเรียนรู้ <span className="text-danger">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          id="subject_content"
+                          name="subject_content"
+                          className={`form-control ${isStep1Validated && !form.subject_content.trim() ? 'sendplan-invalid-field' : ''}`}
+                          placeholder="ระบุชื่อหน่วยการเรียนรู้"
+                          value={form.subject_content}
+                          onChange={handleChange}
+                        />
+                        {isStep1Validated && !form.subject_content.trim() && (
+                          <span className="sendplan-error-text">กรุณาระบุหน่วยการเรียนรู้</span>
+                        )}
+                      </div>
+
+                      <div className="col-lg-3 mb-3">
+                        <label htmlFor="subject_name_plan" className="font-weight-semibold">
+                          ชื่อแผนการจัดการเรียนรู้ <span className="text-danger">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          id="subject_name_plan"
+                          name="subject_name_plan"
+                          className={`form-control ${isStep1Validated && !form.subject_name_plan.trim() ? 'sendplan-invalid-field' : ''}`}
+                          placeholder="ระบุชื่อแผนการสอน"
+                          value={form.subject_name_plan}
+                          onChange={handleChange}
+                        />
+                        {isStep1Validated && !form.subject_name_plan.trim() && (
+                          <span className="sendplan-error-text">กรุณาระบุชื่อแผนการสอน</span>
+                        )}
                       </div>
                     </div>
-                    <div className="col-lg-3">
-                      <div className="mb-3">
-                        <label htmlFor="teach_timestart">เริ่มเวลา : <span className="text-danger">*</span></label>
-                        <input type="time" id="teach_timestart" name="teach_timestart" className="form-control" min="07:00" max="17:00" value={form.teach_timestart} onChange={handleChange} required />
+
+                    <div className="row">
+                      <div className="col-lg-5 mb-3">
+                        <label className="font-weight-semibold">
+                          วันที่ทำการสอน (พ.ศ.) <span className="text-danger">*</span>
+                        </label>
+                        <ThaiDatePicker
+                          id="teach_date"
+                          value={normalizeThaiDate(form.teach_date)}
+                          onChange={(isoStr) => setForm((prev) => ({ ...prev, teach_date: isoStr }))}
+                          mode="general"
+                        />
+                        {isStep1Validated && !form.teach_date && (
+                          <span className="sendplan-error-text">กรุณาเลือกวันที่ทำการสอน</span>
+                        )}
                       </div>
-                    </div>
-                    <div className="col-lg-3">
-                      <div className="mb-3">
-                        <label htmlFor="teach_timeend">เสร็จเวลา : <span className="text-danger">*</span></label>
-                        <input type="time" id="teach_timeend" name="teach_timeend" className="form-control" min="07:00" max="17:00" value={form.teach_timeend} onChange={handleChange} required />
+
+                      <div className="col-lg-2 col-sm-6 mb-3">
+                        <label htmlFor="teach_timestart" className="font-weight-semibold">
+                          เริ่มเวลา <span className="text-danger">*</span>
+                        </label>
+                        <input
+                          type="time"
+                          id="teach_timestart"
+                          name="teach_timestart"
+                          className={`form-control ${isStep1Validated && !form.teach_timestart ? 'sendplan-invalid-field' : ''}`}
+                          value={form.teach_timestart}
+                          onChange={handleChange}
+                        />
                       </div>
-                    </div>
-                    <div className="col-lg-3">
-                      <div className="mb-3">
-                        <label htmlFor="teach_minute">เวลาที่ใช้สอน (นาที) : <span className="text-danger">*</span></label>
+
+                      <div className="col-lg-2 col-sm-6 mb-3">
+                        <label htmlFor="teach_timeend" className="font-weight-semibold">
+                          เสร็จเวลา <span className="text-danger">*</span>
+                        </label>
+                        <input
+                          type="time"
+                          id="teach_timeend"
+                          name="teach_timeend"
+                          className={`form-control ${isStep1Validated && !form.teach_timeend ? 'sendplan-invalid-field' : ''}`}
+                          value={form.teach_timeend}
+                          onChange={handleChange}
+                        />
+                      </div>
+
+                      <div className="col-lg-3 mb-3">
+                        <label htmlFor="teach_minute" className="font-weight-semibold">
+                          เวลาที่ใช้สอน (นาที) <span className="text-danger">*</span>
+                        </label>
                         <div className="input-group">
-                          <input type="number" id="teach_minute" name="teach_minute" className="form-control" min="0" max="240" step="1" value={form.teach_minute} onChange={handleChange} required />
+                          <input
+                            type="number"
+                            id="teach_minute"
+                            name="teach_minute"
+                            className={`form-control ${isStep1Validated && (!form.teach_minute || Number(form.teach_minute) <= 0) ? 'sendplan-invalid-field' : ''}`}
+                            min="1"
+                            max="300"
+                            step="1"
+                            placeholder="เช่น 50"
+                            value={form.teach_minute}
+                            onChange={handleChange}
+                          />
                           <div className="input-group-append">
                             <button
                               type="button"
                               className="btn btn-outline-primary"
                               onClick={handleAutoCalcMinutes}
-                              title="คำนวณจำนวนนาทีจากเวลาเริ่มและเวลาเสร็จอัตโนมัติ"
+                              title="คำนวณนาทีอัตโนมัติ"
                             >
-                              <i className="fa-solid fa-calculator mr-1"></i> คำนวณ
+                              <i className="fa-solid fa-calculator"></i>
                             </button>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="row">
-                    <div className="col-lg-12">
-                      <div className="mb-3">
-                        <label htmlFor="learning_model">วิธีการสอน / รูปแบบการจัดการเรียนรู้ : <span className="text-danger">*</span></label>
-                        <input list="learning_model_list" type="text" id="learning_model" name="learning_model" className="form-control" placeholder="เช่น การเรียนรู้เชิงรุก (Active Learning), รูปแบบการสืบเสาะหาความรู้ 5E" value={form.learning_model} onChange={handleChange} required />
+                    <div className="row">
+                      <div className="col-12">
+                        <label htmlFor="learning_model" className="font-weight-semibold">
+                          วิธีการสอน / รูปแบบการจัดการเรียนรู้ <span className="text-danger">*</span>
+                        </label>
+                        <input
+                          list="learning_model_list"
+                          type="text"
+                          id="learning_model"
+                          name="learning_model"
+                          className={`form-control ${isStep1Validated && !form.learning_model.trim() ? 'sendplan-invalid-field' : ''}`}
+                          placeholder="เช่น การจัดการเรียนรู้เชิงรุก (Active Learning), สืบเสาะหาความรู้ 5Es, GPAS 5 Steps, PBL"
+                          value={form.learning_model}
+                          onChange={handleChange}
+                        />
                         <datalist id="learning_model_list">
                           {options.learningModel.map((row) => (
                             <option key={row.model_id} value={row.model_name} />
                           ))}
                         </datalist>
+                        {isStep1Validated && !form.learning_model.trim() && (
+                          <span className="sendplan-error-text">กรุณาระบุวิธีการสอน / รูปแบบการจัดการเรียนรู้</span>
+                        )}
                       </div>
                     </div>
                   </div>
                 </div>
+
+                {renderNavActions(1)}
               </div>
-              {renderNavActions(1)}
-            </div>
+            )}
 
-            {/* ================= STEP 2: จุดประสงค์ & สาระ (K-P-A) ================= */}
-            <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
-              <div className="card card-primary card-outline">
-                <div className="card-header bg-light d-flex justify-content-between align-items-center flex-wrap">
-                  <h4 className="card-title font-weight-bold text-primary m-0">
-                    <i className="fa-solid fa-bullseye mr-2"></i> จุดประสงค์การเรียนรู้ (K-P-A)
-                  </h4>
-                  <button
-                    type="button"
-                    className="btn btn-xs btn-outline-primary font-weight-bold"
-                    onClick={handleApplyKPAPreset}
-                    title="แทรกข้อความโครงสร้าง K-P-A มาตรฐาน"
-                  >
-                    <i className="fa-solid fa-wand-magic-sparkles mr-1"></i> ตัวอย่าง K-P-A มาตรฐาน
-                  </button>
-                </div>
-                <div className="card-body">
-                  <div className="row">
-                    <div className="col-lg-12">
-                      <div className="mb-3">
-                        <label htmlFor="objectives_knowledge" className="font-weight-bold text-dark">
-                          1. ด้านความรู้ (Knowledge - K) :
-                        </label>
-                        <textarea className="form-control notemini" name="objectives_knowledge" id="objectives_knowledge" rows="4" placeholder="ระบุความรู้ที่ผู้เรียนจะได้รับ..." value={form.objectives_knowledge} onChange={handleChange}></textarea>
-                      </div>
+            {/* ================= STEP 2: จุดประสงค์ & กิจกรรม (K-P-A) ================= */}
+            {currentStep === 2 && (
+              <div>
+                <div className="sendplan-section-card">
+                  <div className="sendplan-section-header">
+                    <h4 className="sendplan-section-title">
+                      <span className="sendplan-section-icon">
+                        <i className="fa-solid fa-bullseye"></i>
+                      </span>
+                      จุดประสงค์การเรียนรู้ (K - P - A)
+                    </h4>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-primary font-weight-semibold"
+                      onClick={handleApplyKPAPreset}
+                    >
+                      <i className="fa-solid fa-wand-magic-sparkles mr-1"></i> แทรกโครงสร้าง K-P-A ตัวอย่าง
+                    </button>
+                  </div>
+                  <div className="sendplan-section-body">
+                    <div className="mb-3">
+                      <label htmlFor="objectives_knowledge" className="font-weight-semibold text-dark">
+                        1. ด้านความรู้ (Knowledge - K)
+                      </label>
+                      <textarea
+                        className="form-control"
+                        name="objectives_knowledge"
+                        id="objectives_knowledge"
+                        rows="3"
+                        placeholder="ระบุองค์ความรู้หรือมโนทัศน์สำคัญที่ผู้เรียนจะได้รับ..."
+                        value={form.objectives_knowledge}
+                        onChange={handleChange}
+                      />
                     </div>
-                    <div className="col-lg-12">
-                      <div className="mb-3">
-                        <label htmlFor="objectives_process" className="font-weight-bold text-dark">
-                          2. ด้านทักษะ/กระบวนการ (Process - P) :
-                        </label>
-                        <textarea className="form-control notemini" name="objectives_process" id="objectives_process" rows="4" placeholder="ระบุทักษะหรือกระบวนการคิด/ปฏิบัติ..." value={form.objectives_process} onChange={handleChange}></textarea>
-                      </div>
+                    <div className="mb-3">
+                      <label htmlFor="objectives_process" className="font-weight-semibold text-dark">
+                        2. ด้านทักษะและกระบวนการ (Process - P)
+                      </label>
+                      <textarea
+                        className="form-control"
+                        name="objectives_process"
+                        id="objectives_process"
+                        rows="3"
+                        placeholder="ระบุทักษะการคิด การแก้ปัญหา หรือการลงมือปฏิบัติ..."
+                        value={form.objectives_process}
+                        onChange={handleChange}
+                      />
                     </div>
-                    <div className="col-lg-12">
-                      <div className="mb-3">
-                        <label htmlFor="objectives_attribute" className="font-weight-bold text-dark">
-                          3. ด้านคุณลักษณะ (Attribute - A) :
-                        </label>
-                        <textarea className="form-control notemini" name="objectives_attribute" id="objectives_attribute" rows="4" placeholder="ระบุเจตคติหรือคุณลักษณะที่ส่งเสริม..." value={form.objectives_attribute} onChange={handleChange}></textarea>
-                      </div>
+                    <div>
+                      <label htmlFor="objectives_attribute" className="font-weight-semibold text-dark">
+                        3. ด้านคุณลักษณะอันพึงประสงค์ / เจตคติ (Attribute - A)
+                      </label>
+                      <textarea
+                        className="form-control"
+                        name="objectives_attribute"
+                        id="objectives_attribute"
+                        rows="3"
+                        placeholder="ระบุคุณลักษณะหรือเจตคติที่ดีต่อการเรียนรู้..."
+                        value={form.objectives_attribute}
+                        onChange={handleChange}
+                      />
                     </div>
                   </div>
                 </div>
+
+                <div className="sendplan-section-card">
+                  <div className="sendplan-section-header">
+                    <h4 className="sendplan-section-title">
+                      <span className="sendplan-section-icon">
+                        <i className="fa-solid fa-person-chalkboard"></i>
+                      </span>
+                      มาตรฐาน สาระสำคัญ และขั้นตอนการจัดกิจกรรมการเรียนรู้
+                    </h4>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-primary font-weight-semibold"
+                      onClick={handleApplyActivitiesPreset}
+                    >
+                      <i className="fa-solid fa-wand-magic-sparkles mr-1"></i> แทรกโครงสร้างกิจกรรม 3 ขั้น
+                    </button>
+                  </div>
+                  <div className="sendplan-section-body">
+                    <div className="row">
+                      <div className="col-lg-6 mb-3">
+                        <label htmlFor="learning_outcomes" className="font-weight-semibold">
+                          มาตรฐานการเรียนรู้ / ผลการเรียนรู้
+                        </label>
+                        <textarea
+                          className="form-control"
+                          name="learning_outcomes"
+                          id="learning_outcomes"
+                          rows="4"
+                          placeholder="ระบุมาตรฐานการเรียนรู้หรือผลการเรียนรู้ที่คาดหวัง..."
+                          value={form.learning_outcomes}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="col-lg-6 mb-3">
+                        <label htmlFor="learning_content" className="font-weight-semibold">
+                          สาระการเรียนรู้ / สาระสำคัญ
+                        </label>
+                        <textarea
+                          className="form-control"
+                          name="learning_content"
+                          id="learning_content"
+                          rows="4"
+                          placeholder="ระบุสาระสำคัญหรือเนื้อหาหลักของบทเรียน..."
+                          value={form.learning_content}
+                          onChange={handleChange}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label htmlFor="learning_activities" className="font-weight-semibold">
+                        ขั้นตอนการจัดกิจกรรมการเรียนรู้และเวลาที่ใช้ (นาที)
+                      </label>
+                      <textarea
+                        className="form-control"
+                        name="learning_activities"
+                        id="learning_activities"
+                        rows="7"
+                        placeholder="เช่น ขั้นนำ (10 นาที), ขั้นจัดกิจกรรมการเรียนรู้เชิงรุก (30 นาที), ขั้นสรุปและสะท้อนคิด (10 นาที)..."
+                        value={form.learning_activities}
+                        onChange={handleChange}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {renderNavActions(2)}
               </div>
+            )}
 
-              <div className="card card-info card-outline">
-                <div className="card-header bg-light d-flex justify-content-between align-items-center flex-wrap">
-                  <h4 className="card-title font-weight-bold text-info m-0">
-                    <i className="fa-solid fa-book-open-reader mr-2"></i> มาตรฐาน สาระการเรียนรู้ และกิจกรรม
-                  </h4>
-                  <button
-                    type="button"
-                    className="btn btn-xs btn-outline-info font-weight-bold"
-                    onClick={handleApplyActivitiesPreset}
-                    title="แทรกตัวอย่างขั้นตอนการจัดกิจกรรม 3 ขั้น (นำ-สอน-สรุป)"
-                  >
-                    <i className="fa-solid fa-wand-magic-sparkles mr-1"></i> ตัวอย่างขั้นตอนการสอน (3 ขั้น)
-                  </button>
+            {/* ================= STEP 3: สมรรถนะ & สื่อการเรียนรู้ ================= */}
+            {currentStep === 3 && (
+              <div className={isStep3Validated ? 'step-validated' : ''}>
+                <div className="sendplan-section-card">
+                  <div className="sendplan-section-header">
+                    <h4 className="sendplan-section-title">
+                      <span className="sendplan-section-icon">
+                        <i className="fa-solid fa-award"></i>
+                      </span>
+                      สมรรถนะสำคัญของผู้เรียน <span className="text-danger ml-1">*</span>
+                    </h4>
+                    <span className="badge badge-primary px-2 py-1">
+                      เลือกแล้ว {form.competency.length} รายการ
+                    </span>
+                  </div>
+                  <div className="sendplan-section-body">
+                    <div className="sendplan-chip-grid">
+                      {options.competency.map((row) => {
+                        const val = String(row.competency_id);
+                        const checked = form.competency.includes(val);
+                        return (
+                          <label key={val} className={`sendplan-chip-option ${checked ? 'selected' : ''}`}>
+                            <input
+                              type="checkbox"
+                              className="mt-1"
+                              checked={checked}
+                              onChange={() => toggleArrayField('competency', val)}
+                            />
+                            <span>
+                              <strong>{row.competency_id}.</strong> {row.competency_name}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {isStep3Validated && form.competency.length === 0 && (
+                      <span className="sendplan-error-text mt-2">
+                        กรุณาเลือกสมรรถนะสำคัญของผู้เรียนอย่างน้อย 1 รายการ
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="card-body">
-                  <div className="row">
-                    <div className="col-lg-6">
-                      <div className="mb-3">
-                        <label htmlFor="learning_outcomes">มาตรฐานการเรียนรู้ ตัวชี้วัด/ผลการเรียนรู้ :</label>
-                        <textarea className="form-control notemini" name="learning_outcomes" id="learning_outcomes" rows="5" placeholder="ระบุมาตรฐาน/ผลการเรียนรู้..." value={form.learning_outcomes} onChange={handleChange}></textarea>
+
+                <div className="sendplan-section-card">
+                  <div className="sendplan-section-header">
+                    <h4 className="sendplan-section-title">
+                      <span className="sendplan-section-icon">
+                        <i className="fa-solid fa-lightbulb"></i>
+                      </span>
+                      ทักษะในศตวรรษที่ 21 (3Rs 8Cs) และคุณลักษณะอันพึงประสงค์
+                    </h4>
+                  </div>
+                  <div className="sendplan-section-body">
+                    <div className="mb-4">
+                      <div className="d-flex justify-content-between align-items-center mb-2">
+                        <label className="font-weight-semibold m-0">ทักษะในศตวรรษที่ 21 (3Rs 8Cs)</label>
+                        <span className="badge badge-light border">เลือกแล้ว {form.ability21.length} รายการ</span>
+                      </div>
+                      <div className="sendplan-chip-grid">
+                        {options.ability21.map((row) => {
+                          const val = String(row.ability21_id);
+                          const checked = form.ability21.includes(val);
+                          return (
+                            <label key={val} className={`sendplan-chip-option ${checked ? 'selected' : ''}`}>
+                              <input
+                                type="checkbox"
+                                className="mt-1"
+                                checked={checked}
+                                onChange={() => toggleArrayField('ability21', val)}
+                              />
+                              <span>
+                                <strong>{row.ability21_id}:</strong> {row.ability21_name_th}
+                              </span>
+                            </label>
+                          );
+                        })}
                       </div>
                     </div>
-                    <div className="col-lg-6">
-                      <div className="mb-3">
-                        <label htmlFor="learning_content">สาระการเรียนรู้ :</label>
-                        <textarea className="form-control notemini" name="learning_content" id="learning_content" rows="5" placeholder="ระบุสาระสำคัญ/เนื้อหาบทเรียน..." value={form.learning_content} onChange={handleChange}></textarea>
+
+                    <div className="mb-4">
+                      <div className="d-flex justify-content-between align-items-center mb-2">
+                        <label className="font-weight-semibold m-0">คุณลักษณะอันพึงประสงค์</label>
+                        <span className="badge badge-light border">เลือกแล้ว {form.desirable.length} รายการ</span>
                       </div>
+                      <div className="sendplan-chip-grid">
+                        {options.desirable.map((row) => {
+                          const val = String(row.desirable_id);
+                          const checked = form.desirable.includes(val);
+                          return (
+                            <label key={val} className={`sendplan-chip-option ${checked ? 'selected' : ''}`}>
+                              <input
+                                type="checkbox"
+                                className="mt-1"
+                                checked={checked}
+                                onChange={() => toggleArrayField('desirable', val)}
+                              />
+                              <span>
+                                <strong>{row.desirable_id}.</strong> {row.desirable_name}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="d-flex justify-content-between align-items-center mb-2">
+                        <label htmlFor="instructional_media" className="font-weight-semibold m-0">
+                          สื่อ นวัตกรรม และแหล่งการเรียนรู้
+                        </label>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-secondary font-weight-semibold"
+                          onClick={handleApplyMediaPreset}
+                        >
+                          <i className="fa-solid fa-wand-magic-sparkles mr-1"></i> แทรกตัวอย่างสื่อ
+                        </button>
+                      </div>
+                      <textarea
+                        className="form-control"
+                        name="instructional_media"
+                        id="instructional_media"
+                        rows="3"
+                        placeholder="เช่น สื่อนำเสนอ Canva, ใบกิจกรรม, ชุดฝึกปฏิบัติ, แหล่งเรียนรู้ในชุมชน..."
+                        value={form.instructional_media}
+                        onChange={handleChange}
+                      />
                     </div>
                   </div>
-
-                  <div className="row">
-                    <div className="col-lg-12">
-                      <div className="mb-3">
-                        <label htmlFor="learning_activities">ขั้นตอนการจัดกิจกรรมการเรียนรู้ / เวลา (นาที) :</label>
-                        <textarea className="form-control notemini" name="learning_activities" id="learning_activities" rows="6" placeholder="เช่น ขั้นนำ (10 นาที), ขั้นสอน/กิจกรรม (30 นาที), ขั้นสรุป (10 นาที)..." value={form.learning_activities} onChange={handleChange}></textarea>
-                      </div>
-                    </div>
-                  </div>
                 </div>
+
+                {renderNavActions(3)}
               </div>
-              {renderNavActions(2)}
-            </div>
+            )}
 
-            {/* ================= STEP 3: สมรรถนะ & การประเมินผล ================= */}
-            <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
-              <div className="card card-primary card-outline">
-                <div className="card-header bg-light">
-                  <h4 className="card-title font-weight-bold text-primary">
-                    <i className="fa-solid fa-award mr-2"></i> สมรรถนะ ทักษะ และคุณลักษณะอันพึงประสงค์
-                  </h4>
-                </div>
-                <div className="card-body">
-                  <div className="row">
-                    <div className="col-lg-12">
-                      <div className="mb-3">
-                        <label htmlFor="competency">สมรรถนะสำคัญของผู้เรียน : <span className="text-danger">*</span></label>
-                        <select name="competency" id="competency" className="custom-select select2bs4" multiple data-placeholder="เลือกสมรรถนะสำคัญ" value={form.competency} onChange={(e) => handleMultiChange('competency', e.target.selectedOptions)} required>
-                          {options.competency.map((row) => (
-                            <option key={row.competency_id} value={row.competency_id}>{row.competency_id} : {row.competency_name}</option>
-                          ))}
-                        </select>
+            {/* ================= STEP 4: ตัวชี้วัดระหว่างทาง & ปลายทาง ================= */}
+            {currentStep === 4 && (
+              <div>
+                {!needsIndicators ? (
+                  <div className="sendplan-section-card">
+                    <div className="sendplan-section-header">
+                      <h4 className="sendplan-section-title">
+                        <span className="sendplan-section-icon">
+                          <i className="fa-solid fa-circle-info"></i>
+                        </span>
+                        หมายเหตุสำหรับประเภทรายวิชาที่เลือก
+                      </h4>
+                    </div>
+                    <div className="sendplan-section-body">
+                      <div className="alert alert-info mb-0" style={{ borderRadius: '10px' }}>
+                        <i className="fa-solid fa-circle-info mr-2"></i>
+                        รายวิชาประเภท{' '}
+                        <strong>
+                          {options.subjectTypes.find((t) => t.subjecttype_id === form.subject_type)?.subjecttype_name ||
+                            form.subject_type}
+                        </strong>{' '}
+                        ไม่จำเป็นต้องเลือกตัวชี้วัดระหว่างทางและตัวชี้วัดปลายทาง (สามารถใช้ผลการเรียนรู้ที่ระบุไว้ในขั้นตอนที่ 2 และกด &ldquo;ถัดไป&rdquo; ได้เลย)
                       </div>
                     </div>
                   </div>
-                  <div className="row">
-                    <div className="col-lg-6">
-                      <div className="mb-3">
-                        <label htmlFor="ability21">ทักษะในศตวรรษที่ 21 (3Rs 8Cs) :</label>
-                        <select className="select2bs4" multiple name="ability21" data-placeholder="เลือกทักษะในศตวรรษที่ 21" value={form.ability21} onChange={(e) => handleMultiChange('ability21', e.target.selectedOptions)} style={{ width: '100%' }}>
-                          {options.ability21.map((row) => (
-                            <option key={row.ability21_id} value={row.ability21_id}>{row.ability21_id} : {row.ability21_name_th}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="col-lg-6">
-                      <div className="mb-3">
-                        <label htmlFor="desirable">คุณลักษณะอันพึงประสงค์ :</label>
-                        <select className="select2bs4" multiple name="desirable" data-placeholder="เลือกคุณลักษณะอันพึงประสงค์" value={form.desirable} onChange={(e) => handleMultiChange('desirable', e.target.selectedOptions)} style={{ width: '100%' }}>
-                          {options.desirable.map((row) => (
-                            <option key={row.desirable_id} value={row.desirable_id}>{row.desirable_id} : {row.desirable_name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="row">
-                    <div className="col-lg-12">
-                      <div className="mb-3">
-                        <div className="d-flex justify-content-between align-items-center mb-1">
-                          <label htmlFor="instructional_media" className="m-0">สื่อ / แหล่งการเรียนรู้ :</label>
+                ) : !teachSubjectId || !gradeLevelId ? (
+                  <EmptyState
+                    title="ยังไม่ได้เลือกกลุ่มสาระหรือระดับชั้น"
+                    message="กรุณาย้อนกลับไปขั้นตอนที่ 1 เพื่อเลือกกลุ่มสาระการเรียนรู้และระดับชั้นก่อนเลือกตัวชี้วัด"
+                    type="warning"
+                    actionLabel="ไปขั้นตอนที่ 1"
+                    onAction={() => setCurrentStep(1)}
+                  />
+                ) : (
+                  <>
+                    {/* ตัวชี้วัดระหว่างทาง */}
+                    <div className="sendplan-section-card">
+                      <div className="sendplan-section-header">
+                        <div className="d-flex align-items-center flex-wrap" style={{ gap: '8px' }}>
+                          <h4 className="sendplan-section-title">
+                            <span className="sendplan-section-icon">
+                              <i className="fa-solid fa-flag"></i>
+                            </span>
+                            ตัวชี้วัดระหว่างทาง (Formative Indicators)
+                          </h4>
+                          <span className="badge badge-success px-2 py-1">
+                            เลือกแล้ว {form.indicators_mid.length} / {indicators.mid.length} รายการ
+                          </span>
+                        </div>
+
+                        <div className="d-flex flex-wrap align-items-center" style={{ gap: '6px' }}>
                           <button
                             type="button"
-                            className="btn btn-xs btn-outline-secondary font-weight-bold"
-                            onClick={handleApplyMediaPreset}
+                            className="btn btn-xs btn-outline-primary font-weight-semibold px-2 py-1"
+                            disabled={filteredMidIndicators.length === 0}
+                            onClick={() => handleSelectVisibleIndicators('indicators_mid', filteredMidIndicators)}
                           >
-                            <i className="fa-solid fa-wand-magic-sparkles mr-1"></i> ตัวอย่างสื่อ
+                            <i className="fa-solid fa-check-double mr-1"></i> เลือกทั้งหมดที่แสดง ({filteredMidIndicators.length})
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-xs btn-outline-secondary font-weight-semibold px-2 py-1"
+                            disabled={form.indicators_mid.length === 0}
+                            onClick={() => handleClearIndicators('indicators_mid')}
+                          >
+                            <i className="fa-solid fa-rotate-left mr-1"></i> ล้างการเลือก
                           </button>
                         </div>
-                        <textarea className="form-control notemini" name="instructional_media" id="instructional_media" rows="3" placeholder="เช่น สื่อนำเสนอ Canva, ใบงาน, วีดิทัศน์ YouTube, แหล่งเรียนรู้ในชุมชน..." value={form.instructional_media} onChange={handleChange}></textarea>
                       </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
 
-              <div className="card card-navy">
-                <div className="card-header d-flex justify-content-between align-items-center flex-wrap">
-                  <h4 className="card-title font-weight-bold m-0">
-                    <i className="fa-solid fa-list-check mr-2"></i> การวัดและประเมินผลการเรียนรู้
-                  </h4>
-                  <button
-                    type="button"
-                    className="btn btn-xs btn-light text-navy font-weight-bold"
-                    onClick={handleApplyMeasurementPreset}
-                    title="แทรกตัวอย่างวิธีการ เครื่องมือ เกณฑ์รูบริกส์ และการตัดสินผล"
-                  >
-                    <i className="fa-solid fa-wand-magic-sparkles mr-1"></i> ตัวอย่างการวัดประเมินผล
-                  </button>
-                </div>
-                <div className="card-body">
-                  <div className="row">
-                    <div className="col-lg-6">
-                      <div className="mb-3">
-                        <label htmlFor="Measurement_how">1. วิธีการวัดและประเมินผล :</label>
-                        <textarea className="form-control notemini" name="Measurement_how" id="Measurement_how" rows="4" placeholder="เช่น การสังเกตพฤติกรรม, การตรวจใบงาน..." value={form.Measurement_how} onChange={handleChange}></textarea>
-                      </div>
-                    </div>
-                    <div className="col-lg-6">
-                      <div className="mb-3">
-                        <label htmlFor="Measurement_tools">2. เครื่องมือวัดและประเมินผล :</label>
-                        <textarea className="form-control notemini" name="Measurement_tools" id="Measurement_tools" rows="4" placeholder="เช่น แบบประเมินใบงาน, แบบสังเกตพฤติกรรมการทำงานกลุ่ม..." value={form.Measurement_tools} onChange={handleChange}></textarea>
-                      </div>
-                    </div>
-                    <div className="col-lg-6">
-                      <div className="mb-3">
-                        <label htmlFor="Measurement_scoring">3. เกณฑ์การให้คะแนน :</label>
-                        <textarea className="form-control notemini" name="Measurement_scoring" id="Measurement_scoring" rows="4" placeholder="เช่น รูบริกส์ (Rubric Assessment) ระดับดีมาก ดี พอใช้ ปรับปรุง..." value={form.Measurement_scoring} onChange={handleChange}></textarea>
-                      </div>
-                    </div>
-                    <div className="col-lg-6">
-                      <div className="mb-3">
-                        <label htmlFor="Measurement_outcomes">4. การตัดสินผลการเรียนรู้ :</label>
-                        <textarea className="form-control notemini" name="Measurement_outcomes" id="Measurement_outcomes" rows="4" placeholder="เช่น ได้ระดับคุณภาพดีขึ้นไปถือว่าผ่านเกณฑ์..." value={form.Measurement_outcomes} onChange={handleChange}></textarea>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              {renderNavActions(3)}
-            </div>
-
-            {/* ================= STEP 4: ตัวชี้วัด & แนบไฟล์ ================= */}
-            <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
-              {/* Summary Review Card */}
-              <div className="card card-outline card-primary shadow-sm mb-3">
-                <div className="card-header bg-light">
-                  <h5 className="card-title m-0 text-primary font-weight-bold">
-                    <i className="fa-solid fa-clipboard-check mr-2"></i> สรุปภาพรวมแผนการสอน (ก่อนยืนยันส่ง)
-                  </h5>
-                </div>
-                <div className="card-body p-3">
-                  <div className="row">
-                    <div className="col-md-6 mb-2">
-                      <span className="text-muted">วิชา:</span> <strong>{form.subject_code} {form.subject_name}</strong>
-                    </div>
-                    <div className="col-md-6 mb-2">
-                      <span className="text-muted">ระดับชั้น:</span> <strong>{options.gradeLevel.find(g => String(g.grade_level_id) === String(form.grade_level_id))?.grade_level_name || ''}</strong>
-                    </div>
-                    <div className="col-md-6 mb-2">
-                      <span className="text-muted">หน่วยการเรียนรู้:</span> <strong>{form.subject_content}</strong>
-                    </div>
-                    <div className="col-md-6 mb-2">
-                      <span className="text-muted">ชื่อแผนการสอน:</span> <strong className="text-primary">{form.subject_name_plan}</strong>
-                    </div>
-                    <div className="col-md-6 mb-2">
-                      <span className="text-muted">วันที่และเวลาสอน:</span> <strong>{form.teach_date} ({form.teach_timestart} - {form.teach_timeend}, {form.teach_minute} นาที)</strong>
-                    </div>
-                    <div className="col-md-6 mb-2">
-                      <span className="text-muted">วิธีการสอน:</span> <strong>{form.learning_model}</strong>
-                    </div>
-                    <div className="col-md-6 mb-2">
-                      <span className="text-muted">สมรรถนะ:</span> <span className="badge badge-info">{form.competency?.length || 0} รายการ</span>
-                    </div>
-                    <div className="col-md-6 mb-2">
-                      <span className="text-muted">ทักษะศตวรรษที่ 21:</span> <span className="badge badge-secondary">{form.ability21?.length || 0} รายการ</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {teachSubjectId && gradeLevelId && needsIndicators && (
-                <div className="card card-pink">
-                  <div className="card-header">
-                    <h4 className="card-title font-weight-bold">
-                      <i className="fa-solid fa-flag-checkered mr-2"></i> ตัวชี้วัดระหว่างทาง
-                    </h4>
-                  </div>
-                  <div className="card-body">
-                    <div className="row">
-                      {indicators.mid.length === 0 && (
-                        <div className="col-12 text-danger">ไม่พบตัวชี้วัดระหว่างทางสำหรับกลุ่มสาระและระดับชั้นนี้</div>
-                      )}
-                      {indicators.mid.map((ind, idx) => (
-                        <div className="col-lg-4" key={`mid-${idx}`}>
-                          <div className="mb-3">
-                            <label className="d-flex align-items-start" style={{ cursor: 'pointer', gap: '8px' }}>
-                              <input
-                                type="checkbox"
-                                name="indicators_mid"
-                                className="mt-1"
-                                value={ind.indicators_name}
-                                checked={Array.isArray(form.indicators_mid) && form.indicators_mid.includes(ind.indicators_name)}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  setForm((prev) => {
-                                    const next = new Set(prev.indicators_mid);
-                                    if (e.target.checked) next.add(value); else next.delete(value);
-                                    return { ...prev, indicators_mid: Array.from(next) };
-                                  });
-                                }}
-                              />
-                              <span>
-                                <strong>{ind.indicators_name}</strong> ({ind.indicator_group}) : {ind.indicators_details}
-                              </span>
-                            </label>
+                      <div className="sendplan-section-body">
+                        <div className="input-group input-group-sm mb-3">
+                          <div className="input-group-prepend">
+                            <span className="input-group-text bg-white">
+                              <i className="fa-solid fa-magnifying-glass text-muted"></i>
+                            </span>
                           </div>
+                          <input
+                            type="text"
+                            className="form-control"
+                            placeholder="ค้นหารหัสตัวชี้วัด หรือคำสำคัญในตัวชี้วัดระหว่างทาง..."
+                            value={midSearch}
+                            onChange={(e) => setMidSearch(e.target.value)}
+                          />
+                          {midSearch && (
+                            <div className="input-group-append">
+                              <button type="button" className="btn btn-outline-secondary" onClick={() => setMidSearch('')}>
+                                <i className="fa-solid fa-xmark"></i>
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
 
-              {teachSubjectId && gradeLevelId && needsIndicators && (
-                <div className="card card-purple">
-                  <div className="card-header">
-                    <h4 className="card-title font-weight-bold">
-                      <i className="fa-solid fa-bullseye mr-2"></i> ตัวชี้วัดปลายทาง
-                    </h4>
-                  </div>
-                  <div className="card-body">
-                    <div className="row">
-                      {indicators.final.length === 0 && (
-                        <div className="col-12 text-danger">ไม่พบตัวชี้วัดปลายทางสำหรับกลุ่มสาระและระดับชั้นนี้</div>
-                      )}
-                      {indicators.final.map((ind, idx) => (
-                        <div className="col-lg-4" key={`final-${idx}`}>
-                          <div className="mb-3">
-                            <label className="d-flex align-items-start" style={{ cursor: 'pointer', gap: '8px' }}>
-                              <input
-                                type="checkbox"
-                                name="indicators_final"
-                                className="mt-1"
-                                value={ind.indicators_name}
-                                checked={Array.isArray(form.indicators_final) && form.indicators_final.includes(ind.indicators_name)}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  setForm((prev) => {
-                                    const next = new Set(prev.indicators_final);
-                                    if (e.target.checked) next.add(value); else next.delete(value);
-                                    return { ...prev, indicators_final: Array.from(next) };
-                                  });
-                                }}
-                              />
-                              <span>
-                                <strong>{ind.indicators_name}</strong> ({ind.indicator_group}) : {ind.indicators_details}
-                              </span>
-                            </label>
+                        {indicators.mid.length === 0 ? (
+                          <div className="text-muted small py-3 text-center">
+                            ไม่พบข้อมูลตัวชี้วัดระหว่างทางสำหรับกลุ่มสาระและระดับชั้นนี้
                           </div>
+                        ) : filteredMidIndicators.length === 0 ? (
+                          <div className="text-muted small py-3 text-center">
+                            ไม่พบตัวชี้วัดระหว่างทางที่ตรงกับคำค้นหา &ldquo;{midSearch}&rdquo;
+                          </div>
+                        ) : (
+                          <div className="indicator-scroll-box">
+                            <div className="row">
+                              {filteredMidIndicators.map((ind, idx) => {
+                                const checked = form.indicators_mid.includes(ind.indicators_name);
+                                return (
+                                  <div className="col-lg-6 mb-2" key={`mid-${ind.indicators_name}-${idx}`}>
+                                    <label className={`indicator-item-card ${checked ? 'checked' : ''}`}>
+                                      <input
+                                        type="checkbox"
+                                        className="mt-1"
+                                        checked={checked}
+                                        onChange={() => toggleArrayField('indicators_mid', ind.indicators_name)}
+                                      />
+                                      <span className="small" style={{ lineHeight: 1.5 }}>
+                                        <strong className="text-dark">{ind.indicators_name}</strong>
+                                        {ind.indicator_group ? (
+                                          <span className="badge badge-light border ml-1">{ind.indicator_group}</span>
+                                        ) : null}
+                                        <span className="d-block text-secondary mt-1">{ind.indicators_details}</span>
+                                      </span>
+                                    </label>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ตัวชี้วัดปลายทาง */}
+                    <div className="sendplan-section-card">
+                      <div className="sendplan-section-header">
+                        <div className="d-flex align-items-center flex-wrap" style={{ gap: '8px' }}>
+                          <h4 className="sendplan-section-title">
+                            <span className="sendplan-section-icon">
+                              <i className="fa-solid fa-flag-checkered"></i>
+                            </span>
+                            ตัวชี้วัดปลายทาง (Summative Indicators)
+                          </h4>
+                          <span className="badge badge-success px-2 py-1">
+                            เลือกแล้ว {form.indicators_final.length} / {indicators.final.length} รายการ
+                          </span>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
 
-              {!needsIndicators && (
-                <div className="card card-warning">
-                  <div className="card-header">
-                    <h4 className="card-title font-weight-bold"><i className="fa-solid fa-circle-info mr-2"></i> หมายเหตุประเภทรายวิชา</h4>
-                  </div>
-                  <div className="card-body">
-                    <div className="alert alert-info mb-0">
-                      <i className="fa-solid fa-info-circle mr-1"></i>
-                      รายวิชาประเภท <strong>{options.subjectTypes.find(t => t.subjecttype_id === form.subject_type)?.subjecttype_name || form.subject_type}</strong> ไม่จำเป็นต้องระบุตัวชี้วัดระหว่างทาง และตัวชี้วัดปลายทาง
-                      <br />สามารถระบุ <strong>ผลการเรียนรู้</strong> ในขั้นตอนที่ 2 ได้
-                    </div>
-                  </div>
-                </div>
-              )}
+                        <div className="d-flex flex-wrap align-items-center" style={{ gap: '6px' }}>
+                          <button
+                            type="button"
+                            className="btn btn-xs btn-outline-primary font-weight-semibold px-2 py-1"
+                            disabled={filteredFinalIndicators.length === 0}
+                            onClick={() => handleSelectVisibleIndicators('indicators_final', filteredFinalIndicators)}
+                          >
+                            <i className="fa-solid fa-check-double mr-1"></i> เลือกทั้งหมดที่แสดง ({filteredFinalIndicators.length})
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-xs btn-outline-secondary font-weight-semibold px-2 py-1"
+                            disabled={form.indicators_final.length === 0}
+                            onClick={() => handleClearIndicators('indicators_final')}
+                          >
+                            <i className="fa-solid fa-rotate-left mr-1"></i> ล้างการเลือก
+                          </button>
+                        </div>
+                      </div>
 
-              <div className="card card-olive">
-                <div className="card-header">
-                  <h4 className="card-title text-white font-weight-bold">
-                    <i className="fa-solid fa-file-pdf mr-2"></i> แนบไฟล์แผนการสอน (PDF) : <span className="text-warning">*</span>
-                  </h4>
-                </div>
-                <div className="card-body">
-                  <div className="form-group mb-2">
-                    <input
-                      type="file"
-                      name="plan_file"
-                      id="plan_file"
-                      className="form-control-file"
-                      accept="application/pdf"
-                      onChange={handleFileChange}
-                      required={!planid}
-                    />
-                    <small className="form-text text-muted">
-                      รองรับไฟล์เอกสารนามสกุล <strong>.pdf</strong> เท่านั้น ขนาดไม่เกิน 30 MB
-                    </small>
-                  </div>
-                  {file && (
-                    <div className="alert alert-success py-2 px-3 mb-2 small">
-                      <i className="fa-solid fa-check-circle mr-1"></i> เลือกไฟล์แล้ว: <strong>{file.name}</strong> ({(file.size / (1024 * 1024)).toFixed(2)} MB)
+                      <div className="sendplan-section-body">
+                        <div className="input-group input-group-sm mb-3">
+                          <div className="input-group-prepend">
+                            <span className="input-group-text bg-white">
+                              <i className="fa-solid fa-magnifying-glass text-muted"></i>
+                            </span>
+                          </div>
+                          <input
+                            type="text"
+                            className="form-control"
+                            placeholder="ค้นหารหัสตัวชี้วัด หรือคำสำคัญในตัวชี้วัดปลายทาง..."
+                            value={finalSearch}
+                            onChange={(e) => setFinalSearch(e.target.value)}
+                          />
+                          {finalSearch && (
+                            <div className="input-group-append">
+                              <button type="button" className="btn btn-outline-secondary" onClick={() => setFinalSearch('')}>
+                                <i className="fa-solid fa-xmark"></i>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {indicators.final.length === 0 ? (
+                          <div className="text-muted small py-3 text-center">
+                            ไม่พบข้อมูลตัวชี้วัดปลายทางสำหรับกลุ่มสาระและระดับชั้นนี้
+                          </div>
+                        ) : filteredFinalIndicators.length === 0 ? (
+                          <div className="text-muted small py-3 text-center">
+                            ไม่พบตัวชี้วัดปลายทางที่ตรงกับคำค้นหา &ldquo;{finalSearch}&rdquo;
+                          </div>
+                        ) : (
+                          <div className="indicator-scroll-box">
+                            <div className="row">
+                              {filteredFinalIndicators.map((ind, idx) => {
+                                const checked = form.indicators_final.includes(ind.indicators_name);
+                                return (
+                                  <div className="col-lg-6 mb-2" key={`final-${ind.indicators_name}-${idx}`}>
+                                    <label className={`indicator-item-card ${checked ? 'checked' : ''}`}>
+                                      <input
+                                        type="checkbox"
+                                        className="mt-1"
+                                        checked={checked}
+                                        onChange={() => toggleArrayField('indicators_final', ind.indicators_name)}
+                                      />
+                                      <span className="small" style={{ lineHeight: 1.5 }}>
+                                        <strong className="text-dark">{ind.indicators_name}</strong>
+                                        {ind.indicator_group ? (
+                                          <span className="badge badge-light border ml-1">{ind.indicator_group}</span>
+                                        ) : null}
+                                        <span className="d-block text-secondary mt-1">{ind.indicators_details}</span>
+                                      </span>
+                                    </label>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
-                  {planid && existingPlanFile && (
-                    <div className="mt-2 text-info small">
-                      <i className="fa-regular fa-file-pdf mr-1"></i> ไฟล์ปัจจุบันในระบบ: <a href={existingPlanFile} target="_blank" rel="noreferrer" className="font-weight-bold text-info">คลิกดูไฟล์เดิม</a> (หากไม่ต้องการเปลี่ยนไฟล์ใหม่ ไม่ต้องแนบไฟล์ใหม่)
-                    </div>
-                  )}
-                </div>
+                  </>
+                )}
+
+                {renderNavActions(4)}
               </div>
+            )}
 
-              {renderNavActions(4)}
-            </div>
+            {/* ================= STEP 5: การวัดและประเมินผลการเรียนรู้ ================= */}
+            {currentStep === 5 && (
+              <div>
+                <div className="sendplan-section-card">
+                  <div className="sendplan-section-header">
+                    <h4 className="sendplan-section-title">
+                      <span className="sendplan-section-icon">
+                        <i className="fa-solid fa-clipboard-check"></i>
+                      </span>
+                      การวัดและประเมินผลการเรียนรู้ (ครบทั้ง 4 มิติ)
+                    </h4>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-primary font-weight-semibold"
+                      onClick={handleApplyMeasurementPreset}
+                    >
+                      <i className="fa-solid fa-wand-magic-sparkles mr-1"></i> แทรกตัวอย่างเกณฑ์การวัดผล
+                    </button>
+                  </div>
+                  <div className="sendplan-section-body">
+                    <div className="row">
+                      <div className="col-lg-6 mb-3">
+                        <label htmlFor="Measurement_how" className="font-weight-semibold">
+                          1. วิธีการวัดและประเมินผล
+                        </label>
+                        <textarea
+                          className="form-control"
+                          name="Measurement_how"
+                          id="Measurement_how"
+                          rows="4"
+                          placeholder="เช่น การตรวจชิ้นงาน/ใบงาน, การสังเกตพฤติกรรมการทำงานกลุ่ม..."
+                          value={form.Measurement_how}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="col-lg-6 mb-3">
+                        <label htmlFor="Measurement_tools" className="font-weight-semibold">
+                          2. เครื่องมือวัดและประเมินผล
+                        </label>
+                        <textarea
+                          className="form-control"
+                          name="Measurement_tools"
+                          id="Measurement_tools"
+                          rows="4"
+                          placeholder="เช่น แบบประเมินรูบริกส์ชิ้นงาน, แบบสังเกตพฤติกรรม..."
+                          value={form.Measurement_tools}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="col-lg-6 mb-3 mb-lg-0">
+                        <label htmlFor="Measurement_scoring" className="font-weight-semibold">
+                          3. เกณฑ์การให้คะแนน (Scoring Rubric)
+                        </label>
+                        <textarea
+                          className="form-control"
+                          name="Measurement_scoring"
+                          id="Measurement_scoring"
+                          rows="4"
+                          placeholder="เช่น ระดับคุณภาพ 4 ระดับ (ดีมาก, ดี, พอใช้, ปรับปรุง)..."
+                          value={form.Measurement_scoring}
+                          onChange={handleChange}
+                        />
+                      </div>
+                      <div className="col-lg-6">
+                        <label htmlFor="Measurement_outcomes" className="font-weight-semibold">
+                          4. เกณฑ์การตัดสินผลการเรียนรู้
+                        </label>
+                        <textarea
+                          className="form-control"
+                          name="Measurement_outcomes"
+                          id="Measurement_outcomes"
+                          rows="4"
+                          placeholder="เช่น ผู้เรียนได้คะแนนร้อยละ 70 ขึ้นไป หรือระดับพอใช้ขึ้นไปถือว่าผ่านเกณฑ์..."
+                          value={form.Measurement_outcomes}
+                          onChange={handleChange}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {renderNavActions(5)}
+              </div>
+            )}
+
+            {/* ================= STEP 6: ตรวจสอบสรุป & แนบไฟล์ PDF ================= */}
+            {currentStep === 6 && (
+              <div className={isStep6Validated ? 'step-validated' : ''}>
+                {/* Summary Review Card */}
+                <div className="sendplan-section-card">
+                  <div className="sendplan-section-header">
+                    <h4 className="sendplan-section-title">
+                      <span className="sendplan-section-icon">
+                        <i className="fa-solid fa-magnifying-glass-chart"></i>
+                      </span>
+                      สรุปข้อมูลสำคัญของแผนการจัดการเรียนรู้ (ตรวจสอบก่อนยืนยันส่ง)
+                    </h4>
+                    <button
+                      type="button"
+                      className="btn btn-xs btn-outline-secondary"
+                      onClick={() => setCurrentStep(1)}
+                    >
+                      <i className="fa-solid fa-pen mr-1"></i> แก้ไขข้อมูลวิชา
+                    </button>
+                  </div>
+                  <div className="sendplan-section-body">
+                    <div className="row small" style={{ rowGap: '10px' }}>
+                      <div className="col-md-6">
+                        <span className="text-muted">รายวิชา:</span>{' '}
+                        <strong className="text-dark">
+                          {form.subject_code || '-'} {form.subject_name || '-'}
+                        </strong>
+                      </div>
+                      <div className="col-md-6">
+                        <span className="text-muted">กลุ่มสาระ / ชั้น:</span>{' '}
+                        <strong className="text-dark">
+                          {lookups.teachSubject[form.teach_subject_id] || '-'} •{' '}
+                          {options.gradeLevel.find((g) => String(g.grade_level_id) === String(form.grade_level_id))
+                            ?.grade_level_name || '-'}
+                        </strong>
+                      </div>
+                      <div className="col-md-6">
+                        <span className="text-muted">หน่วยการเรียนรู้:</span>{' '}
+                        <strong className="text-dark">{form.subject_content || '-'}</strong>
+                      </div>
+                      <div className="col-md-6">
+                        <span className="text-muted">ชื่อแผนการสอน:</span>{' '}
+                        <strong className="text-primary">{form.subject_name_plan || '-'}</strong>
+                      </div>
+                      <div className="col-md-6">
+                        <span className="text-muted">กำหนดการสอน:</span>{' '}
+                        <strong className="text-dark">
+                          {form.teach_date || '-'} ({form.teach_timestart || '--:--'} - {form.teach_timeend || '--:--'} น. •{' '}
+                          {form.teach_minute || 0} นาที)
+                        </strong>
+                      </div>
+                      <div className="col-md-6">
+                        <span className="text-muted">รูปแบบการจัดการเรียนรู้:</span>{' '}
+                        <strong className="text-dark">{form.learning_model || '-'}</strong>
+                      </div>
+                      <div className="col-md-12 pt-2 border-top d-flex flex-wrap" style={{ gap: '8px' }}>
+                        <span className="badge badge-light border px-2 py-1">
+                          สมรรถนะสำคัญ: <strong>{form.competency.length}</strong> รายการ
+                        </span>
+                        <span className="badge badge-light border px-2 py-1">
+                          ทักษะศตวรรษที่ 21: <strong>{form.ability21.length}</strong> รายการ
+                        </span>
+                        <span className="badge badge-light border px-2 py-1">
+                          คุณลักษณะฯ: <strong>{form.desirable.length}</strong> รายการ
+                        </span>
+                        {needsIndicators && (
+                          <>
+                            <span className="badge badge-light border px-2 py-1">
+                              ตัวชี้วัดระหว่างทาง: <strong>{form.indicators_mid.length}</strong> ข้อ
+                            </span>
+                            <span className="badge badge-light border px-2 py-1">
+                              ตัวชี้วัดปลายทาง: <strong>{form.indicators_final.length}</strong> ข้อ
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* File Upload Card */}
+                <div className="sendplan-section-card">
+                  <div className="sendplan-section-header">
+                    <h4 className="sendplan-section-title">
+                      <span className="sendplan-section-icon">
+                        <i className="fa-solid fa-file-pdf text-danger"></i>
+                      </span>
+                      แนบไฟล์เอกสารแผนการจัดการเรียนรู้ฉบับเต็ม (.PDF){' '}
+                      {!existingPlanFile && <span className="text-danger ml-1">*</span>}
+                    </h4>
+                    <span className="badge badge-light border text-muted">ขนาดไฟล์สูงสุดไม่เกิน {MAX_PDF_MB} MB</span>
+                  </div>
+
+                  <div className="sendplan-section-body">
+                    {planid && existingPlanFile && (
+                      <div
+                        className="alert alert-light border d-flex justify-content-between align-items-center flex-wrap mb-3"
+                        style={{ borderRadius: '10px', gap: '10px' }}
+                      >
+                        <div>
+                          <i className="fa-solid fa-file-circle-check text-success mr-2"></i>
+                          <strong>มีไฟล์แผนการสอนเดิมในระบบแล้ว</strong>
+                          <span className="text-muted small d-block">
+                            หากไม่ต้องการเปลี่ยนไฟล์ สามารถกดบันทึกการแก้ไขได้ทันที หรือเลือกไฟล์ใหม่ด้านล่างเพื่อทับไฟล์เดิม
+                          </span>
+                        </div>
+                        <a
+                          href={existingPlanFile}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-sm btn-outline-primary font-weight-bold"
+                        >
+                          <i className="fa-regular fa-file-pdf mr-1 text-danger"></i> เปิดดูไฟล์ PDF เดิม
+                        </a>
+                      </div>
+                    )}
+
+                    <div
+                      className={`sendplan-upload-zone ${file ? 'has-file' : ''} ${
+                        isStep6Validated && !file && !existingPlanFile ? 'sendplan-invalid-field' : ''
+                      }`}
+                    >
+                      <div className="mb-2">
+                        <i
+                          className={`fa-solid ${file ? 'fa-file-circle-check text-success' : 'fa-cloud-arrow-up text-primary'}`}
+                          style={{ fontSize: '2.2rem' }}
+                        ></i>
+                      </div>
+                      <h6 className="font-weight-bold text-dark mb-1">
+                        {file ? `พร้อมอัปโหลด: ${file.name}` : 'เลือกไฟล์แผนการจัดการเรียนรู้ (.pdf)'}
+                      </h6>
+                      <p className="text-muted small mb-3">
+                        {file
+                          ? `ขนาดไฟล์ ${(file.size / (1024 * 1024)).toFixed(2)} MB • นามสกุล PDF ถูกต้อง`
+                          : `รองรับเฉพาะไฟล์ .pdf ขนาดไม่เกิน ${MAX_PDF_MB} MB`}
+                      </p>
+
+                      <div className="d-flex justify-content-center align-items-center flex-wrap" style={{ gap: '8px' }}>
+                        <label htmlFor="plan_file" className="btn btn-primary btn-sm font-weight-bold px-3 m-0" style={{ cursor: 'pointer' }}>
+                          <i className="fa-solid fa-folder-open mr-1"></i> {file ? 'เปลี่ยนไฟล์ PDF' : 'เลือกไฟล์ PDF จากเครื่อง'}
+                        </label>
+                        {file && !saving && (
+                          <button
+                            type="button"
+                            className="btn btn-outline-secondary btn-sm"
+                            onClick={() => {
+                              setFile(null);
+                              const inputEl = document.getElementById('plan_file');
+                              if (inputEl) inputEl.value = '';
+                            }}
+                          >
+                            <i className="fa-solid fa-xmark mr-1"></i> ยกเลิกไฟล์ที่เลือก
+                          </button>
+                        )}
+                      </div>
+
+                      <input
+                        type="file"
+                        name="plan_file"
+                        id="plan_file"
+                        className="d-none"
+                        accept="application/pdf,.pdf"
+                        onChange={handleFileChange}
+                        disabled={saving}
+                      />
+                    </div>
+
+                    {fileError && (
+                      <div className="alert alert-danger py-2 px-3 mt-3 mb-0 small" style={{ borderRadius: '10px' }}>
+                        <i className="fa-solid fa-triangle-exclamation mr-1"></i> {fileError}
+                      </div>
+                    )}
+
+                    {/* Smooth Visual Upload Progress Stepper while saving */}
+                    {saving && (
+                      <div className="sendplan-upload-progress">
+                        <div className="d-flex justify-content-between align-items-center mb-2">
+                          <strong className="text-primary small">
+                            <span className="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true"></span>
+                            {uploadStage === 1 && 'ขั้นตอน 1/3: กำลังตรวจสอบและเตรียมไฟล์ PDF...'}
+                            {uploadStage === 2 && 'ขั้นตอน 2/3: กำลังอัปโหลดไฟล์ PDF ขึ้นระบบจัดเก็บเอกสารออนไลน์...'}
+                            {uploadStage === 3 && 'ขั้นตอน 3/3: กำลังบันทึกข้อมูลแผนการสอนลงฐานข้อมูล...'}
+                          </strong>
+                          <span className="badge badge-primary">{uploadPercent}%</span>
+                        </div>
+                        <div className="progress" style={{ height: '8px', borderRadius: '999px' }}>
+                          <div
+                            className="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                            role="progressbar"
+                            style={{ width: `${uploadPercent}%` }}
+                            aria-valuenow={uploadPercent}
+                            aria-valuemin="0"
+                            aria-valuemax="100"
+                          />
+                        </div>
+                        <div className="d-flex justify-content-between text-muted mt-2" style={{ fontSize: '0.75rem' }}>
+                          <span className={uploadStage >= 1 ? 'text-primary font-weight-bold' : ''}>
+                            1. เตรียมเอกสาร
+                          </span>
+                          <span className={uploadStage >= 2 ? 'text-primary font-weight-bold' : ''}>
+                            2. อัปโหลดไฟล์ PDF
+                          </span>
+                          <span className={uploadStage >= 3 ? 'text-success font-weight-bold' : ''}>
+                            3. บันทึกแผนสำเร็จ
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {renderNavActions(6)}
+              </div>
+            )}
           </form>
         </div>
       </div>

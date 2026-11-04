@@ -3,107 +3,47 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ระบบนิเทศการจัดการเรียนรู้ (LMSS)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>ระบบนิเทศการจัดการเรียนรู้ (LMSS) • สพม.พิษณุโลก อุตรดิตถ์</title>
 
-  <!-- Ionicons -->
-  <link rel="stylesheet" href="https://code.ionicframework.com/ionicons/2.0.1/css/ionicons.min.css">
-
-  <!-- jQuery -->
-  <script src="/plugins/jquery/jquery.min.js"></script>
-
-  <!-- Tempusdominus Bootstrap 4 -->
-  <link rel="stylesheet" href="/plugins/tempusdominus-bootstrap-4/css/tempusdominus-bootstrap-4.min.css">
-  <!-- iCheck -->
-  <link rel="stylesheet" href="/plugins/icheck-bootstrap/icheck-bootstrap.min.css">
-  <!-- Theme style (CDN AdminLTE 3.2.0) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
-
-  <!-- Font Awesome 6 (CDN with all webfonts) -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <!-- overlayScrollbars -->
-  <link rel="stylesheet" href="/plugins/overlayScrollbars/css/OverlayScrollbars.min.css">
-
-  <!-- SweetAlert -->
-  <link rel="stylesheet" href="/plugins/sweetalert2/sweetalert2.min.css">
-  <!-- summernote -->
-  <link rel="stylesheet" href="/plugins/summernote/summernote-bs4.min.css">
-  <!-- Select2 -->
-  <link rel="stylesheet" href="/plugins/select2/css/select2.min.css">
-  <link rel="stylesheet" href="/plugins/select2-bootstrap4-theme/select2-bootstrap4.min.css">
-  <!-- Google Fonts: Sarabun, Prompt, Plus Jakarta Sans -->
+  <!-- Google Fonts: Prompt, Plus Jakarta Sans, Sarabun -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&family=Sarabun:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap"
     rel="stylesheet">
-  <!-- Main Style -->
-  <link rel="stylesheet" href="/include/css/main.css">
-  <!-- DataTables -->
-  <link rel="stylesheet" href="/plugins/datatables-bs4/css/dataTables.bootstrap4.min.css">
-  <link rel="stylesheet" href="/plugins/datatables-responsive/css/responsive.bootstrap4.min.css">
-  <link rel="stylesheet" href="/plugins/datatables-buttons/css/buttons.bootstrap4.min.css">
-  <!-- pace-progress -->
-  <link rel="stylesheet" href="/plugins/pace-progress/themes/orange/pace-theme-minimal.css">
-  <!-- Datepicker -->
-  <link href="/plugins/bootstrap-datepicker-thai-thai/css/datepicker.css" rel="stylesheet" media="screen">
 
-  <!-- Custom App Scripts -->
-  <!-- <script src="/include/js/app.js"></script> -->
-  <script src="/include/js/jquery.cookie.js"></script>
+  <!-- Font Awesome 6 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Theme style (AdminLTE 3.2.0 / Bootstrap 4.6) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
+
+  <!-- Select2 & SweetAlert2 CSS -->
+  <link rel="stylesheet" href="/plugins/select2/css/select2.min.css">
+  <link rel="stylesheet" href="/plugins/select2-bootstrap4-theme/select2-bootstrap4.min.css">
+  <link rel="stylesheet" href="/plugins/sweetalert2/sweetalert2.min.css">
+
+  <!-- LMSS Unified Design System v3.0 -->
+  <link rel="stylesheet" href="/include/css/main.css">
+
+  <!-- jQuery (kept lightweight for AdminLTE pushmenu & legacy Select2 fallback) -->
+  <script src="/plugins/jquery/jquery.min.js"></script>
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="/images/obec.png" />
   <link rel="shortcut icon" type="image/png" href="/images/obec.png" />
-
 </head>
 
-<body class="hold-transition sidebar-mini layout-fixed layout-footer-fixed pace-minimal">
+<body class="hold-transition sidebar-mini layout-fixed">
   <div id="root" class="wrapper"></div>
   <script type="module" src="/src/main.jsx"></script>
 
-  <!-- Post-load Scripts -->
-  <!-- Bootstrap 4 -->
-  <script src="/plugins/bootstrap/js/bootstrap.bundle.min.js"></script>
-  <!-- ChartJS -->
-  <script src="/plugins/chart.js/Chart.min.js"></script>
-  <!-- daterangepicker -->
-  <script src="/plugins/moment/moment.min.js"></script>
-  <script src="/plugins/daterangepicker/daterangepicker.js"></script>
-  <!-- Tempusdominus Bootstrap 4 -->
-  <script src="/plugins/tempusdominus-bootstrap-4/js/tempusdominus-bootstrap-4.min.js"></script>
-  <!-- Summernote -->
-  <script src="/plugins/summernote/summernote-bs4.min.js"></script>
-  <!-- overlayScrollbars -->
-  <script src="/plugins/overlayScrollbars/js/jquery.overlayScrollbars.min.js"></script>
-  <!-- SweetAlert2 -->
-  <script src="/plugins/sweetalert2/sweetalert2.all.min.js"></script>
-  <!-- AdminLTE App (CDN AdminLTE 3.2.0) -->
-  <script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
-
-  <!-- DataTables & Plugins -->
-  <script src="/plugins/datatables/jquery.dataTables.min.js"></script>
-  <script src="/plugins/datatables-bs4/js/dataTables.bootstrap4.min.js"></script>
-  <script src="/plugins/datatables-responsive/js/dataTables.responsive.min.js"></script>
-  <script src="/plugins/datatables-responsive/js/responsive.bootstrap4.min.js"></script>
-  <script src="/plugins/datatables-buttons/js/dataTables.buttons.min.js"></script>
-  <script src="/plugins/datatables-buttons/js/buttons.bootstrap4.min.js"></script>
-  <script src="/plugins/jszip/jszip.min.js"></script>
-  <script src="/plugins/pdfmake/pdfmake.min.js"></script>
-  <script src="/plugins/pdfmake/vfs_fonts.js"></script>
-  <script src="/plugins/datatables-buttons/js/buttons.html5.min.js"></script>
-  <script src="/plugins/datatables-buttons/js/buttons.print.min.js"></script>
-  <script src="/plugins/datatables-buttons/js/buttons.colVis.min.js"></script>
-
-  <!-- Bootstrap Datepicker -->
-  <script src="/plugins/bootstrap-datepicker-thai-thai/js/bootstrap-datepicker.js"></script>
-  <script src="/plugins/bootstrap-datepicker-thai-thai/js/bootstrap-datepicker-thai.js"></script>
-  <script src="/plugins/bootstrap-datepicker-thai-thai/js/locales/bootstrap-datepicker.th.js"></script>
-  <!-- pace-progress -->
-  <script src="/plugins/pace-progress/pace.min.js"></script>
-  <!-- Select2 -->
-  <script src="/plugins/select2/js/select2.full.min.js"></script>
-
+  <!-- Essential UI Scripts (Deferred after app mount) -->
+  <script src="/plugins/bootstrap/js/bootstrap.bundle.min.js" defer></script>
+  <script src="/plugins/select2/js/select2.full.min.js" defer></script>
+  <script src="/plugins/sweetalert2/sweetalert2.all.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js" defer></script>
 </body>
 
 </html>

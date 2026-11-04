@@ -6,6 +6,7 @@ import { useUserProfile } from '../hooks/useUserProfile';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
 import { showLineShareDialog } from '../utils/lineNotifyHelper';
+import { extractYouTubeId, getYouTubeWatchUrl, getYouTubeEmbedUrl } from '../utils/scoreCalculator';
 
 const useQuery = () => {
   const { search } = useLocation();
@@ -34,7 +35,7 @@ const REFLECTION_PRESETS = [
 const SendClip = () => {
   const navigate = useNavigate();
   const query = useQuery();
-  const planid = query.get('planid') || '';
+  const planid = query.get('planid') || query.get('edit') || '';
   const { profile, loading: profileLoading } = useUserProfile();
 
   const [loading, setLoading] = useState(true);
@@ -49,18 +50,14 @@ const SendClip = () => {
   const [clipUrl, setClipUrl] = useState('');
   const [afterTeaching, setAfterTeaching] = useState('');
 
-  // Extract YouTube ID reliably from various formats
+  // Extract YouTube ID reliably from various formats via scoreCalculator
   const videoId = useMemo(() => {
-    if (!clipUrl) return '';
-    const trimmed = clipUrl.trim();
-    // Direct 11-char ID
-    if (/^[A-Za-z0-9_-]{11}$/.test(trimmed)) {
-      return trimmed;
-    }
-    // URLs
-    const match = trimmed.match(/(?:v=|\/be\/|\/embed\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
-    return match ? match[1] : '';
+    return extractYouTubeId(clipUrl);
   }, [clipUrl]);
+
+  const embedUrl = useMemo(() => {
+    return videoId ? getYouTubeEmbedUrl(videoId) : '';
+  }, [videoId]);
 
   useEffect(() => {
     let mounted = true;
@@ -102,7 +99,9 @@ const SendClip = () => {
           const planData = planRes.data || null;
           setPlan(planData);
           if (planData?.plan_clip) {
-            setClipUrl(planData.plan_clip);
+            // Reconstruct full watch URL if it's an 11-char ID
+            const fullUrl = getYouTubeWatchUrl(planData.plan_clip);
+            setClipUrl(fullUrl || planData.plan_clip);
           }
           if (planData?.plan_after_teaching) {
             setAfterTeaching(planData.plan_after_teaching);
@@ -120,10 +119,31 @@ const SendClip = () => {
     return () => { mounted = false; };
   }, [planid, profileLoading]);
 
+  // Ownership & locked evaluation check
+  const isOwner = useMemo(() => {
+    if (!plan || !profile) return true;
+    const role = profile.level || profile.level_id || '';
+    if (role === 'admin' || role === 'root') return true;
+    return String(plan.people_id).trim() === String(profile.people_id).trim();
+  }, [plan, profile]);
+
+  const isScoredAndLocked = useMemo(() => {
+    if (!plan) return false;
+    return Number(plan.plan_status) >= 6;
+  }, [plan]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!planid || !plan) {
       Swal.fire('ข้อผิดพลาด', 'ไม่พบข้อมูลแผนการสอน', 'error');
+      return;
+    }
+    if (!isOwner) {
+      Swal.fire('ไม่มีสิทธิ์เข้าถึง', 'ท่านไม่สามารถแก้ไขคลิปการสอนของครูท่านอื่นได้', 'error');
+      return;
+    }
+    if (isScoredAndLocked) {
+      Swal.fire('แผนถูกประเมินแล้ว', 'แผนการสอนนี้ได้รับการประเมินจากคณะกรรมการแล้ว ไม่สามารถแก้ไขคลิปได้', 'warning');
       return;
     }
     if (!clipUrl.trim()) {
@@ -182,7 +202,7 @@ const SendClip = () => {
   };
 
   if (loading || profileLoading) {
-    return <LoadingSpinner text="กำลังโหลดข้อมูลแผนการสอน..." />;
+    return <LoadingSpinner message="กำลังโหลดข้อมูลแผนการสอน..." />;
   }
 
   if (!plan) {
@@ -190,7 +210,8 @@ const SendClip = () => {
       <EmptyState
         title="ส่งคลิปการสอน"
         message="ไม่พบข้อมูลแผนการสอน หรือรหัสแผนไม่ถูกต้อง"
-        type="warning"
+        actionLabel="กลับหน้ารายการแผน"
+        actionTo="/statusplan"
       />
     );
   }
@@ -200,7 +221,7 @@ const SendClip = () => {
       <div className="row justify-content-center">
         <div className="col-12 col-xl-10">
           <div className="card card-success card-outline shadow-sm" style={{ borderRadius: '12px' }}>
-            <div className="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap">
+            <div className="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
               <h4 className="font-weight-bold m-0 text-success">
                 <i className="fa-solid fa-video mr-2"></i> ส่งคลิปการสอนและบันทึกหลังสอน
               </h4>
@@ -210,6 +231,13 @@ const SendClip = () => {
             </div>
 
             <div className="card-body p-4">
+              {isScoredAndLocked && (
+                <div className="alert alert-warning mb-4">
+                  <i className="fa-solid fa-lock mr-2"></i>
+                  <strong>แผนนี้ได้รับการประเมินแล้ว:</strong> ข้อมูลคลิปการสอนถูกล็อกเพื่อรักษาความถูกต้องของผลการประเมิน
+                </div>
+              )}
+
               {/* Plan Info Card */}
               <div className="card border-0 mb-4" style={{ background: '#f8fafc', borderRadius: '10px' }}>
                 <div className="card-body p-3">
@@ -239,7 +267,7 @@ const SendClip = () => {
                     </span>
                     <span>
                       <i className="fa-regular fa-clock mr-1"></i>
-                      เวลา: {plan?.teach_timestart} - {plan?.teach_timeend} ({plan?.teach_minute} นาที)
+                      เวลา: {plan?.teach_timestart || '-'} - {plan?.teach_timeend || '-'} ({plan?.teach_minute || 0} นาที)
                     </span>
                     {plan?.plan_file && (
                       <a
@@ -248,7 +276,7 @@ const SendClip = () => {
                         rel="noreferrer"
                         className="text-danger font-weight-bold"
                       >
-                        <i className="fa-regular fa-file-pdf mr-1"></i> ดูไฟล์แผน (PDF)
+                        <i className="fa-regular fa-file-pdf mr-1"></i> ดูเอกสารแผนการสอน (PDF)
                       </a>
                     )}
                   </div>
@@ -257,141 +285,118 @@ const SendClip = () => {
 
               {/* Form */}
               <form onSubmit={handleSubmit}>
-                <div className="row">
-                  {/* Left Column: Post-teaching reflection */}
-                  <div className="col-12 col-lg-6 mb-4">
-                    <div className="d-flex justify-content-between align-items-center mb-1">
-                      <label htmlFor="plan_after_teaching" className="font-weight-bold mb-0">
-                        <i className="fa-solid fa-pen-to-square text-primary mr-1"></i> บันทึกหลังการจัดกิจกรรมการเรียนรู้ :
-                      </label>
-                      <span className="badge badge-light border text-muted" style={{ fontSize: '11px' }}>
-                        <i className="fa-solid fa-wand-magic-sparkles text-primary mr-1"></i> คลิกเลือกข้อความสำเร็จรูป
-                      </span>
-                    </div>
+                {/* 1. YouTube Link */}
+                <div className="form-group mb-4">
+                  <label className="font-weight-bold text-dark">
+                    <i className="fa-brands fa-youtube text-danger mr-1"></i> ลิงก์วิดีโอคลิปการสอนบน YouTube <span className="text-danger">*</span>
+                  </label>
+                  <p className="small text-muted mb-2">
+                    รองรับ URL รูปแบบเต็ม (youtube.com/watch?v=...), รูปแบบย่อ (youtu.be/...), Shorts หรือรหัสวิดีโอ 11 หลัก
+                  </p>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="ตัวอย่าง: https://www.youtube.com/watch?v=dQw4w9WgXcQ หรือ https://youtu.be/..."
+                    value={clipUrl}
+                    onChange={(e) => setClipUrl(e.target.value)}
+                    disabled={isScoredAndLocked}
+                    required
+                  />
 
-                    {/* Quick Reflection Presets */}
-                    <div className="d-flex flex-wrap mb-2">
-                      {REFLECTION_PRESETS.map((preset, pIdx) => (
+                  {/* Live Video Preview */}
+                  {videoId && embedUrl && (
+                    <div className="mt-3 p-3 bg-light rounded border">
+                      <div className="d-flex justify-content-between align-items-center mb-2">
+                        <small className="text-success font-weight-bold">
+                          <i className="fa-solid fa-circle-check mr-1"></i> ตรวจพบรหัสวิดีโอ: {videoId}
+                        </small>
+                        <a
+                          href={`https://www.youtube.com/watch?v=${videoId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-xs btn-outline-danger"
+                        >
+                          <i className="fa-brands fa-youtube mr-1"></i> เปิดใน YouTube
+                        </a>
+                      </div>
+                      <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: '8px' }}>
+                        <iframe
+                          title="YouTube video player"
+                          src={embedUrl}
+                          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Reflection Textarea */}
+                <div className="form-group mb-4">
+                  <div className="d-flex justify-content-between align-items-center flex-wrap mb-1">
+                    <label className="font-weight-bold text-dark m-0">
+                      <i className="fa-solid fa-pen-nib text-primary mr-1"></i> บันทึกหลังการจัดการเรียนรู้ (Reflection)
+                    </label>
+                    <small className="text-muted">ความยาว {afterTeaching.length} ตัวอักษร</small>
+                  </div>
+                  <p className="small text-muted mb-2">
+                    ระบุผลการจัดกิจกรรมการเรียนรู้ ปัญหา/อุปสรรคที่พบ และแนวทางแก้ไขเพื่อการพัฒนา เพื่อเป็นข้อมูลประกอบการประเมิน ว.PA
+                  </p>
+
+                  {/* Preset Buttons */}
+                  {!isScoredAndLocked && (
+                    <div className="d-flex flex-wrap gap-2 mb-2">
+                      <span className="small text-muted mr-1 align-self-center">ข้อความแนะนำ:</span>
+                      {REFLECTION_PRESETS.map((preset, idx) => (
                         <button
-                          key={pIdx}
+                          key={idx}
                           type="button"
-                          className="btn btn-outline-info btn-xs mr-1 mb-1 shadow-sm"
-                          style={{ borderRadius: '15px', fontSize: '12px', padding: '3px 10px' }}
+                          className="btn btn-xs btn-outline-secondary"
                           onClick={() => {
-                            setAfterTeaching((prev) => {
-                              const cur = (prev || '').trim();
-                              if (!cur) return preset.text;
-                              if (cur.includes(preset.text)) return prev;
-                              return `${cur}\n\n${preset.text}`;
-                            });
+                            setAfterTeaching((prev) => (prev ? `${prev}\n${preset.text}` : preset.text));
                           }}
                         >
                           {preset.label}
                         </button>
                       ))}
-                      {afterTeaching && (
-                        <button
-                          type="button"
-                          className="btn btn-outline-secondary btn-xs mb-1"
-                          style={{ borderRadius: '15px', fontSize: '11px', padding: '3px 8px' }}
-                          onClick={() => setAfterTeaching('')}
-                          title="ล้างข้อความ"
-                        >
-                          <i className="fa-solid fa-eraser mr-1"></i> ล้าง
-                        </button>
-                      )}
                     </div>
+                  )}
 
-                    <textarea
-                      name="plan_after_teaching"
-                      id="plan_after_teaching"
-                      className="form-control"
-                      rows="8"
-                      placeholder="ระบุผลการจัดการเรียนรู้ ปัญหาหรืออุปสรรคที่พบ และแนวทางแก้ไขปรับปรุง หรือคลิกข้อความสำเร็จรูปด้านบน..."
-                      value={afterTeaching}
-                      onChange={(e) => setAfterTeaching(e.target.value)}
-                    ></textarea>
-                    <small className="text-muted d-block mt-1">
-                      ข้อมูลนี้จะแสดงให้คณะกรรมการนิเทศพิจารณาประกอบการให้คะแนน
-                    </small>
-                  </div>
+                  <textarea
+                    rows={6}
+                    className="form-control"
+                    placeholder="บันทึกผลการสอน เช่น นักเรียนมีความสนใจและมีส่วนร่วมในกิจกรรมกลุ่ม ผลงานนักเรียนบรรลุตามตัวชี้วัด..."
+                    value={afterTeaching}
+                    onChange={(e) => setAfterTeaching(e.target.value)}
+                    disabled={isScoredAndLocked}
+                  />
+                </div>
 
-                  {/* Right Column: YouTube Clip URL & Preview */}
-                  <div className="col-12 col-lg-6 mb-4">
-                    <label htmlFor="plan_clip" className="font-weight-bold mb-1">
-                      <i className="fa-brands fa-youtube text-danger mr-1"></i> ลิงก์คลิปวิดีโอการสอน (YouTube URL) :
-                    </label>
-                    <div className="input-group mb-2">
-                      <div className="input-group-prepend">
-                        <span className="input-group-text bg-white">
-                          <i className="fa-brands fa-youtube text-danger"></i>
-                        </span>
-                      </div>
-                      <input
-                        type="text"
-                        className="form-control"
-                        id="plan_clip"
-                        placeholder="วางลิงก์ YouTube เช่น https://youtu.be/..."
-                        value={clipUrl}
-                        onChange={(e) => setClipUrl(e.target.value)}
-                        required
-                      />
-                    </div>
-                    <small className="text-muted d-block mb-3">
-                      รองรับทั้งลิงก์แบบปกติ, youtu.be, shorts หรือใส่เฉพาะ Video ID
-                    </small>
+                {/* Submit Buttons */}
+                <div className="d-flex justify-content-between align-items-center pt-3 border-top">
+                  <Link to="/statusplan" className="btn btn-light border px-3">
+                    <i className="fa-solid fa-arrow-left mr-1"></i> ย้อนกลับ
+                  </Link>
 
-                    {/* Responsive Video Preview Container */}
-                    <div
-                      className="rounded border d-flex align-items-center justify-content-center"
-                      style={{
-                        background: '#0f172a',
-                        aspectRatio: '16/9',
-                        width: '100%',
-                        overflow: 'hidden',
-                        position: 'relative',
-                        borderRadius: '10px',
-                      }}
-                    >
-                      {videoId ? (
-                        <iframe
-                          src={`https://www.youtube-nocookie.com/embed/${videoId}`}
-                          title="YouTube video preview"
-                          style={{ width: '100%', height: '100%', border: 'none' }}
-                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                          allowFullScreen
-                        ></iframe>
-                      ) : (
-                        <div className="text-center p-3 text-light" style={{ opacity: 0.6 }}>
-                          <i className="fa-brands fa-youtube fa-3x mb-2 text-danger"></i>
-                          <p className="mb-0 small">ตัวอย่างวิดีโอจะแสดงที่นี่ เมื่อท่านวางลิงก์ YouTube</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Buttons */}
-                  <div className="col-12 pt-3 border-top d-flex gap-2 justify-content-end flex-wrap">
-                    <Link
-                      to="/statusplan"
-                      className="btn btn-light border px-4 font-weight-bold"
-                      style={{ borderRadius: '10px' }}
-                    >
-                      <i className="fa-solid fa-arrow-left mr-1"></i> ย้อนกลับ
-                    </Link>
+                  {!isScoredAndLocked && (
                     <button
                       type="submit"
-                      disabled={submitting}
-                      className="btn btn-success px-4 font-weight-bold shadow-sm"
-                      style={{ borderRadius: '10px' }}
+                      className="btn btn-success font-weight-bold px-4 shadow-sm"
+                      disabled={submitting || !videoId}
                     >
                       {submitting ? (
-                        <span><span className="spinner-border spinner-border-sm mr-1"></span> กำลังบันทึก...</span>
+                        <>
+                          <span className="spinner-border spinner-border-sm mr-2" role="status" aria-hidden="true" />
+                          กำลังบันทึก...
+                        </>
                       ) : (
-                        <span><i className="fa-solid fa-paper-plane mr-1"></i> บันทึกและส่งคลิปการสอน</span>
+                        <>
+                          <i className="fa-solid fa-paper-plane mr-1"></i> บันทึกและส่งคลิปการสอน
+                        </>
                       )}
                     </button>
-                  </div>
+                  )}
                 </div>
               </form>
             </div>

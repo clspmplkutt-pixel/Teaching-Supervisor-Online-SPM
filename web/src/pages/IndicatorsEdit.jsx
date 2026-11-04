@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const IndicatorsEdit = () => {
   const navigate = useNavigate();
@@ -12,19 +13,23 @@ const IndicatorsEdit = () => {
   const [saving, setSaving] = useState(false);
   const [row, setRow] = useState(null);
   const [indicatorTypes, setIndicatorTypes] = useState([]);
-  const [contentStandard, setContentStandard] = useState('');
   const [teachSubjectName, setTeachSubjectName] = useState('');
   const [gradeLevelName, setGradeLevelName] = useState('');
 
   const [form, setForm] = useState({
     indicator_id: '',
     indicator_group: '',
+    indicators_name: '',
     indicators_details: '',
   });
 
   useEffect(() => {
     let mounted = true;
     const load = async () => {
+      if (!id) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       try {
         const [{ data: rowData, error: rowError }, typeRes] = await Promise.all([
@@ -33,9 +38,12 @@ const IndicatorsEdit = () => {
         ]);
         if (rowError) throw rowError;
         if (typeRes.error) throw typeRes.error;
-        if (!rowData) return;
+        if (!rowData) {
+          if (mounted) setLoading(false);
+          return;
+        }
 
-        const [teachRes, gradeRes, contentRes] = await Promise.all([
+        const [teachRes, gradeRes] = await Promise.all([
           supabase
             .from('tbl_system_Teach_Subject')
             .select('teach_subject')
@@ -46,35 +54,27 @@ const IndicatorsEdit = () => {
             .select('grade_level_name')
             .eq('grade_level_id', rowData.grade_level_id)
             .maybeSingle(),
-          supabase
-            .from('tbl_content_standards')
-            .select('*')
-            .eq('content_s_name', rowData.content_s_name)
-            .maybeSingle(),
         ]);
-        if (teachRes.error) throw teachRes.error;
-        if (gradeRes.error) throw gradeRes.error;
-        if (contentRes.error) throw contentRes.error;
 
         if (mounted) {
           setRow(rowData);
           setIndicatorTypes(typeRes.data || []);
-          setTeachSubjectName(teachRes.data?.teach_subject || '');
-          setGradeLevelName(gradeRes.data?.grade_level_name || '');
-          setContentStandard(contentRes.data ? `${contentRes.data.content_s_name} ${contentRes.data.content_s_detail}` : rowData.content_s_name);
+          setTeachSubjectName(teachRes.data?.teach_subject || rowData.teach_subject_id);
+          setGradeLevelName(gradeRes.data?.grade_level_name || rowData.grade_level_id);
           setForm({
             indicator_id: rowData.indicator_id || '',
             indicator_group: rowData.indicator_group || '',
+            indicators_name: rowData.indicators_name || '',
             indicators_details: rowData.indicators_details || '',
           });
         }
       } catch (err) {
-        console.error(err);
+        console.error('IndicatorsEdit error:', err);
       } finally {
         if (mounted) setLoading(false);
       }
     };
-    if (id) load();
+    load();
     return () => { mounted = false; };
   }, [id]);
 
@@ -85,112 +85,136 @@ const IndicatorsEdit = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (saving) return;
     setSaving(true);
     try {
-      const detail = (form.indicators_details || '').replace(/[\r\n]/g, '').trim();
       const { error } = await supabase
         .from('tbl_indicators')
         .update({
-          indicator_group: form.indicator_group,
           indicator_id: form.indicator_id,
-          indicators_details: detail,
+          indicator_group: form.indicator_group,
+          indicators_name: form.indicators_name,
+          indicators_details: form.indicators_details,
         })
         .eq('id', id);
       if (error) throw error;
-      Swal.fire('สำเร็จ', 'แก้ไขข้อมูลสำเร็จ', 'success');
-      navigate(`/indicators?teach_subject_id=${row.teach_subject_id}&grade_level_id=${row.grade_level_id}`);
+      Swal.fire('สำเร็จ', 'แก้ไขข้อมูลตัวชี้วัดเรียบร้อยแล้ว', 'success');
+      navigate('/indicators');
     } catch (err) {
       console.error(err);
-      Swal.fire('Error', 'ไม่สามารถแก้ไขข้อมูลได้ เกิดข้อผิดพลาด', 'error');
-      navigate('/indicators');
+      Swal.fire('Error', 'ไม่สามารถแก้ไขข้อมูลได้: ' + err.message, 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading || !row) {
+  if (loading) {
+    return <LoadingSpinner title="แก้ไขตัวชี้วัดรายวิชา" message="กำลังโหลดข้อมูล..." />;
+  }
+
+  if (!id || !row) {
     return (
-      <div className="text-center p-4">
-        <div className="spinner-border text-primary" role="status"></div>
-        <p className="mt-2">กำลังโหลดข้อมูล...</p>
+      <div className="container py-4 text-center">
+        <p className="text-danger">ไม่พบข้อมูลตัวชี้วัดที่ต้องการแก้ไข</p>
+        <Link to="/indicators" className="btn btn-secondary btn-sm">กลับหน้ารายการตัวชี้วัด</Link>
       </div>
     );
   }
 
   return (
-    <div className="row">
-      <div className="col-sm-12 col-md-12 col-lg-12 col-xl-12">
-        <div className="card card-success">
-          <div className="card-header">
-            <h3 className="card-title"><i className="fa-solid fa-school-circle-check"></i> แก้ไขตัวชี้วัดรายวิชา</h3>
-          </div>
-          <div className="card-body">
-            <form onSubmit={handleSubmit}>
-              <div className="mb-3 mt-3">
-                <strong>กลุ่มสาระการเรียนรู้ : </strong> <span className="text-success">{teachSubjectName}</span>
+    <div className="container-fluid py-3">
+      <div className="row justify-content-center">
+        <div className="col-lg-8">
+          <div className="card shadow-sm border-0" style={{ borderRadius: '12px' }}>
+            <div className="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+              <h5 className="font-weight-bold mb-0 text-dark">
+                <i className="fa-solid fa-pen-to-square text-warning mr-2"></i> แก้ไขตัวชี้วัดรายวิชา #{id}
+              </h5>
+            </div>
+
+            <div className="card-body p-4">
+              <div className="row mb-4 p-3 bg-light rounded">
+                <div className="col-md-4">
+                  <div className="text-muted small">กลุ่มสาระการเรียนรู้</div>
+                  <div className="font-weight-bold">{teachSubjectName}</div>
+                </div>
+                <div className="col-md-4">
+                  <div className="text-muted small">ระดับชั้น</div>
+                  <div className="font-weight-bold">{gradeLevelName}</div>
+                </div>
+                <div className="col-md-4">
+                  <div className="text-muted small">มาตรฐานการเรียนรู้</div>
+                  <div className="font-weight-bold text-primary">{row.content_s_name}</div>
+                </div>
               </div>
-              <div className="mb-3 mt-3">
-                <strong>ระดับชั้น : </strong> <span className="text-success">{gradeLevelName}</span>
-              </div>
-              <div className="mb-3">
-                <strong>มาตรฐานการเรียนรู้ : </strong> <span className="text-success">{contentStandard}</span>
-              </div>
-              <div className="mb-3">
-                <strong>ชื่อตัวชี้วัดการเรียนรู้ : </strong> <span className="text-success">{row.indicators_name}</span>
-              </div>
-              <div className="mb-3">
-                <label htmlFor="indicator_id">ประเภทตัวชี้วัด: </label>
-                <select
-                  className="form-control form-select-lg"
-                  name="indicator_id"
-                  id="indicator_id"
-                  value={form.indicator_id}
-                  onChange={handleChange}
-                  required
-                >
-                  <option value="">ประเภทตัวชี้วัด</option>
-                  {indicatorTypes.map((rowType) => (
-                    <option key={rowType.indicator_id} value={rowType.indicator_id}>{rowType.indicator_name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="mb-3">
-                <label htmlFor="indicator_group">กลุ่มตัวชี้วัดการเรียนรู้ : </label>
-                <input
-                  type="number"
-                  className="form-control"
-                  id="indicator_group"
-                  name="indicator_group"
-                  placeholder="กลุ่มตัวชี้วัดการเรียนรู้"
-                  step="1"
-                  value={form.indicator_group}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-              <div className="mb-3">
-                <label htmlFor="indicators_details">คำอธิบายตัวชี้วัดการเรียนรู้: <span className="text-danger">ไม่ต้องกดปุ่ม Enter เพื่อขึ้นบรรทัดใหม่</span></label>
-                <textarea
-                  name="indicators_details"
-                  id="indicators_details"
-                  cols="30"
-                  rows="10"
-                  className="form-control"
-                  value={form.indicators_details}
-                  onChange={handleChange}
-                ></textarea>
-              </div>
-              <div className="mb-3">
-                <button type="submit" className="btn btn-primary mt-3" disabled={saving}>บันทึก</button>
-                <button
-                  type="button"
-                  className="btn btn-danger mt-3 ml-2"
-                  onClick={() => navigate(`/indicators?teach_subject_id=${row.teach_subject_id}&grade_level_id=${row.grade_level_id}`)}
-                >
-                  ยกเลิก
-                </button>
-              </div>
-            </form>
+
+              <form onSubmit={handleSubmit}>
+                <div className="row">
+                  <div className="col-md-6 mb-3">
+                    <label className="font-weight-bold small text-muted">ประเภทตัวชี้วัด:</label>
+                    <select
+                      name="indicator_id"
+                      className="form-control"
+                      value={form.indicator_id}
+                      onChange={handleChange}
+                      required
+                    >
+                      <option value="">-- เลือกประเภทตัวชี้วัด --</option>
+                      {indicatorTypes.map((t) => (
+                        <option key={t.indicator_id} value={t.indicator_id}>
+                          {t.indicator_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="col-md-6 mb-3">
+                    <label className="font-weight-bold small text-muted">กลุ่มที่ (indicator_group):</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      name="indicator_group"
+                      value={form.indicator_group}
+                      onChange={handleChange}
+                      required
+                    />
+                  </div>
+
+                  <div className="col-md-12 mb-3">
+                    <label className="font-weight-bold small text-muted">ชื่อตัวชี้วัด (เช่น ท 1.1 ม.1/1):</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      name="indicators_name"
+                      value={form.indicators_name}
+                      onChange={handleChange}
+                      required
+                    />
+                  </div>
+
+                  <div className="col-md-12 mb-3">
+                    <label className="font-weight-bold small text-muted">รายละเอียดคำอธิบายตัวชี้วัด:</label>
+                    <textarea
+                      rows={4}
+                      className="form-control"
+                      name="indicators_details"
+                      value={form.indicators_details}
+                      onChange={handleChange}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
+                  <Link to="/indicators" className="btn btn-secondary px-3">
+                    ยกเลิก
+                  </Link>
+                  <button type="submit" className="btn btn-warning font-weight-bold text-dark px-4" disabled={saving}>
+                    {saving ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       </div>

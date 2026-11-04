@@ -1,13 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
+import LoadingSpinner from '../components/LoadingSpinner';
+import EmptyState from '../components/EmptyState';
+import { showToast } from '../utils/toast';
 
 const SchoolSizeEdit = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const idParam = searchParams.get('schoolsize_id') || '';
-  const [loading, setLoading] = useState(true);
+  const idParam = (searchParams.get('schoolsize_id') || '').trim();
+
+  const [loading, setLoading] = useState(Boolean(idParam));
+  const [notFound, setNotFound] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     schoolsize_id: '',
@@ -18,35 +23,50 @@ const SchoolSizeEdit = () => {
   });
 
   useEffect(() => {
+    if (!idParam) {
+      setLoading(false);
+      return;
+    }
+
     let mounted = true;
     const load = async () => {
       setLoading(true);
+      setNotFound(false);
       try {
-        const { data, error } = await supabase.from('tbl_schoolsize').select('*').eq('schoolsize_id', idParam).maybeSingle();
+        const { data, error } = await supabase
+          .from('tbl_schoolsize')
+          .select('*')
+          .eq('schoolsize_id', idParam)
+          .maybeSingle();
         if (error) throw error;
+        if (!mounted) return;
+
         if (!data) {
-          Swal.fire('Error', 'ไม่พบข้อมูลขนาดโรงเรียน', 'error');
-          navigate('/school_size');
+          setNotFound(true);
           return;
         }
-        if (mounted) {
-          setForm({
-            schoolsize_id: data.schoolsize_id || '',
-            schoolsize_name: data.schoolsize_name || '',
-            schoolsize_details: data.schoolsize_details || '',
-            schoolsize_min: data.schoolsize_min || '',
-            schoolsize_max: data.schoolsize_max || '',
-          });
-        }
+        setForm({
+          schoolsize_id: data.schoolsize_id ?? '',
+          schoolsize_name: data.schoolsize_name ?? '',
+          schoolsize_details: data.schoolsize_details ?? '',
+          schoolsize_min: data.schoolsize_min ?? '',
+          schoolsize_max: data.schoolsize_max ?? '',
+        });
       } catch (err) {
         console.error(err);
+        if (mounted) {
+          Swal.fire('ข้อผิดพลาด', err.message || 'ไม่สามารถโหลดเกณฑ์ขนาดโรงเรียนได้', 'error');
+        }
       } finally {
         if (mounted) setLoading(false);
       }
     };
-    if (idParam) load();
-    return () => { mounted = false; };
-  }, [idParam, navigate]);
+
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [idParam]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -56,9 +76,8 @@ const SchoolSizeEdit = () => {
   const validate = () => {
     const min = Number(form.schoolsize_min);
     const max = Number(form.schoolsize_max);
-    if (Number.isNaN(min) || Number.isNaN(max)) return true;
-    if (max !== 0 && min > max) {
-      Swal.fire('ผิดพลาด', 'จำนวนนักเรียนที่น้อยที่สุด มากกว่า จำนวนนักเรียนที่มากที่สุดไม่ได้', 'error');
+    if (!Number.isNaN(min) && !Number.isNaN(max) && max !== 0 && min > max) {
+      Swal.fire('ข้อมูลไม่ถูกต้อง', 'จำนวนนักเรียนที่น้อยที่สุด ต้องไม่มากกว่าจำนวนนักเรียนที่มากที่สุด', 'warning');
       return false;
     }
     return true;
@@ -66,7 +85,8 @@ const SchoolSizeEdit = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (saving || !validate()) return;
+
     setSaving(true);
     try {
       const { error } = await supabase
@@ -78,59 +98,131 @@ const SchoolSizeEdit = () => {
         })
         .eq('schoolsize_id', form.schoolsize_id);
       if (error) throw error;
-      Swal.fire('สำเร็จ', 'แก้ไขข้อมูลสำเร็จ', 'success');
+
+      showToast('แก้ไขข้อมูลขนาดโรงเรียนสำเร็จ');
       navigate('/school_size');
     } catch (err) {
       console.error(err);
-      Swal.fire('Error', 'ไม่สามารถแก้ไขข้อมูลได้ เกิดข้อผิดพลาด', 'error');
+      Swal.fire('ไม่สามารถบันทึกได้', err.message || 'เกิดข้อผิดพลาดในการแก้ไขข้อมูล', 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) {
+  if (!idParam || notFound) {
     return (
-      <div className="text-center p-4">
-        <div className="spinner-border text-primary" role="status"></div>
-        <p className="mt-2">กำลังโหลดข้อมูล...</p>
-      </div>
+      <EmptyState
+        type="warning"
+        icon="fa-chart-simple"
+        title={!idParam ? 'ไม่ได้ระบุรหัสขนาดโรงเรียน' : 'ไม่พบข้อมูลขนาดโรงเรียน'}
+        message={
+          !idParam
+            ? 'กรุณาเลือกรายการขนาดโรงเรียนที่ต้องการแก้ไขจากหน้าเกณฑ์ขนาดโรงเรียน'
+            : `ไม่พบเกณฑ์ขนาดโรงเรียนรหัส "${idParam}"`
+        }
+        actionLabel="กลับหน้าเกณฑ์ขนาดโรงเรียน"
+        onAction={() => navigate('/school_size')}
+      />
     );
   }
 
+  if (loading) {
+    return <LoadingSpinner message="กำลังโหลดข้อมูลขนาดโรงเรียน..." />;
+  }
+
   return (
-    <div className="row">
-      <div className="col-sm-12 col-md-12 col-lg-8 col-xl-8">
-        <div className="card card-success">
-          <div className="card-header">
-            <h3 className="card-title"><i className="fa-solid fa-school-circle-check"></i> แก้ไขข้อมูลขนาดโรงเรียน</h3>
+    <div className="row justify-content-center">
+      <div className="col-sm-12 col-md-10 col-lg-8">
+        <div className="card shadow-sm border-0">
+          <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <h3 className="card-title m-0 font-weight-bold text-dark">
+              <i className="fa-solid fa-pen-to-square text-info mr-2"></i>
+              แก้ไขเกณฑ์ขนาดโรงเรียน
+            </h3>
+            <Link to="/school_size" className="btn btn-sm btn-outline-secondary">
+              <i className="fa-solid fa-arrow-left mr-1"></i> ย้อนกลับ
+            </Link>
           </div>
           <div className="card-body">
             <form onSubmit={handleSubmit}>
               <div className="row">
-                <div className="mb-3 col-6">
-                  <label htmlFor="schoolsize_id">ID:</label>
-                  <input type="text" className="form-control" id="schoolsize_id" name="schoolsize_id" value={form.schoolsize_id} readOnly />
+                <div className="mb-3 col-md-4">
+                  <label htmlFor="schoolsize_id" className="form-label">รหัสขนาด</label>
+                  <input
+                    type="text"
+                    className="form-control bg-light"
+                    id="schoolsize_id"
+                    name="schoolsize_id"
+                    value={form.schoolsize_id}
+                    readOnly
+                  />
                 </div>
-                <div className="mb-3 col-6">
-                  <label htmlFor="schoolsize_name">ชื่อขนาดโรงเรียน:</label>
-                  <input type="text" className="form-control" id="schoolsize_name" name="schoolsize_name" value={form.schoolsize_name} readOnly />
+                <div className="mb-3 col-md-8">
+                  <label htmlFor="schoolsize_name" className="form-label">ชื่อขนาดโรงเรียน</label>
+                  <input
+                    type="text"
+                    className="form-control bg-light"
+                    id="schoolsize_name"
+                    name="schoolsize_name"
+                    value={form.schoolsize_name}
+                    readOnly
+                  />
                 </div>
               </div>
-              <div className="mb-3 col-12">
-                <label htmlFor="schoolsize_details">คำอธิบาย:</label>
-                <input type="text" className="form-control" id="schoolsize_details" name="schoolsize_details" value={form.schoolsize_details} onChange={handleChange} />
-              </div>
-              <div className="mb-3 col-12">
-                <label htmlFor="schoolsize_min">จำนวนนักเรียนที่น้อยที่สุด:</label>
-                <input type="number" className="form-control" id="schoolsize_min" name="schoolsize_min" value={form.schoolsize_min} onChange={handleChange} />
-              </div>
-              <div className="mb-3 col-12">
-                <label htmlFor="schoolsize_max">จำนวนนักเรียนที่มากที่สุด <span className="text-danger">(** หากใส่ 0 หมายถึงมากกว่าขึ้นไป ให้ใส่เฉพาะโรงเรียนขนาดใหญ่พิเศษเท่านั้น **)</span>:</label>
-                <input type="number" className="form-control" id="schoolsize_max" name="schoolsize_max" value={form.schoolsize_max} onChange={handleChange} />
-              </div>
+
               <div className="mb-3">
-                <button type="submit" className="btn btn-primary mt-3" disabled={saving}>บันทึก</button>
-                <button type="button" className="btn btn-danger mt-3 ml-2" onClick={() => navigate('/school_size')}>ยกเลิก</button>
+                <label htmlFor="schoolsize_details" className="form-label">คำอธิบายเกณฑ์</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  id="schoolsize_details"
+                  name="schoolsize_details"
+                  value={form.schoolsize_details}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div className="row">
+                <div className="mb-3 col-md-6">
+                  <label htmlFor="schoolsize_min" className="form-label">จำนวนนักเรียนที่น้อยที่สุด (คน)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    className="form-control"
+                    id="schoolsize_min"
+                    name="schoolsize_min"
+                    value={form.schoolsize_min}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div className="mb-3 col-md-6">
+                  <label htmlFor="schoolsize_max" className="form-label">จำนวนนักเรียนที่มากที่สุด (คน)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    className="form-control"
+                    id="schoolsize_max"
+                    name="schoolsize_max"
+                    value={form.schoolsize_max}
+                    onChange={handleChange}
+                    required
+                  />
+                  <small className="text-muted">
+                    หากใส่ 0 หมายถึงตั้งแต่จำนวนน้อยที่สุดขึ้นไป (สำหรับโรงเรียนขนาดใหญ่พิเศษ)
+                  </small>
+                </div>
+              </div>
+
+              <div className="d-flex flex-wrap gap-2 pt-2 border-top">
+                <button type="submit" className="btn btn-primary px-4 font-weight-bold" disabled={saving}>
+                  <i className="fa-solid fa-floppy-disk mr-1"></i>
+                  {saving ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
+                </button>
+                <Link to="/school_size" className="btn btn-light border px-4">
+                  ยกเลิก
+                </Link>
               </div>
             </form>
           </div>

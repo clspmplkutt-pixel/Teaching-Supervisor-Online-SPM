@@ -1,14 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
+import LoadingSpinner from '../components/LoadingSpinner';
+import EmptyState from '../components/EmptyState';
+import { showToast } from '../utils/toast';
 
 const ContentStandardsEdit = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const id = searchParams.get('id') || '';
+  const id = (searchParams.get('id') || '').trim();
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(id));
+  const [notFound, setNotFound] = useState(false);
   const [saving, setSaving] = useState(false);
   const [row, setRow] = useState(null);
   const [teachSubjectName, setTeachSubjectName] = useState('');
@@ -16,9 +20,15 @@ const ContentStandardsEdit = () => {
   const [detail, setDetail] = useState('');
 
   useEffect(() => {
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+
     let mounted = true;
     const load = async () => {
       setLoading(true);
+      setNotFound(false);
       try {
         const { data, error } = await supabase
           .from('tbl_content_standards')
@@ -26,7 +36,12 @@ const ContentStandardsEdit = () => {
           .eq('id', id)
           .maybeSingle();
         if (error) throw error;
-        if (!data) return;
+        if (!mounted) return;
+
+        if (!data) {
+          setNotFound(true);
+          return;
+        }
 
         const teachSubjectId = String(data.strands_id || '').slice(0, 4);
         const [subjectRes, strandsRes] = await Promise.all([
@@ -37,7 +52,7 @@ const ContentStandardsEdit = () => {
             .maybeSingle(),
           supabase
             .from('tbl_strands')
-            .select('strands_name')
+            .select('strands_order, strands_name')
             .eq('strands_id', data.strands_id)
             .maybeSingle(),
         ]);
@@ -46,85 +61,142 @@ const ContentStandardsEdit = () => {
 
         if (mounted) {
           setRow(data);
-          setTeachSubjectName(subjectRes.data?.teach_subject || '');
-          setStrandsName(strandsRes.data?.strands_name || '');
+          setTeachSubjectName(subjectRes.data?.teach_subject || teachSubjectId);
+          setStrandsName(
+            strandsRes.data
+              ? `สาระที่ ${strandsRes.data.strands_order}: ${strandsRes.data.strands_name}`
+              : data.strands_id
+          );
           setDetail(data.content_s_detail || '');
         }
       } catch (err) {
         console.error(err);
+        if (mounted) {
+          Swal.fire('ข้อผิดพลาด', err.message || 'ไม่สามารถโหลดข้อมูลมาตรฐานการเรียนรู้ได้', 'error');
+        }
       } finally {
         if (mounted) setLoading(false);
       }
     };
-    if (id) load();
-    return () => { mounted = false; };
+
+    load();
+    return () => {
+      mounted = false;
+    };
   }, [id]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (saving || !row) return;
+
     setSaving(true);
     try {
-      const cleaned = (detail || '').replace(/[\r\n]/g, '');
+      const cleaned = (detail || '').replace(/[\r\n]+/g, ' ').trim();
       const { error } = await supabase
         .from('tbl_content_standards')
         .update({ content_s_detail: cleaned })
         .eq('id', id);
       if (error) throw error;
-      Swal.fire('สำเร็จ', 'แก้ไขข้อมูลสำเร็จ', 'success');
-      navigate('/content_standards');
+
+      showToast('บันทึกการแก้ไขมาตรฐานการเรียนรู้สำเร็จ');
+      const teachSubjectId = String(row.strands_id || '').slice(0, 4);
+      navigate(
+        `/content_standards?Teach_Subject=${encodeURIComponent(teachSubjectId)}&strands_id=${encodeURIComponent(
+          row.strands_id || ''
+        )}`
+      );
     } catch (err) {
       console.error(err);
-      Swal.fire('Error', 'ไม่สามารถแก้ไขข้อมูลได้ เกิดข้อผิดพลาด', 'error');
-      navigate('/content_standards');
+      Swal.fire('ไม่สามารถบันทึกได้', err.message || 'เกิดข้อผิดพลาดในการแก้ไขมาตรฐานการเรียนรู้', 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading || !row) {
+  if (!id || notFound) {
     return (
-      <div className="text-center p-4">
-        <div className="spinner-border text-primary" role="status"></div>
-        <p className="mt-2">กำลังโหลดข้อมูล...</p>
-      </div>
+      <EmptyState
+        type="warning"
+        icon="fa-book-bookmark"
+        title={!id ? 'ไม่ได้ระบุรหัสมาตรฐานการเรียนรู้' : 'ไม่พบข้อมูลมาตรฐานการเรียนรู้'}
+        message={
+          !id
+            ? 'กรุณาเลือกรายการมาตรฐานการเรียนรู้ที่ต้องการแก้ไขจากหน้ารวม'
+            : `ไม่พบมาตรฐานการเรียนรู้รหัส "${id}" ในระบบ`
+        }
+        actionLabel="กลับหน้ามาตรฐานการเรียนรู้"
+        onAction={() => navigate('/content_standards')}
+      />
     );
   }
 
+  if (loading || !row) {
+    return <LoadingSpinner message="กำลังโหลดข้อมูลมาตรฐานการเรียนรู้..." />;
+  }
+
+  const teachSubjectId = String(row.strands_id || '').slice(0, 4);
+  const backUrl = `/content_standards?Teach_Subject=${encodeURIComponent(
+    teachSubjectId
+  )}&strands_id=${encodeURIComponent(row.strands_id || '')}`;
+
   return (
-    <div className="row">
-      <div className="col-sm-12 col-md-12 col-lg-8 col-xl-8">
-        <div className="card card-success">
-          <div className="card-header">
-            <h3 className="card-title"><i className="fa-solid fa-school-circle-check"></i> แก้ไขข้อมูลมาตรฐานการเรียนรู้รายวิชา</h3>
+    <div className="row justify-content-center">
+      <div className="col-sm-12 col-md-10 col-lg-8">
+        <div className="card shadow-sm border-0">
+          <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+            <h3 className="card-title m-0 font-weight-bold text-dark">
+              <i className="fa-solid fa-pen-to-square text-info mr-2"></i>
+              แก้ไขข้อมูลมาตรฐานการเรียนรู้รายวิชา
+            </h3>
+            <Link to={backUrl} className="btn btn-sm btn-outline-secondary">
+              <i className="fa-solid fa-arrow-left mr-1"></i> ย้อนกลับ
+            </Link>
           </div>
           <div className="card-body">
+            <div className="p-3 rounded bg-light border mb-3">
+              <div className="row">
+                <div className="col-md-4 mb-2 mb-md-0">
+                  <small className="text-muted d-block">กลุ่มสาระการเรียนรู้</small>
+                  <strong className="text-dark">{teachSubjectName}</strong>
+                </div>
+                <div className="col-md-5 mb-2 mb-md-0">
+                  <small className="text-muted d-block">สาระการเรียนรู้</small>
+                  <strong className="text-dark">{strandsName}</strong>
+                </div>
+                <div className="col-md-3">
+                  <small className="text-muted d-block">รหัสมาตรฐานการเรียนรู้</small>
+                  <span className="badge bg-success-subtle text-success font-weight-bold px-2 py-1">
+                    {row.content_s_name}
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <form onSubmit={handleSubmit}>
-              <div className="mb-3 mt-3">
-                <label>กลุ่มสาระการเรียนรู้: {teachSubjectName}</label>
-              </div>
-              <div className="mb-3">
-                <label>สาระการเรียนรู้: {strandsName}</label>
-              </div>
-              <div className="mb-3">
-                <label>ชื่อสาระการเรียนรู้: {row.content_s_name}</label>
-              </div>
-              <div className="mb-3">
-                <label htmlFor="content_s_detail">
-                  คำอธิบายมาตรฐานการเรียนรู้รายวิชา: <span className="text-danger">ไม่ต้องกดปุ่ม Enter เพื่อขึ้นบรรทัดใหม่</span>
+              <div className="mb-4">
+                <label htmlFor="content_s_detail" className="form-label">
+                  คำอธิบายมาตรฐานการเรียนรู้ <span className="text-danger">*</span>
                 </label>
                 <textarea
                   name="content_s_detail"
                   id="content_s_detail"
-                  cols="30"
-                  rows="10"
+                  rows="6"
                   className="form-control"
+                  placeholder="ระบุคำอธิบายมาตรฐานการเรียนรู้"
                   value={detail}
                   onChange={(e) => setDetail(e.target.value)}
-                ></textarea>
+                  required
+                />
               </div>
-              <div className="mb-3">
-                <button type="submit" className="btn btn-primary mt-3" disabled={saving}>บันทึก</button>
-                <button type="button" className="btn btn-danger mt-3 ml-2" onClick={() => navigate('/content_standards')}>ยกเลิก</button>
+
+              <div className="d-flex flex-wrap gap-2 pt-2 border-top">
+                <button type="submit" className="btn btn-primary px-4 font-weight-bold" disabled={saving}>
+                  <i className="fa-solid fa-floppy-disk mr-1"></i>
+                  {saving ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
+                </button>
+                <Link to={backUrl} className="btn btn-light border px-4">
+                  ยกเลิก
+                </Link>
               </div>
             </form>
           </div>

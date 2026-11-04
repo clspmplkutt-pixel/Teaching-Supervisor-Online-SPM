@@ -1,94 +1,114 @@
 import React from 'react';
 
 /**
- * Metadata for all 7 plan statuses
+ * Standardized Metadata for all 7 Supervision Plan Statuses
  */
 export const PLAN_STATUS_CONFIG = {
   '1': {
-    label: 'รอผู้อำนวยการอนุมัติ',
+    label: 'รอ ผอ. ตรวจอนุมัติ',
     shortLabel: 'รอ ผอ. อนุมัติ',
     badgeClass: 'badge-warning',
-    bgClass: 'bg-warning text-dark',
+    pillBg: '#fffbeb',
+    pillText: '#b45309',
+    pillBorder: '#fde68a',
     icon: 'fa-solid fa-clock',
-    step: 2, // At step 2 (Waiting for Director)
-    color: '#f59e0b',
+    step: 2,
+    color: '#d97706',
   },
   '2': {
-    label: 'ผู้อำนวยการอนุมัติแล้ว',
-    shortLabel: 'ผอ. อนุมัติแล้ว',
-    badgeClass: 'badge-success',
-    bgClass: 'bg-success text-white',
-    icon: 'fa-solid fa-circle-check',
-    step: 3, // Ready for Teaching Clip / Committee
-    color: '#10b981',
+    label: 'ผอ. อนุมัติแล้ว • รอแนบคลิป',
+    shortLabel: 'รอส่งคลิป',
+    badgeClass: 'badge-info',
+    pillBg: '#f0f9ff',
+    pillText: '#0369a1',
+    pillBorder: '#bae6fd',
+    icon: 'fa-solid fa-video',
+    step: 3,
+    color: '#0284c7',
   },
   '3': {
-    label: 'ไม่อนุมัติ / กรุณาแก้ไขแผน',
+    label: 'ไม่อนุมัติ • ส่งกลับแก้ไข',
     shortLabel: 'ส่งกลับแก้ไข',
     badgeClass: 'badge-danger',
-    bgClass: 'bg-danger text-white',
+    pillBg: '#fef2f2',
+    pillText: '#b91c1c',
+    pillBorder: '#fecaca',
     icon: 'fa-solid fa-rotate-left',
-    step: 1, // Sent back to teacher
-    color: '#ef4444',
+    step: 1,
+    color: '#dc2626',
   },
   '4': {
-    label: 'แก้ไขแผนแล้ว รอ ผอ. อนุมัติ',
+    label: 'แก้ไขแล้ว • รอ ผอ. ตรวจซ้ำ',
     shortLabel: 'ส่งแก้ไขแล้ว',
     badgeClass: 'badge-info',
-    bgClass: 'bg-info text-white',
+    pillBg: '#eef2ff',
+    pillText: '#4338ca',
+    pillBorder: '#c7d2fe',
     icon: 'fa-solid fa-paper-plane',
-    step: 2, // Resubmitted to Director
-    color: '#06b6d4',
+    step: 2,
+    color: '#4f46e5',
   },
   '5': {
-    label: 'ส่งคลิป/บันทึกหลังสอนแล้ว',
-    shortLabel: 'ส่งคลิปสอนแล้ว',
+    label: 'ส่งคลิปแล้ว • รอนิเทศ',
+    shortLabel: 'รอนิเทศ',
     badgeClass: 'badge-primary',
-    bgClass: 'bg-primary text-white',
+    pillBg: '#eff6ff',
+    pillText: '#1d4ed8',
+    pillBorder: '#bfdbfe',
     icon: 'fa-solid fa-film',
-    step: 3, // Evidence attached
-    color: '#3b82f6',
+    step: 3,
+    color: '#2563eb',
   },
   '6': {
-    label: 'คณะกรรมการกำลังประเมิน',
+    label: 'คกก. กำลังประเมินผล',
     shortLabel: 'กำลังประเมิน',
     badgeClass: 'badge-warning',
-    bgClass: 'bg-warning text-dark',
+    pillBg: '#f5f3ff',
+    pillText: '#6d28d9',
+    pillBorder: '#ddd6fe',
     icon: 'fa-solid fa-user-pen',
-    step: 4, // Evaluating
-    color: '#f59e0b',
+    step: 4,
+    color: '#7c3aed',
   },
   '7': {
-    label: 'ประเมินเสร็จสิ้น',
-    shortLabel: 'ประเมินเสร็จสิ้น',
+    label: 'ประเมินเสร็จสิ้นสมบูรณ์',
+    shortLabel: 'เสร็จสมบูรณ์',
     badgeClass: 'badge-success',
-    bgClass: 'bg-success text-white',
+    pillBg: '#ecfdf5',
+    pillText: '#047857',
+    pillBorder: '#a7f3d0',
     icon: 'fa-solid fa-award',
-    step: 4, // Completed
-    color: '#10b981',
+    step: 4,
+    color: '#059669',
   },
 };
 
-/**
- * StatusBadge Component
- * Displays a clean, standardized status badge with icon
- */
 export const StatusBadge = ({ status, showIcon = true, short = false, customNote = '' }) => {
   const statusStr = String(status || '1');
   const config = PLAN_STATUS_CONFIG[statusStr] || {
     label: `สถานะ ${statusStr}`,
     shortLabel: `สถานะ ${statusStr}`,
-    badgeClass: 'badge-secondary',
+    pillBg: '#f1f5f9',
+    pillText: '#475569',
+    pillBorder: '#cbd5e1',
     icon: 'fa-solid fa-circle-info',
   };
 
   return (
     <div className="d-inline-flex flex-column align-items-start">
       <span
-        className={`badge ${config.badgeClass} d-inline-flex align-items-center py-1 px-2`}
-        style={{ fontSize: '0.82rem', fontWeight: 500, borderRadius: '4px' }}
+        className="d-inline-flex align-items-center py-1 px-2"
+        style={{
+          fontSize: '0.8rem',
+          fontWeight: 600,
+          borderRadius: '999px',
+          backgroundColor: config.pillBg,
+          color: config.pillText,
+          border: `1px solid ${config.pillBorder}`,
+          whiteSpace: 'nowrap',
+        }}
       >
-        {showIcon && <i className={`${config.icon} mr-1`} style={{ fontSize: '0.75rem' }}></i>}
+        {showIcon && <i className={`${config.icon} mr-1`} style={{ fontSize: '0.74rem' }}></i>}
         {short ? config.shortLabel : config.label}
       </span>
       {customNote && (
@@ -101,43 +121,31 @@ export const StatusBadge = ({ status, showIcon = true, short = false, customNote
   );
 };
 
-/**
- * PlanTimelineStepper Component
- * Visualizes the 4-step progress for a plan
- */
 export const PlanTimelineStepper = ({ currentStatus }) => {
   const statusStr = String(currentStatus || '1');
   const isRejected = statusStr === '3';
 
-  // Determine current active step (1-4)
-  // Step 1: ยื่นส่งแผน (Submitted)
-  // Step 2: ผอ. ตรวจสอบ/อนุมัติ (Director)
-  // Step 3: ส่งคลิป/บันทึกการสอน (Clip/Evidence)
-  // Step 4: กรรมการประเมินผล (Evaluated)
   let activeStep = 1;
-  if (['1', '4'].includes(statusStr)) activeStep = 2; // Waiting for director
-  else if (statusStr === '2') activeStep = 3; // Approved, waiting for clip or evaluation
-  else if (statusStr === '5') activeStep = 3; // Clip sent
-  else if (statusStr === '6') activeStep = 4; // Under evaluation
-  else if (statusStr === '7') activeStep = 4; // Complete
+  if (['1', '4'].includes(statusStr)) activeStep = 2;
+  else if (['2', '5'].includes(statusStr)) activeStep = 3;
+  else if (['6', '7'].includes(statusStr)) activeStep = 4;
 
   const steps = [
-    { num: 1, title: 'ส่งแผนการสอน', desc: 'ครูผู้สอนบันทึกข้อมูล' },
-    { num: 2, title: 'ผอ. อนุมัติ', desc: isRejected ? 'ต้องแก้ไขแผน' : 'ตรวจสอบความถูกต้อง' },
-    { num: 3, title: 'หลักฐานการสอน', desc: 'ส่งคลิป/บันทึกหลังสอน' },
-    { num: 4, title: 'การประเมินผล', desc: statusStr === '7' ? 'ประเมินเสร็จสมบูรณ์' : 'กรรมการให้คะแนน' },
+    { num: 1, title: 'ส่งแผนการสอน', desc: 'ครูบันทึกแผน' },
+    { num: 2, title: 'ผอ. อนุมัติ', desc: isRejected ? 'ส่งกลับให้แก้ไข' : 'ตรวจและตั้งกรรมการ' },
+    { num: 3, title: 'คลิป/บันทึกหลังสอน', desc: statusStr === '5' ? 'แนบคลิปแล้ว' : 'รอแนบหลักฐาน' },
+    { num: 4, title: 'การประเมิน ว.PA', desc: statusStr === '7' ? 'ประเมินเสร็จสมบูรณ์' : 'กรรมการให้คะแนน' },
   ];
 
   return (
-    <div className="plan-timeline-container py-2 px-3 my-2 bg-light rounded border">
+    <div className="plan-timeline-container py-3 px-3 my-2 bg-white rounded border shadow-sm">
       <div className="d-flex justify-content-between align-items-center position-relative">
-        {/* Connector line */}
         <div
           className="position-absolute"
           style={{
             top: '15px',
-            left: '30px',
-            right: '30px',
+            left: '36px',
+            right: '36px',
             height: '3px',
             backgroundColor: '#e2e8f0',
             zIndex: 1,
@@ -151,15 +159,15 @@ export const PlanTimelineStepper = ({ currentStatus }) => {
 
           if (isRejected && st.num === 2) {
             circleBg = '#ef4444';
-            textColor = '#ef4444';
-            icon = <i className="fa-solid fa-times text-white" />;
+            textColor = '#dc2626';
+            icon = <i className="fa-solid fa-xmark text-white" />;
           } else if (st.num < activeStep || (st.num === 4 && statusStr === '7')) {
             circleBg = '#10b981';
-            textColor = '#0f766e';
+            textColor = '#047857';
             icon = <i className="fa-solid fa-check text-white" />;
           } else if (st.num === activeStep) {
-            circleBg = '#3b82f6';
-            textColor = '#1d4ed8';
+            circleBg = '#4f46e5';
+            textColor = '#4338ca';
           }
 
           return (
@@ -171,12 +179,11 @@ export const PlanTimelineStepper = ({ currentStatus }) => {
               <div
                 className="rounded-circle d-flex align-items-center justify-content-center font-weight-bold shadow-sm"
                 style={{
-                  width: '30px',
-                  height: '30px',
+                  width: '32px',
+                  height: '32px',
                   backgroundColor: circleBg,
                   color: '#fff',
                   fontSize: '0.85rem',
-                  transition: 'all 0.3s',
                 }}
               >
                 {icon}
@@ -184,7 +191,7 @@ export const PlanTimelineStepper = ({ currentStatus }) => {
               <div className="mt-1 font-weight-bold" style={{ fontSize: '0.8rem', color: textColor }}>
                 {st.title}
               </div>
-              <div className="text-muted d-none d-sm-block" style={{ fontSize: '0.7rem' }}>
+              <div className="text-muted d-none d-sm-block" style={{ fontSize: '0.72rem' }}>
                 {st.desc}
               </div>
             </div>

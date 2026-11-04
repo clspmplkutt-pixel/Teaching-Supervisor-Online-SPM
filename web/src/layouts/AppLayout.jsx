@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
-import { Outlet, Navigate, useLocation } from 'react-router-dom';
+import { Outlet, Navigate, Link, useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 import PendingWorkAlert from '../components/PendingWorkAlert';
 import BottomNav from '../components/BottomNav';
 import { useAuth } from '../contexts/AuthContext';
+import { NotificationProvider } from '../contexts/NotificationContext';
 import { moduleLabels } from '../config/roleModules';
 
 const humanizeModule = (moduleName) => {
@@ -19,26 +20,41 @@ const humanizeModule = (moduleName) => {
     .trim();
 };
 
+// Pages that render their own full-width custom Hero/Title Banner
+const CUSTOM_HERO_MODULES = new Set([
+  'info',
+  'admin_monitor',
+  'supervision_summary',
+  'Plan_scoring',
+]);
+
 const AppLayout = () => {
   const { user, loading } = useAuth();
   const location = useLocation();
 
   useEffect(() => {
-    document.body.classList.add('hold-transition', 'sidebar-mini', 'layout-fixed', 'layout-footer-fixed', 'pace-minimal');
-    return () => {
-      // Cleanup if needed
-    };
+    document.body.classList.add('hold-transition', 'sidebar-mini', 'layout-fixed');
   }, []);
+
+  // Automatically close mobile sidebar overlay whenever route changes
+  useEffect(() => {
+    if (window.innerWidth < 992 && document.body.classList.contains('sidebar-open')) {
+      document.body.classList.remove('sidebar-open');
+      document.body.classList.add('sidebar-collapse');
+    }
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }, [location.pathname, location.search]);
 
   if (loading) {
     return (
-      <div className="preloader flex-column justify-content-center align-items-center">
-        <img className="animation__shake" src="/images/obec.png" alt="LMSS" height="60" width="60" />
+      <div className="d-flex flex-column justify-content-center align-items-center vh-100 bg-light">
+        <img src="/images/obec.png" alt="LMSS" height="64" width="64" className="mb-3" />
+        <div className="spinner-border text-primary spinner-border-sm" role="status" />
       </div>
     );
   }
 
-  if (!user && !loading) {
+  if (!user) {
     return <Navigate to="/login" replace />;
   }
 
@@ -46,79 +62,140 @@ const AppLayout = () => {
   const moduleName = pathParts[0] || 'info';
   const pageTitle = humanizeModule(moduleName);
 
-  // Security: Protect admin-only routes from other roles
+  // Role-Based Route Protection
   const roleId = user?.level_id || user?.user_metadata?.role || user?.role || 'teacher';
   const isAdminOrRoot = roleId === 'admin' || roleId === 'root';
   const isAdminSchool = roleId === 'admin_school';
 
-  const schoolAdminAllowedModules = [
-    'info', 'supervision_summary', 'confirmUser', 'userteacher',
-    'userheadDepartment', 'teacher_edit', 'user_remove', 'reset_user_password',
-    'nominate_evaluator', 'editprofile', 'chgpasswd'
-  ];
+  const schoolAdminAllowedModules = new Set([
+    'info',
+    'supervision_summary',
+    'confirmUser',
+    'userteacher',
+    'userheadDepartment',
+    'teacher_edit',
+    'reset_user_password',
+    'nominate_evaluator',
+    'editprofile',
+    'chgpasswd',
+  ]);
 
-  const adminOnlyModules = [
-    'userteacher', 'userdirectorschool', 'userheadDepartment', 'userchairman',
-    'usersupervisor', 'usersupervision', 'userDistricDirector', 'confirmUser',
-    'checkupUser', 'checkupUserduplicate', 'ManageUserAdmin', 'UserAdmin_Add',
-    'UserAdmin_Edit', 'UserAdmin_Chgpwd', 'change_position', 'khet', 'school',
-    'teacher_edit', 'directorschool_edit', 'supervisor_edit', 'dd_edit', 'user_remove',
-    'resetPwd', 'updatepwd', 'importDMC', 'khet_add', 'khet_edit', 'khet_remove',
-    'school_add', 'school_edit', 'school_remove', 'budget_year', 'budget_year_set',
-    'education_year', 'education_year_set', 'school_size', 'schoolsize_edit', 'prefix',
-    'prefix_set', 'gender', 'person_position_type', 'person_position_type_set',
-    'person_type', 'person_type_set', 'academic_standing', 'academic_standing_set',
-    'education_level', 'education_level_set', 'teach_subject', 'teach_subject_set',
-    'subject_type', 'subject_type_set', 'grade_level', 'grade_level_set', 'tbl_config',
-    'ability21', 'competency', 'desirable', 'learningModel', 'learningModel_add',
-    'learningModel_edit', 'strands', 'strands_add', 'strands_edit', 'content_standards',
-    'content_standards_add', 'content_standards_edit', 'indicators', 'indicators_add',
-    'indicators_edit', 'type_benchmarks', 'policy_side', 'policy_number', 'policy_items', 'log'
-  ];
+  const adminOnlyModules = new Set([
+    'userteacher',
+    'userdirectorschool',
+    'userheadDepartment',
+    'userchairman',
+    'usersupervisor',
+    'usersupervision',
+    'userDistricDirector',
+    'userSchoolAdmin',
+    'confirmUser',
+    'approve_evaluator',
+    'checkupUser',
+    'checkupUserduplicate',
+    'ManageUserAdmin',
+    'UserAdmin_Add',
+    'UserAdmin_Edit',
+    'UserAdmin_Chgpwd',
+    'change_position',
+    'reset_user_password',
+    'khet',
+    'khet_add',
+    'khet_edit',
+    'school',
+    'school_add',
+    'school_edit',
+    'school_size',
+    'schoolsize_edit',
+    'teacher_edit',
+    'directorschool_edit',
+    'supervisor_edit',
+    'dd_edit',
+    'importDMC',
+    'budget_year',
+    'education_year',
+    'prefix',
+    'gender',
+    'person_position_type',
+    'person_type',
+    'academic_standing',
+    'education_level',
+    'teach_subject',
+    'subject_type',
+    'grade_level',
+    'tbl_config',
+    'ability21',
+    'competency',
+    'desirable',
+    'learningModel',
+    'learningModel_add',
+    'learningModel_edit',
+    'strands',
+    'strands_add',
+    'strands_edit',
+    'content_standards',
+    'content_standards_add',
+    'content_standards_edit',
+    'indicators',
+    'indicators_add',
+    'indicators_edit',
+    'type_benchmarks',
+    'policy_side',
+    'policy_number',
+    'policy_items',
+    'log',
+    'profile',
+  ]);
 
-  if (adminOnlyModules.includes(moduleName)) {
-    if (isAdminSchool && schoolAdminAllowedModules.includes(moduleName)) {
+  if (adminOnlyModules.has(moduleName)) {
+    if (isAdminSchool && schoolAdminAllowedModules.has(moduleName)) {
       // Allowed for school admin
     } else if (!isAdminOrRoot) {
       return <Navigate to="/" replace />;
     }
   }
 
-  return (
-    <div className="wrapper">
-      <Header />
-      <Sidebar />
+  const showStandardHeader = !CUSTOM_HERO_MODULES.has(moduleName);
 
-      <div className="content-wrapper">
-        {moduleName !== 'info' && (
-          <div className="content-header">
-            <div className="container-fluid">
-              <div className="row mb-2">
-                <div className="col-sm-6">
-                  <h1 className="m-0">{pageTitle}</h1>
-                </div>
-                <div className="col-sm-6">
-                  <ol className="breadcrumb float-sm-right">
-                    <li className="breadcrumb-item"><a href="/">Home</a></li>
-                    <li className="breadcrumb-item active">{pageTitle}</li>
+  return (
+    <NotificationProvider>
+      <div className="wrapper">
+        <Header />
+        <Sidebar />
+
+        <div className="content-wrapper">
+          {showStandardHeader && (
+            <div className="content-header pb-2">
+              <div className="container-fluid">
+                <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                  <h1 className="m-0" style={{ fontSize: '1.35rem', fontWeight: 700, color: '#0f172a' }}>
+                    {pageTitle}
+                  </h1>
+                  <ol className="breadcrumb m-0 bg-transparent p-0 small">
+                    <li className="breadcrumb-item">
+                      <Link to="/" className="text-primary">
+                        <i className="fa-solid fa-house mr-1"></i>หน้าหลัก
+                      </Link>
+                    </li>
+                    <li className="breadcrumb-item active text-muted">{pageTitle}</li>
                   </ol>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        <section className="content">
-          <div className="container-fluid">
-            <PendingWorkAlert />
-            <Outlet />
-          </div>
-        </section>
+          <section className={`content ${!showStandardHeader ? 'pt-3' : ''}`}>
+            <div className="container-fluid">
+              <PendingWorkAlert />
+              <Outlet />
+            </div>
+          </section>
+        </div>
+
+        <Footer />
+        <BottomNav />
       </div>
-
-      <Footer />
-      <BottomNav />
-    </div>
+    </NotificationProvider>
   );
 };
 

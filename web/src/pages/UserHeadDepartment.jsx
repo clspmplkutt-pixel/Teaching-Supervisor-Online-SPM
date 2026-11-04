@@ -1,165 +1,334 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
-import useUserLookups from '../hooks/useUserLookups';
-import useSelect2 from '../hooks/useSelect2';
-import useAppConfig from '../hooks/useAppConfig';
 import { useAuth } from '../contexts/AuthContext';
+import { useUserProfile } from '../hooks/useUserProfile';
+import useUserLookups from '../hooks/useUserLookups';
+import useAppConfig from '../hooks/useAppConfig';
+import UserDirectoryTable from '../components/UserDirectoryTable';
+import SearchableSelect from '../components/SearchableSelect';
+import { showToast } from '../utils/toast';
 
 const UserHeadDepartment = () => {
   const { user } = useAuth();
-  const roleId = user?.level_id || user?.user_metadata?.role || user?.role;
-  const userSchool = user?.user_metadata?.school || user?.school;
-  const isAdminSchool = roleId === 'admin_school';
-
-  const { lookups, lists, loading: lookupsLoading } = useUserLookups();
+  const { profile } = useUserProfile();
+  const { lookups, lists } = useUserLookups();
   const { config } = useAppConfig();
   const areaCode = config.AREA_CODE10 || '1000650001';
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [loading, setLoading] = useState(true);
-  const [rows, setRows] = useState([]);
 
-  const schoolId = isAdminSchool ? userSchool : (searchParams.get('school_id') || '');
-  const teachSubject = searchParams.get('Teach_Subject') || '';
+  const activeRole =
+    profile?.level || user?.level_id || user?.user_metadata?.role || user?.role || '';
+  const isSchoolScoped = activeRole === 'admin_school' || activeRole === 'directorschool';
+  const scopedSchoolId = isSchoolScoped
+    ? profile?.school || user?.user_metadata?.school || user?.school || ''
+    : '';
 
-  useSelect2([lookupsLoading, lists.school.length, lists.teachSubject.length]);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [showModal, setShowModal] = useState(false);
+  const [modalSchoolId, setModalSchoolId] = useState('');
+  const [modalSubjectId, setModalSubjectId] = useState('');
+  const [teachers, setTeachers] = useState([]);
+  const [teachersLoading, setTeachersLoading] = useState(false);
+  const [selectedTeacherId, setSelectedTeacherId] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const filteredSchools = useMemo(
-    () => lists.school.filter((row) => row.school_id !== areaCode),
+  const effectiveModalSchool = isSchoolScoped ? scopedSchoolId : modalSchoolId;
+
+  useEffect(() => {
+    if (!showModal || !effectiveModalSchool) {
+      setTeachers([]);
+      setSelectedTeacherId('');
+      return;
+    }
+    let mounted = true;
+    const loadSchoolTeachers = async () => {
+      setTeachersLoading(true);
+      try {
+        let q = supabase
+          .from('tbl_Users')
+          .select('id, people_id, prefix, name, lastname, teach_subject, academic_id, position_id, headDepartment')
+          .eq('school', effectiveModalSchool)
+          .in('level', ['teacher', 'admin_school'])
+          .order('name', { ascending: true });
+
+        if (modalSubjectId) {
+          q = q.eq('teach_subject', modalSubjectId);
+        }
+
+        const { data, error } = await q;
+        if (error) throw error;
+        if (mounted) {
+          setTeachers(data || []);
+          setSelectedTeacherId('');
+        }
+      } catch (err) {
+        console.error('Load school teachers error:', err);
+      } finally {
+        if (mounted) setTeachersLoading(false);
+      }
+    };
+    loadSchoolTeachers();
+    return () => {
+      mounted = false;
+    };
+  }, [showModal, effectiveModalSchool, modalSubjectId]);
+
+  const applyBaseFilter = useCallback((query) => {
+    return query.eq('headDepartment', '1').in('level', ['teacher', 'admin_school']);
+  }, []);
+
+  const handleRevoke = async (row, reload) => {
+    const fullName = `${lookups.prefix[row.prefix] || ''}${row.name || ''} ${row.lastname || ''}`.trim();
+    const subjName = lookups.teachSubject[row.teach_subject] || '-';
+
+    const confirm = await Swal.fire({
+      title: 'ถอดถอนตำแหน่งหัวหน้ากลุ่มสาระฯ?',
+      html: `ต้องการยกเลิกสถานะหัวหน้ากลุ่มสาระการเรียนรู้ (${subjName}) ของ <strong>${fullName}</strong> ใช่หรือไม่?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d97706',
+      confirmButtonText: 'ยืนยันถอดถอน',
+      cancelButtonText: 'ยกเลิก',
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    try {
+      let q = supabase.from('tbl_Users').update({ headDepartment: '0' }).eq('id', row.id);
+      if (isSchoolScoped && scopedSchoolId) q = q.eq('school', scopedSchoolId);
+      const { error } = await q;
+      if (error) throw error;
+      showToast(`ยกเลิกตำแหน่งหัวหน้ากลุ่มสาระฯ ของ ${fullName} แล้ว`, 'success');
+      setRefreshKey((k) => k + 1);
+      reload?.();
+    } catch (err) {
+      console.error(err);
+      Swal.fire('เกิดข้อผิดพลาด', err.message || 'ไม่สามารถอัปเดตสถานะได้', 'error');
+    }
+  };
+
+  const handleAssignSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedTeacherId || saving) return;
+    setSaving(true);
+    try {
+      let q = supabase
+        .from('tbl_Users')
+        .update({ headDepartment: '1' })
+        .eq('id', Number(selectedTeacherId));
+      if (isSchoolScoped && scopedSchoolId) q = q.eq('school', scopedSchoolId);
+      const { error } = await q;
+      if (error) throw error;
+
+      const chosen = teachers.find((t) => String(t.id) === String(selectedTeacherId));
+      const fullName = chosen
+        ? `${lookups.prefix[chosen.prefix] || ''}${chosen.name} ${chosen.lastname}`.trim()
+        : 'ครูที่เลือก';
+      showToast(`แต่งตั้ง ${fullName} เป็นหัวหน้ากลุ่มสาระฯ เรียบร้อยแล้ว`, 'success');
+      setShowModal(false);
+      setSelectedTeacherId('');
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      console.error(err);
+      Swal.fire('เกิดข้อผิดพลาด', err.message || 'ไม่สามารถแต่งตั้งหัวหน้ากลุ่มสาระฯ ได้', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const schoolOptions = useMemo(
+    () =>
+      lists.school
+        .filter((s) => String(s.school_id) !== String(areaCode))
+        .map((s) => ({
+          value: String(s.school_id),
+          label: s.school_name,
+        })),
     [lists.school, areaCode]
   );
 
-  const loadUsers = useCallback(async () => {
-    setLoading(true);
-    try {
-      let query = supabase
-        .from('tbl_Users')
-        .select('*')
-        .eq('level', 'teacher')
-        .eq('register_isConfirm', '1')
-        .eq('headDepartment', '1')
-        .eq('status', '1');
+  const subjectOptions = useMemo(
+    () => [
+      { value: '', label: '-- ทุกกลุ่มสาระการเรียนรู้ --' },
+      ...lists.teachSubject.map((s) => ({
+        value: String(s.teach_subject_id),
+        label: s.teach_subject,
+      })),
+    ],
+    [lists.teachSubject]
+  );
 
-      if (schoolId) query = query.eq('school', schoolId);
-      if (teachSubject) query = query.eq('teach_subject', teachSubject);
-
-      query = query.order('school', { ascending: true })
-        .order('academic_id', { ascending: true })
-        .order('position_id', { ascending: false });
-
-      const { data, error } = await query;
-      if (error) throw error;
-      setRows(data || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [schoolId, teachSubject]);
-
-  useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
-
-  const updateParam = (key, value) => {
-    const next = new URLSearchParams(searchParams);
-    if (value) next.set(key, value);
-    else next.delete(key);
-    setSearchParams(next);
-  };
-
-  if (loading || lookupsLoading) {
-    return (
-      <div className="text-center p-4">
-        <div className="spinner-border text-primary" role="status"></div>
-        <p className="mt-2">กำลังโหลดข้อมูล...</p>
-      </div>
-    );
-  }
+  const teacherOptions = useMemo(
+    () =>
+      teachers
+        .filter((t) => String(t.headDepartment) !== '1')
+        .map((t) => ({
+          value: String(t.id),
+          label: `${lookups.prefix[t.prefix] || ''}${t.name} ${t.lastname}`,
+          subLabel: [
+            lookups.teachSubject[t.teach_subject] ? `กลุ่มสาระ: ${lookups.teachSubject[t.teach_subject]}` : 'ไม่ระบุกลุ่มสาระฯ',
+            lookups.academic[t.academic_id] || '',
+          ]
+            .filter(Boolean)
+            .join(' • '),
+        })),
+    [teachers, lookups]
+  );
 
   return (
-    <div className="row">
-      <div className="col-sm-12 col-md-12 col-lg-12 col-xl-12">
-        <div className="card card-info card-outline">
-          <div className="card-body">
-            <div className="row">
-              <div className="col-sm-12 col-md-4 col-xl-4 col-lg-4">
-                {isAdminSchool ? (
-                  <input
-                    type="text"
-                    className="form-control bg-light font-weight-bold"
-                    value={lookups.school[userSchool] || userSchool}
-                    readOnly
-                    title="โรงเรียนของคุณ"
-                  />
-                ) : (
-                  <select className="form-control form-select-lg select2bs4" name="school_id" id="school_id" value={schoolId} onChange={(e) => updateParam('school_id', e.target.value)} required>
-                    <option value="">โรงเรียน</option>
-                    {filteredSchools.map((row) => (
-                      <option key={row.school_id} value={row.school_id}>{row.school_name}</option>
-                    ))}
-                  </select>
-                )}
+    <>
+      <UserDirectoryTable
+        title="ทำเนียบหัวหน้ากลุ่มสาระการเรียนรู้"
+        subtitle="แต่งตั้งและจัดการสิทธิ์หัวหน้ากลุ่มสาระการเรียนรู้ประจำสถานศึกษา"
+        icon="fa-people-group"
+        accentColor="info"
+        applyBaseFilter={applyBaseFilter}
+        editVariant="teacher"
+        showSchoolFilter={true}
+        showSubjectFilter={true}
+        showAcademicFilter={true}
+        refreshKey={refreshKey}
+        allowDelete={false}
+        columns={{
+          thaiId: true,
+          school: true,
+          subject: true,
+          position: true,
+          academic: true,
+          personType: true,
+          status: false,
+        }}
+        headerActions={
+          <button
+            type="button"
+            className="btn btn-primary btn-sm px-3"
+            onClick={() => setShowModal(true)}
+          >
+            <i className="fa-solid fa-user-plus mr-1"></i>
+            แต่งตั้งหัวหน้ากลุ่มสาระฯ
+          </button>
+        }
+        renderCustomActions={(row, { reload }) => (
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-warning"
+            onClick={() => handleRevoke(row, reload)}
+            title="ถอดถอนตำแหน่งหัวหน้ากลุ่มสาระฯ"
+          >
+            <i className="fa-solid fa-user-xmark"></i>
+          </button>
+        )}
+        emptyTitle="ยังไม่มีรายชื่อหัวหน้ากลุ่มสาระการเรียนรู้"
+        emptyMessage="กดปุ่ม แต่งตั้งหัวหน้ากลุ่มสาระฯ ด้านบนเพื่อกำหนดครูทำหน้าที่หัวหน้ากลุ่มสาระฯ"
+      />
+
+      {showModal && (
+        <div
+          className="modal fade show d-block"
+          tabIndex="-1"
+          role="dialog"
+          style={{ backgroundColor: 'rgba(15, 23, 42, 0.55)', zIndex: 1070 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !saving) setShowModal(false);
+          }}
+        >
+          <div className="modal-dialog modal-dialog-centered" role="document">
+            <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '14px' }}>
+              <div className="modal-header bg-info text-white py-3" style={{ borderTopLeftRadius: '14px', borderTopRightRadius: '14px' }}>
+                <h5 className="modal-title font-weight-bold m-0">
+                  <i className="fa-solid fa-people-group mr-2"></i>
+                  แต่งตั้งหัวหน้ากลุ่มสาระการเรียนรู้
+                </h5>
+                <button
+                  type="button"
+                  className="close text-white"
+                  onClick={() => setShowModal(false)}
+                  disabled={saving}
+                >
+                  <span>&times;</span>
+                </button>
               </div>
 
-              <div className="col-sm-12 col-md-4 col-xl-4 col-lg-4">
-                <select className="form-control form-select-lg select2bs4" name="Teach_Subject" id="Teach_Subject" value={teachSubject} onChange={(e) => updateParam('Teach_Subject', e.target.value)} required>
-                  <option value="">กลุ่มสาระ</option>
-                  {lists.teachSubject.map((row) => (
-                    <option key={row.teach_subject_id} value={row.teach_subject_id}>{row.teach_subject}</option>
-                  ))}
-                </select>
-              </div>
+              <form onSubmit={handleAssignSubmit}>
+                <div className="modal-body p-4">
+                  <div className="form-group mb-3">
+                    <label className="form-label">สถานศึกษา <span className="text-danger">*</span></label>
+                    {isSchoolScoped ? (
+                      <div className="form-control bg-light font-weight-semibold">
+                        <i className="fa-solid fa-lock text-muted mr-2"></i>
+                        {lookups.school[scopedSchoolId] || scopedSchoolId}
+                      </div>
+                    ) : (
+                      <SearchableSelect
+                        options={schoolOptions}
+                        value={modalSchoolId}
+                        onChange={(val) => setModalSchoolId(val)}
+                        placeholder="-- เลือกโรงเรียน --"
+                        searchPlaceholder="พิมพ์ชื่อโรงเรียน..."
+                        required
+                      />
+                    )}
+                  </div>
+
+                  <div className="form-group mb-3">
+                    <label className="form-label">กรองตามกลุ่มสาระการเรียนรู้ (ไม่บังคับ)</label>
+                    <SearchableSelect
+                      options={subjectOptions}
+                      value={modalSubjectId}
+                      onChange={(val) => setModalSubjectId(val)}
+                      placeholder="-- ทุกกลุ่มสาระการเรียนรู้ --"
+                      searchPlaceholder="ค้นหากลุ่มสาระฯ..."
+                    />
+                  </div>
+
+                  <div className="form-group mb-2">
+                    <label className="form-label">เลือกครูผู้สอนที่จะแต่งตั้ง <span className="text-danger">*</span></label>
+                    {teachersLoading ? (
+                      <div className="form-control bg-light text-muted small">
+                        <i className="fa-solid fa-spinner fa-spin mr-2"></i>กำลังโหลดรายชื่อครู...
+                      </div>
+                    ) : (
+                      <SearchableSelect
+                        options={teacherOptions}
+                        value={selectedTeacherId}
+                        onChange={(val) => setSelectedTeacherId(val)}
+                        placeholder={
+                          effectiveModalSchool
+                            ? `-- เลือกครูผู้สอน (${teacherOptions.length} คน) --`
+                            : '-- กรุณาเลือกโรงเรียนก่อน --'
+                        }
+                        searchPlaceholder="ค้นหาชื่อครู..."
+                        disabled={!effectiveModalSchool}
+                        required
+                      />
+                    )}
+                  </div>
+                </div>
+
+                <div className="modal-footer bg-light py-2">
+                  <button
+                    type="button"
+                    className="btn btn-light"
+                    onClick={() => setShowModal(false)}
+                    disabled={saving}
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-info text-white px-4"
+                    disabled={saving || !selectedTeacherId}
+                  >
+                    <i className="fa-solid fa-check mr-1"></i>
+                    {saving ? 'กำลังบันทึก...' : 'ยืนยันการแต่งตั้ง'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="col-sm-12 col-md-12 col-lg-12 col-xl-12">
-        <div className="card card-success">
-          <div className="card-header">
-            <h3 className="card-title"><i className="fa-solid fa-school-circle-check"></i> ผู้เข้าใช้งานระบบ หัวหน้ากลุ่มสาระการเรียนรู้</h3>
-          </div>
-          <div className="card-body">
-            <div className="table-responsive">
-              <table className="table table-bordered table-striped table-hover">
-                <thead>
-                  <tr>
-                    <th>ที่</th>
-                    <th>ชื่อ - นามสกุล</th>
-                    <th>โรงเรียน</th>
-                    <th>กลุ่มสาระ</th>
-                    <th>ตำแหน่ง</th>
-                    <th>วิทยฐานะ</th>
-                    <th>ประเภทบุคลากร</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.length === 0 && (
-                    <tr>
-                      <td colSpan="7" className="text-center">
-                        <h2 className="text-danger">ยังไม่มีข้อมูล</h2>
-                      </td>
-                    </tr>
-                  )}
-                  {rows.map((row, idx) => (
-                    <tr key={row.id}>
-                      <td className="text-center">{idx + 1}</td>
-                      <td>{(lookups.prefix[row.prefix] || '') + row.name + ' ' + row.lastname}</td>
-                      <td>{lookups.school[row.school] || ''}</td>
-                      <td>{lookups.teachSubject[row.teach_subject] || ''}</td>
-                      <td>{lookups.position[row.position_id] || ''}</td>
-                      <td>{lookups.academic[row.academic_id] || ''}</td>
-                      <td>{lookups.personType[row.persontype_id] || ''}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+      )}
+    </>
   );
 };
 

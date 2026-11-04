@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import useNotifications from '../hooks/useNotifications';
+import { useNotificationContext } from '../contexts/NotificationContext';
 
 const getRoleId = (user) =>
   user?.level_id || user?.user_metadata?.role || user?.role || 'teacher';
@@ -9,17 +9,18 @@ const getRoleId = (user) =>
 const BottomNav = () => {
   const { user } = useAuth();
   const location = useLocation();
-  const notifCount = useNotifications();
+  const notif = useNotificationContext();
 
   if (!user) return null;
 
   const roleId = getRoleId(user);
   const currentPath = location.pathname.toLowerCase();
+  const isAdminAccount = roleId === 'admin' || roleId === 'root';
 
-  // Navigation Items according to User Role
   let navItems = [];
 
-  if (roleId === 'teacher') {
+  if (roleId === 'teacher' || roleId === 'headdepartment') {
+    const planBadge = (notif?.teacherRejectedCount || 0) + (notif?.teacherNeedClipCount || 0);
     navItems = [
       {
         path: '/',
@@ -30,30 +31,44 @@ const BottomNav = () => {
       {
         path: '/sendplan',
         label: 'ส่งแผน',
-        icon: 'fa-solid fa-cloud-arrow-up',
+        icon: 'fa-solid fa-file-circle-plus',
         isActive: currentPath === '/sendplan',
       },
       {
         path: '/statusplan',
-        label: 'แผนของฉัน',
-        icon: 'fa-solid fa-clock-rotate-left',
-        badge: notifCount > 0 ? notifCount : null,
-        isActive: currentPath === '/statusplan',
+        label: 'แผน & คลิป',
+        icon: 'fa-solid fa-bars-progress',
+        badge: planBadge > 0 ? planBadge : null,
+        isActive:
+          currentPath === '/statusplan' ||
+          currentPath === '/statusplan_clip' ||
+          currentPath === '/send_clip',
       },
-      {
-        path: '/statusplan_pass',
-        label: 'ผ่านอนุมัติ',
-        icon: 'fa-solid fa-award',
-        isActive: currentPath === '/statusplan_pass' || currentPath.includes('view_scoring'),
-      },
+      roleId === 'headdepartment' || user?.is_evaluator || user?.user_metadata?.is_evaluator
+        ? {
+            path: '/Plan_Check',
+            label: 'ตรวจนิเทศ',
+            icon: 'fa-solid fa-star-half-stroke',
+            badge: notif?.committeePendingCount > 0 ? notif.committeePendingCount : null,
+            isActive: currentPath === '/plan_check' || currentPath === '/plan_scoring',
+          }
+        : {
+            path: '/statusplan_pass',
+            label: 'ผลประเมิน',
+            icon: 'fa-solid fa-award',
+            isActive: currentPath === '/statusplan_pass' || currentPath.includes('view_scoring'),
+          },
       {
         path: '/editprofile',
         label: 'โปรไฟล์',
         icon: 'fa-solid fa-user-gear',
-        isActive: currentPath === '/editprofile' || currentPath === '/chgpasswd',
+        isActive:
+          currentPath === '/editprofile' ||
+          currentPath === '/chgpasswd' ||
+          currentPath === '/editsignature',
       },
     ];
-  } else if (roleId === 'directorschool' || roleId === 'admin_school') {
+  } else if (roleId === 'directorschool') {
     navItems = [
       {
         path: '/',
@@ -63,28 +78,62 @@ const BottomNav = () => {
       },
       {
         path: '/Plan_Check',
-        label: 'ตรวจแผน',
-        icon: 'fa-solid fa-list-check',
-        badge: notifCount > 0 ? notifCount : null,
+        label: 'ตรวจอนุมัติ',
+        icon: 'fa-solid fa-file-signature',
+        badge: notif?.directorPendingCount > 0 ? notif.directorPendingCount : null,
         isActive: currentPath === '/plan_check' || currentPath === '/appointment',
       },
       {
-        path: '/statusplan_pass',
-        label: 'ผ่านอนุมัติ',
-        icon: 'fa-solid fa-school-circle-check',
-        isActive: currentPath === '/statusplan_pass' || currentPath.includes('view_scoring'),
+        path: '/nominate_evaluator',
+        label: 'ตั้งผู้นิเทศ',
+        icon: 'fa-solid fa-user-plus',
+        isActive: currentPath === '/nominate_evaluator',
       },
       {
-        path: '/userteacher',
-        label: 'ครูในสังกัด',
-        icon: 'fa-solid fa-users',
-        isActive: currentPath === '/userteacher' || currentPath === '/nominate_evaluator',
+        path: '/statusplan_pass',
+        label: 'คลังแผน รร.',
+        icon: 'fa-solid fa-folder-open',
+        isActive: currentPath === '/statusplan_pass' || currentPath.includes('view_scoring'),
       },
       {
         path: '/editprofile',
         label: 'โปรไฟล์',
         icon: 'fa-solid fa-user-gear',
-        isActive: currentPath === '/editprofile' || currentPath === '/chgpasswd',
+        isActive: currentPath === '/editprofile' || currentPath === '/editsignature',
+      },
+    ];
+  } else if (roleId === 'admin_school') {
+    navItems = [
+      {
+        path: '/',
+        label: 'แดชบอร์ด',
+        icon: 'fa-solid fa-gauge-high',
+        isActive: currentPath === '/' || currentPath === '/info',
+      },
+      {
+        path: '/confirmUser',
+        label: 'อนุมัติครู',
+        icon: 'fa-solid fa-user-check',
+        badge: notif?.adminPendingUsersCount > 0 ? notif.adminPendingUsersCount : null,
+        isActive: currentPath === '/confirmuser',
+      },
+      {
+        path: '/userteacher',
+        label: 'ทะเบียนครู',
+        icon: 'fa-solid fa-users',
+        isActive: currentPath === '/userteacher',
+      },
+      {
+        path: '/reset_user_password',
+        label: 'รีเซ็ตรหัส',
+        icon: 'fa-solid fa-unlock-keyhole',
+        isActive: currentPath === '/reset_user_password',
+      },
+      {
+        path: '/editprofile',
+        label: 'โปรไฟล์',
+        icon: 'fa-solid fa-user-gear',
+        isActive: currentPath === '/editprofile',
       },
     ];
   } else if (['supervision', 'chairman'].includes(roleId)) {
@@ -99,7 +148,7 @@ const BottomNav = () => {
         path: '/Plan_Check',
         label: 'ประเมินแผน',
         icon: 'fa-solid fa-pen-ruler',
-        badge: notifCount > 0 ? notifCount : null,
+        badge: notif?.committeePendingCount > 0 ? notif.committeePendingCount : null,
         isActive: currentPath === '/plan_check' || currentPath === '/plan_scoring',
       },
       {
@@ -112,11 +161,11 @@ const BottomNav = () => {
         path: '/editprofile',
         label: 'โปรไฟล์',
         icon: 'fa-solid fa-user-gear',
-        isActive: currentPath === '/editprofile' || currentPath === '/chgpasswd',
+        isActive: currentPath === '/editprofile' || currentPath === '/editsignature',
       },
     ];
   } else {
-    // Supervisor, District Director, Admin
+    // Supervisor, District Director, Admin, Root
     navItems = [
       {
         path: '/',
@@ -125,19 +174,35 @@ const BottomNav = () => {
         isActive: currentPath === '/' || currentPath === '/info',
       },
       {
-        path: '/supervision_summary',
-        label: 'รายงานผล',
-        icon: 'fa-solid fa-chart-pie',
-        isActive: currentPath === '/supervision_summary',
-      },
-      {
         path: '/admin_monitor',
-        label: 'ติดตามระบบ',
-        icon: 'fa-solid fa-laptop-file',
+        label: 'กำกับติดตาม',
+        icon: 'fa-solid fa-satellite-dish',
         isActive: currentPath === '/admin_monitor',
       },
+      roleId === 'supervisor'
+        ? {
+            path: '/Plan_Check',
+            label: 'ตรวจประเมิน',
+            icon: 'fa-solid fa-clipboard-list',
+            badge: notif?.committeePendingCount > 0 ? notif.committeePendingCount : null,
+            isActive: currentPath === '/plan_check' || currentPath === '/plan_scoring',
+          }
+        : isAdminAccount
+          ? {
+              path: '/confirmUser',
+              label: 'รออนุมัติ',
+              icon: 'fa-solid fa-user-check',
+              badge: notif?.totalCount > 0 ? notif.totalCount : null,
+              isActive: currentPath === '/confirmuser' || currentPath === '/approve_evaluator',
+            }
+          : {
+              path: '/supervision_summary',
+              label: 'รายงานสรุป',
+              icon: 'fa-solid fa-chart-pie',
+              isActive: currentPath === '/supervision_summary',
+            },
       {
-        path: '/editprofile',
+        path: isAdminAccount ? '/profile' : '/editprofile',
         label: 'โปรไฟล์',
         icon: 'fa-solid fa-user-gear',
         isActive: currentPath === '/editprofile' || currentPath === '/profile',
@@ -154,29 +219,27 @@ const BottomNav = () => {
           bottom: 0;
           left: 0;
           right: 0;
-          height: 64px;
-          background: rgba(255, 255, 255, 0.94);
+          min-height: 64px;
+          background: rgba(255, 255, 255, 0.95);
           backdrop-filter: blur(16px);
           -webkit-backdrop-filter: blur(16px);
           border-top: 1px solid #e2e8f0;
-          box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
+          box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.06);
           z-index: 1040;
           justify-content: space-around;
           align-items: center;
-          padding: 0 4px;
-          padding-bottom: env(safe-area-inset-bottom, 0px);
+          padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px));
         }
 
         @media (max-width: 768px) {
           .mobile-bottom-nav {
             display: flex;
           }
-          /* Extra bottom padding on mobile so content is never covered */
           .content-wrapper {
-            padding-bottom: 70px !important;
+            padding-bottom: 84px !important;
           }
           .main-footer {
-            margin-bottom: 64px !important;
+            margin-bottom: 68px !important;
           }
         }
 
@@ -192,82 +255,70 @@ const BottomNav = () => {
           align-items: center;
           justify-content: center;
           flex: 1;
-          height: 100%;
+          height: 56px;
           color: #64748b;
-          text-decoration: none;
+          text-decoration: none !important;
           font-size: 11px;
           position: relative;
           transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-          touch-action: manipulation;
-          -webkit-tap-highlight-color: transparent;
-        }
-
-        .bottom-nav-item:active {
-          transform: scale(0.92);
         }
 
         .bottom-nav-item.active {
-          color: #0284c7;
+          color: #4f46e5;
           font-weight: 700;
         }
 
-        .bottom-nav-item.active .bottom-nav-icon-wrapper {
-          background: #e0f2fe;
-          color: #0284c7;
-          border-radius: 14px;
-        }
-
-        .bottom-nav-icon-wrapper {
+        .bottom-nav-icon-wrap {
           position: relative;
+          width: 38px;
+          height: 28px;
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 38px;
-          height: 28px;
+          border-radius: 14px;
+          font-size: 16px;
           margin-bottom: 2px;
-          transition: all 0.2s ease;
+          transition: background 0.2s ease;
         }
 
-        .bottom-nav-icon-wrapper i {
-          font-size: 16px;
+        .bottom-nav-item.active .bottom-nav-icon-wrap {
+          background: #eef2ff;
+          color: #4f46e5;
         }
 
         .bottom-nav-badge {
           position: absolute;
-          top: -2px;
-          right: 2px;
+          top: -4px;
+          right: -4px;
           background: #ef4444;
           color: #fff;
-          font-size: 9px;
-          font-weight: 800;
+          font-size: 9.5px;
+          font-weight: 700;
           min-width: 16px;
           height: 16px;
-          border-radius: 8px;
+          padding: 0 4px;
+          border-radius: 99px;
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 0 4px;
-          border: 2px solid #fff;
-        }
-
-        .bottom-nav-label {
-          letter-spacing: -0.2px;
-          line-height: 1.1;
+          border: 1.5px solid #fff;
         }
       `}</style>
 
-      <nav className="mobile-bottom-nav" aria-label="แถบเมนูด้านล่างสำหรับมือถือ">
-        {navItems.map((item, idx) => (
+      <nav className="mobile-bottom-nav no-print" aria-label="เมนูนำทางมือถือ">
+        {navItems.map((item) => (
           <Link
-            key={idx}
+            key={item.path}
             to={item.path}
             className={`bottom-nav-item ${item.isActive ? 'active' : ''}`}
           >
-            <div className="bottom-nav-icon-wrapper">
+            <div className="bottom-nav-icon-wrap">
               <i className={item.icon}></i>
-              {item.badge && <span className="bottom-nav-badge">{item.badge}</span>}
+              {item.badge && (
+                <span className="bottom-nav-badge">{item.badge > 99 ? '99+' : item.badge}</span>
+              )}
             </div>
-            <span className="bottom-nav-label">{item.label}</span>
+            <span>{item.label}</span>
           </Link>
         ))}
       </nav>

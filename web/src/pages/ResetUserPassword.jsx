@@ -3,12 +3,13 @@ import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
 import { encryptLegacyPassword } from '../utils/legacyCrypto';
 import { useSearchParams } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useUserProfile } from '../hooks/useUserProfile';
+import { maskThaiId } from '../utils/scoreCalculator';
 
 const ResetUserPassword = () => {
-    const { user } = useAuth();
-    const roleId = user?.level_id || user?.user_metadata?.role || user?.role;
-    const userSchool = user?.user_metadata?.school || user?.school;
+    const { profile, loading: profileLoading } = useUserProfile();
+    const roleId = profile?.level || profile?.level_id;
+    const userSchool = profile?.school;
     const isAdminSchool = roleId === 'admin_school';
 
     const [searchParams] = useSearchParams();
@@ -16,13 +17,12 @@ const ResetUserPassword = () => {
     const [search, setSearch] = useState(defaultSearch);
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [saving, setSaving] = useState(false);
-    const [selected, setSelected] = useState(null); // user ที่เลือกจะ reset
+    const [selected, setSelected] = useState(null); // user to reset
     const [newPwd, setNewPwd] = useState('');
     const [confirmPwd, setConfirmPwd] = useState('');
+    const [showPwd, setShowPwd] = useState(false);
     const [lookups, setLookups] = useState({ prefix: {}, school: {} });
 
-    // ดึง lookup prefix + school
     useEffect(() => {
         const fetchLookups = async () => {
             const [{ data: prefixData }, { data: schoolData }] = await Promise.all([
@@ -46,7 +46,7 @@ const ResetUserPassword = () => {
         try {
             let dbQuery = supabase
                 .from('tbl_Users')
-                .select('id, people_id, name, lastname, prefix, school, level, register_isConfirm')
+                .select('id, people_id, name, lastname, prefix, school, level, birthday')
                 .or(`people_id.eq.${query.trim()},name.ilike.%${query.trim()}%,lastname.ilike.%${query.trim()}%`);
 
             if (isAdminSchool && userSchool) {
@@ -57,7 +57,6 @@ const ResetUserPassword = () => {
             if (error) throw error;
             setUsers(data || []);
             
-            // Auto select if only one match and it matches the initially searched people_id
             if (data?.length === 1 && data[0].people_id === query.trim()) {
                 setSelected(data[0]);
             }
@@ -69,202 +68,299 @@ const ResetUserPassword = () => {
     }, [isAdminSchool, userSchool]);
 
     useEffect(() => {
-        if (defaultSearch) {
+        if (defaultSearch && !profileLoading) {
             performSearch(defaultSearch);
         }
-    }, [defaultSearch, performSearch]);
+    }, [defaultSearch, profileLoading, performSearch]);
 
     const handleSearch = (e) => {
         e.preventDefault();
         performSearch(search);
     };
 
+    const handleSelectUser = (u) => {
+        setSelected(u);
+        setNewPwd('');
+        setConfirmPwd('');
+    };
+
+    const applyPreset = (presetType) => {
+        if (!selected) return;
+        if (presetType === 'birthday') {
+            if (!selected.birthday) {
+                Swal.fire('ไม่มีข้อมูล', 'ผู้ใช้นี้ยังไม่ได้ระบุวันเกิดในระบบ', 'info');
+                return;
+            }
+            // format YYYYMMDD
+            const b = selected.birthday.replace(/[^0-9]/g, '');
+            setNewPwd(b);
+            setConfirmPwd(b);
+        } else if (presetType === 'people_id') {
+            setNewPwd(selected.people_id);
+            setConfirmPwd(selected.people_id);
+        } else if (presetType === 'default') {
+            setNewPwd('123456');
+            setConfirmPwd('123456');
+        }
+    };
+
     const handleReset = async (e) => {
         e.preventDefault();
         if (!selected) return;
         if (newPwd.length < 6) {
-            Swal.fire('Error', 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', 'error');
+            Swal.fire('ข้อผิดพลาด', 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', 'warning');
             return;
         }
         if (newPwd !== confirmPwd) {
-            Swal.fire('Error', 'รหัสผ่านไม่ตรงกัน', 'error');
+            Swal.fire('ข้อผิดพลาด', 'รหัสผ่านทั้งสองช่องไม่ตรงกัน', 'warning');
             return;
         }
+
+        const fullName = `${lookups.prefix[selected.prefix] || ''}${selected.name} ${selected.lastname}`;
         const confirm = await Swal.fire({
-            title: 'ยืนยันการ Reset รหัสผ่าน?',
-            html: `รีเซ็ตรหัสผ่านของ <b>${lookups.prefix[selected.prefix] || ''}${selected.name} ${selected.lastname}</b><br/>รหัสใหม่: <b>${newPwd}</b>`,
+            title: 'ยืนยันการตั้งรหัสผ่านใหม่?',
+            html: `
+                <div class="text-left py-2" style="font-size: 14px;">
+                    <div>ผู้ใช้งาน: <b>${fullName}</b></div>
+                    <div>เลข ปชช.: <code>${selected.people_id}</code></div>
+                    <div class="mt-2 text-danger font-weight-bold">รหัสผ่านใหม่ที่จะตั้ง: <code style="font-size: 16px;">${newPwd}</code></div>
+                </div>
+            `,
             icon: 'warning',
             showCancelButton: true,
-            confirmButtonText: 'ยืนยัน',
+            confirmButtonText: 'ยืนยันรีเซ็ตรหัสผ่าน',
             cancelButtonText: 'ยกเลิก',
+            confirmButtonColor: '#f59e0b',
         });
+
         if (!confirm.isConfirmed) return;
 
-        setSaving(true);
         try {
             const encrypted = encryptLegacyPassword(newPwd);
             const { error } = await supabase
                 .from('tbl_Users')
                 .update({ passwd: encrypted })
                 .eq('id', selected.id);
+
             if (error) throw error;
-            Swal.fire('สำเร็จ! ✅', `รีเซ็ตรหัสผ่านของ ${selected.name} ${selected.lastname} เรียบร้อยแล้ว`, 'success');
+
+            await Swal.fire({
+                title: 'รีเซ็ตรหัสผ่านสำเร็จ',
+                html: `
+                    <div>ได้เปลี่ยนรหัสผ่านของ <b>${fullName}</b> เรียบร้อยแล้ว</div>
+                    <div class="alert alert-info mt-3 p-2 font-mono">รหัสผ่านใหม่: <b>${newPwd}</b></div>
+                `,
+                icon: 'success',
+                confirmButtonText: 'คัดลอกรหัสผ่าน & ปิด',
+            });
+
+            navigator.clipboard?.writeText(newPwd);
+            setSelected(null);
             setNewPwd('');
             setConfirmPwd('');
-            setSelected(null);
         } catch (err) {
-            Swal.fire('Error', err.message, 'error');
-        } finally {
-            setSaving(false);
+            console.error('Reset password error:', err);
+            Swal.fire('Error', 'ไม่สามารถรีเซ็ตรหัสผ่านได้: ' + err.message, 'error');
         }
     };
 
     return (
-        <div className="row">
-            <div className="col-12">
-                <div className="card card-danger">
-                    <div className="card-header">
-                        <h3 className="card-title">
-                            <i className="fa-solid fa-key mr-2"></i>
-                            Reset รหัสผ่านบุคลากร (Admin)
-                        </h3>
-                    </div>
-                    <div className="card-body">
+        <div className="container-fluid py-3">
+            <div className="row justify-content-center">
+                <div className="col-lg-9">
+                    <div className="card shadow-sm border-0 mb-4" style={{ borderRadius: '12px' }}>
+                        <div className="card-header bg-white py-3 border-bottom">
+                            <h5 className="font-weight-bold mb-0 text-dark">
+                                <i className="fa-solid fa-key text-warning mr-2"></i> รีเซ็ตรหัสผ่านผู้ใช้งาน (Reset Password)
+                            </h5>
+                            <p className="text-muted small mb-0 mt-1">
+                                ค้นหาบุคลากรและกำหนดรหัสผ่านใหม่ {isAdminSchool ? `(จำกัดเฉพาะโรงเรียน${lookups.school[userSchool] || ''})` : ''}
+                            </p>
+                        </div>
 
-                        {/* ค้นหาผู้ใช้ */}
-                        <form onSubmit={handleSearch}>
-                            <div className="input-group mb-3">
-                                <input
-                                    type="text"
-                                    className="form-control"
-                                    placeholder="ค้นหาด้วย เลขบัตรประชาชน / ชื่อ / นามสกุล"
-                                    value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                />
-                                <div className="input-group-append">
-                                    <button type="submit" className="btn btn-primary" disabled={loading}>
-                                        <i className="fas fa-search"></i> ค้นหา
-                                    </button>
+                        <div className="card-body p-4">
+                            {/* Search Box */}
+                            <form onSubmit={handleSearch} className="mb-4">
+                                <div className="row align-items-end">
+                                    <div className="col-md-7">
+                                        <label className="font-weight-bold small text-muted">ค้นหาผู้ใช้งาน (ชื่อ, นามสกุล หรือเลขประจำตัวประชาชน):</label>
+                                        <div className="input-group">
+                                            <input
+                                                type="text"
+                                                className="form-control"
+                                                placeholder="เช่น สมชาย หรือ 1659900..."
+                                                value={search}
+                                                onChange={(e) => setSearch(e.target.value)}
+                                                required
+                                            />
+                                            <div className="input-group-append">
+                                                <button className="btn btn-warning font-weight-bold text-dark" type="submit" disabled={loading}>
+                                                    {loading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-magnifying-glass mr-1"></i>} ค้นหา
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        </form>
+                            </form>
 
-                        {/* ผลการค้นหา */}
-                        {loading && (
-                            <div className="text-center p-3">
-                                <div className="spinner-border text-primary" role="status"></div>
-                                <p className="mt-2">กำลังค้นหา...</p>
-                            </div>
-                        )}
-
-                        {!loading && users.length > 0 && (
-                            <div className="table-responsive mb-4">
-                                <table className="table table-bordered table-hover table-striped">
-                                    <thead className="thead-dark">
-                                        <tr>
-                                            <th>เลขบัตร</th>
-                                            <th>ชื่อ - นามสกุล</th>
-                                            <th>โรงเรียน</th>
-                                            <th>ระดับ</th>
-                                            <th>สถานะ</th>
-                                            <th>เลือก</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {users.map((u) => (
-                                            <tr
-                                                key={u.id}
-                                                className={selected?.id === u.id ? 'table-warning' : ''}
-                                                style={{ cursor: 'pointer' }}
-                                                onClick={() => { setSelected(u); setNewPwd(''); setConfirmPwd(''); }}
-                                            >
-                                                <td><code>{u.people_id}</code></td>
-                                                <td>{lookups.prefix[u.prefix] || ''}{u.name} {u.lastname}</td>
-                                                <td>{lookups.school[u.school] || u.school}</td>
-                                                <td>{u.level}</td>
-                                                <td>
-                                                    {String(u.register_isConfirm) === '1'
-                                                        ? <span className="badge badge-success">อนุมัติแล้ว</span>
-                                                        : <span className="badge badge-warning">รอการอนุมัติ</span>
-                                                    }
-                                                </td>
-                                                <td>
-                                                    <button
-                                                        type="button"
-                                                        className={`btn btn-sm ${selected?.id === u.id ? 'btn-warning' : 'btn-outline-warning'}`}
-                                                        onClick={() => { setSelected(u); setNewPwd(''); setConfirmPwd(''); }}
-                                                    >
-                                                        <i className="fa-solid fa-key"></i> เลือก
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-
-                        {!loading && search && users.length === 0 && (
-                            <div className="alert alert-warning">ไม่พบผู้ใช้งานที่ค้นหา</div>
-                        )}
-
-                        {/* ฟอร์ม Reset รหัสผ่าน */}
-                        {selected && (
-                            <div className="card card-warning mt-3">
-                                <div className="card-header">
-                                    <h4 className="card-title">
-                                        <i className="fa-solid fa-lock-open mr-2"></i>
-                                        Reset รหัสผ่านของ: {lookups.prefix[selected.prefix] || ''}{selected.name} {selected.lastname}
-                                        <small className="ml-2 text-muted">({selected.people_id})</small>
-                                    </h4>
+                            {/* Search Results */}
+                            {users.length > 0 && !selected && (
+                                <div className="card border mb-4" style={{ borderRadius: '10px' }}>
+                                    <div className="card-header bg-light py-2">
+                                        <strong className="text-dark small">พบผู้ใช้งาน {users.length} รายการ — เลือกคนที่ต้องการรีเซ็ต</strong>
+                                    </div>
+                                    <div className="table-responsive">
+                                        <table className="table table-hover align-middle mb-0 small">
+                                            <thead>
+                                                <tr>
+                                                    <th>ชื่อ - สกุล</th>
+                                                    <th>เลขประจำตัวประชาชน</th>
+                                                    <th>สถานศึกษา</th>
+                                                    <th>บทบาท</th>
+                                                    <th style={{ width: '100px' }} className="text-center">เลือก</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {users.map((u) => (
+                                                    <tr key={u.id}>
+                                                        <td className="font-weight-bold">
+                                                            {lookups.prefix[u.prefix] || ''}{u.name} {u.lastname}
+                                                        </td>
+                                                        <td>{maskThaiId(u.people_id)}</td>
+                                                        <td>{lookups.school[u.school] || '-'}</td>
+                                                        <td><span className="badge badge-light border">{u.level || '-'}</span></td>
+                                                        <td className="text-center">
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-outline-warning btn-sm text-dark font-weight-bold px-3"
+                                                                style={{ borderRadius: '20px' }}
+                                                                onClick={() => handleSelectUser(u)}
+                                                            >
+                                                                รีเซ็ต
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
-                                <div className="card-body">
-                                    <form onSubmit={handleReset}>
-                                        <div className="row">
-                                            <div className="col-md-6">
-                                                <div className="mb-3">
-                                                    <label>รหัสผ่านใหม่ :</label>
+                            )}
+
+                            {/* Reset Password Form */}
+                            {selected && (
+                                <div className="card border-warning mb-3 shadow-sm" style={{ borderRadius: '12px', borderWidth: '2px' }}>
+                                    <div className="card-header bg-warning text-dark d-flex justify-content-between align-items-center py-2 px-3">
+                                        <div className="font-weight-bold">
+                                            <i className="fa-solid fa-shield-halved mr-2"></i> ตั้งรหัสผ่านใหม่: {lookups.prefix[selected.prefix] || ''}{selected.name} {selected.lastname}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="btn btn-sm btn-light py-0 px-2 font-weight-bold"
+                                            onClick={() => setSelected(null)}
+                                        >
+                                            เปลี่ยนคน
+                                        </button>
+                                    </div>
+
+                                    <div className="card-body p-4">
+                                        {/* Presets Toolbar */}
+                                        <div className="mb-3">
+                                            <label className="font-weight-bold small text-muted d-block mb-1">
+                                                ตัวเลือกด่วน (Quick Presets):
+                                            </label>
+                                            <div className="d-flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-outline-secondary btn-sm"
+                                                    onClick={() => applyPreset('birthday')}
+                                                >
+                                                    <i className="fa-solid fa-cake-candles mr-1"></i> วันเกิด (YYYYMMDD)
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-outline-secondary btn-sm"
+                                                    onClick={() => applyPreset('people_id')}
+                                                >
+                                                    <i className="fa-solid fa-id-card mr-1"></i> เลขประจำตัวประชาชน (13 หลัก)
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-outline-secondary btn-sm"
+                                                    onClick={() => applyPreset('default')}
+                                                >
+                                                    <i className="fa-solid fa-asterisk mr-1"></i> ค่าเริ่มต้น (123456)
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <form onSubmit={handleReset}>
+                                            <div className="row">
+                                                <div className="col-md-6 mb-3">
+                                                    <label className="font-weight-bold small text-muted">รหัสผ่านใหม่:</label>
+                                                    <div className="input-group">
+                                                        <input
+                                                            type={showPwd ? 'text' : 'password'}
+                                                            className="form-control"
+                                                            placeholder="กำหนดรหัสผ่านใหม่"
+                                                            value={newPwd}
+                                                            onChange={(e) => setNewPwd(e.target.value)}
+                                                            required
+                                                            minLength={6}
+                                                        />
+                                                        <div className="input-group-append">
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-outline-secondary"
+                                                                onClick={() => setShowPwd(!showPwd)}
+                                                            >
+                                                                <i className={`fa-solid ${showPwd ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="col-md-6 mb-3">
+                                                    <label className="font-weight-bold small text-muted">ยืนยันรหัสผ่านใหม่อีกครั้ง:</label>
                                                     <input
-                                                        type="password"
+                                                        type={showPwd ? 'text' : 'password'}
                                                         className="form-control"
-                                                        value={newPwd}
-                                                        onChange={(e) => setNewPwd(e.target.value)}
-                                                        placeholder="อย่างน้อย 6 ตัวอักษร"
+                                                        placeholder="กรอกรหัสผ่านใหม่อีกครั้ง"
+                                                        value={confirmPwd}
+                                                        onChange={(e) => setConfirmPwd(e.target.value)}
                                                         required
                                                         minLength={6}
                                                     />
                                                 </div>
                                             </div>
-                                            <div className="col-md-6">
-                                                <div className="mb-3">
-                                                    <label>ยืนยันรหัสผ่านใหม่ :</label>
-                                                    <input
-                                                        type="password"
-                                                        className="form-control"
-                                                        value={confirmPwd}
-                                                        onChange={(e) => setConfirmPwd(e.target.value)}
-                                                        placeholder="พิมพ์รหัสผ่านอีกครั้ง"
-                                                        required
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <button type="submit" className="btn btn-danger" disabled={saving}>
-                                            <i className="fa-solid fa-key mr-1"></i>
-                                            {saving ? 'กำลังบันทึก...' : 'Reset รหัสผ่าน'}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="btn btn-secondary ml-2"
-                                            onClick={() => { setSelected(null); setNewPwd(''); setConfirmPwd(''); }}
-                                        >
-                                            ยกเลิก
-                                        </button>
-                                    </form>
-                                </div>
-                            </div>
-                        )}
 
+                                            {newPwd && confirmPwd && newPwd !== confirmPwd && (
+                                                <div className="text-danger small mb-2">
+                                                    <i className="fa-solid fa-triangle-exclamation mr-1"></i> รหัสผ่านทั้งสองช่องไม่ตรงกัน
+                                                </div>
+                                            )}
+
+                                            <div className="d-flex justify-content-end gap-2 mt-3 pt-3 border-top">
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary px-3"
+                                                    onClick={() => setSelected(null)}
+                                                >
+                                                    ยกเลิก
+                                                </button>
+                                                <button
+                                                    type="submit"
+                                                    className="btn btn-warning font-weight-bold text-dark px-4"
+                                                    disabled={!newPwd || newPwd !== confirmPwd}
+                                                >
+                                                    <i className="fa-solid fa-check mr-1"></i> ยืนยันรีเซ็ตรหัสผ่าน
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>

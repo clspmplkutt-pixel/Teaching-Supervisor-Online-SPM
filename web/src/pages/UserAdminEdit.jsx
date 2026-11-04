@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const UserAdminEdit = () => {
   const navigate = useNavigate();
@@ -14,6 +15,10 @@ const UserAdminEdit = () => {
   useEffect(() => {
     let mounted = true;
     const loadUser = async () => {
+      if (!userParam) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       try {
         const { data, error } = await supabase.from('tbl_user').select('*').eq('user', userParam).maybeSingle();
@@ -35,7 +40,7 @@ const UserAdminEdit = () => {
         if (mounted) setLoading(false);
       }
     };
-    if (userParam) loadUser();
+    loadUser();
     return () => { mounted = false; };
   }, [userParam]);
 
@@ -50,61 +55,95 @@ const UserAdminEdit = () => {
     setSaving(true);
     try {
       const { error } = await supabase.from('tbl_user').update({
-        name: form.name,
-        email: form.email,
-        telephone: form.telephone,
+        name: form.name.trim(),
+        email: form.email.trim(),
+        telephone: form.telephone.trim(),
         lastupdate: new Date().toISOString(),
       }).eq('user', form.user);
       if (error) throw error;
-      Swal.fire('สำเร็จ', 'แก้ไขข้อมูลสำเร็จ', 'success');
+      Swal.fire('สำเร็จ', 'แก้ไขข้อมูลผู้ดูแลระบบสำเร็จ', 'success');
       navigate('/ManageUserAdmin');
     } catch (err) {
       console.error(err);
-      Swal.fire('Error', 'ไม่สามารถเพิ่มข้อมูลได้ เกิดข้อผิดพลาด', 'error');
+      Swal.fire('Error', 'ไม่สามารถบันทึกข้อมูลได้', 'error');
     } finally {
       setSaving(false);
     }
   };
 
   if (loading) {
+    return <LoadingSpinner title="แก้ไขข้อมูลผู้ดูแลระบบ" message="กำลังโหลดข้อมูล..." />;
+  }
+
+  if (!userParam) {
     return (
-      <div className="text-center p-4">
-        <div className="spinner-border text-primary" role="status"></div>
-        <p className="mt-2">กำลังโหลดข้อมูล...</p>
+      <div className="container py-4 text-center">
+        <p className="text-danger">ไม่พบรหัสผู้ใช้งานที่ต้องการแก้ไข</p>
+        <Link to="/ManageUserAdmin" className="btn btn-secondary btn-sm">กลับหน้ารายการ</Link>
       </div>
     );
   }
 
   return (
-    <div className="row">
-      <div className="col-sm-12 col-md-12 col-lg-8 col-xl-8">
-        <div className="card card-success">
-          <div className="card-header">
-            <h3 className="card-title"><i className="fa-solid fa-school-circle-check"></i> ปรับปรุงข้อมูลส่วนตัว</h3>
-          </div>
-          <div className="card-body">
-            <form onSubmit={handleSubmit}>
-              <div className="mb-3 mt-3">
-                <label htmlFor="user">ชื่อผู้ใช้งาน:</label>
-                <input type="text" className="form-control" id="user" placeholder="ชื่อผู้ใช้งาน" name="user" value={form.user} readOnly required />
-              </div>
-              <div className="mb-3">
-                <label htmlFor="name">ชื่อ - นามสกุล :</label>
-                <input type="text" className="form-control" id="name" placeholder="ชื่อ - นามสกุล" name="name" value={form.name} onChange={handleChange} required />
-              </div>
-              <div className="mb-3">
-                <label htmlFor="email">Email :</label>
-                <input type="email" className="form-control" id="email" placeholder="email" name="email" value={form.email} onChange={handleChange} />
-              </div>
-              <div className="mb-3">
-                <label htmlFor="telephone">เบอร์โทรศัพท์ :</label>
-                <input type="text" className="form-control" id="telephone" placeholder="เบอร์โทรศัพท์" name="telephone" value={form.telephone} onChange={handleChange} />
-              </div>
-              <div className="mb-3">
-                <button type="submit" className="btn btn-primary mt-3" disabled={saving}>บันทึก</button>
-                <button type="button" className="btn btn-danger mt-3 ml-2" onClick={() => navigate('/ManageUserAdmin')}>ยกเลิก</button>
-              </div>
-            </form>
+    <div className="container-fluid py-3">
+      <div className="row justify-content-center">
+        <div className="col-lg-8">
+          <div className="card shadow-sm border-0" style={{ borderRadius: '12px' }}>
+            <div className="card-header bg-white py-3 border-bottom">
+              <h5 className="font-weight-bold mb-0 text-dark">
+                <i className="fa-solid fa-user-pen text-warning mr-2"></i> แก้ไขข้อมูลผู้ดูแลระบบ (@{form.user})
+              </h5>
+            </div>
+            <div className="card-body p-4">
+              <form onSubmit={handleSubmit}>
+                <div className="row">
+                  <div className="col-md-6 mb-3">
+                    <label className="font-weight-bold small text-muted">ชื่อผู้ใช้งาน (Username):</label>
+                    <input type="text" className="form-control" name="user" value={form.user} readOnly disabled />
+                  </div>
+                  <div className="col-md-6 mb-3">
+                    <label className="font-weight-bold small text-muted">ชื่อ - นามสกุล:</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      name="name"
+                      value={form.name}
+                      onChange={handleChange}
+                      required
+                    />
+                  </div>
+                  <div className="col-md-6 mb-3">
+                    <label className="font-weight-bold small text-muted">อีเมล:</label>
+                    <input
+                      type="email"
+                      className="form-control"
+                      name="email"
+                      value={form.email}
+                      onChange={handleChange}
+                    />
+                  </div>
+                  <div className="col-md-6 mb-3">
+                    <label className="font-weight-bold small text-muted">เบอร์โทรศัพท์:</label>
+                    <input
+                      type="tel"
+                      className="form-control"
+                      name="telephone"
+                      value={form.telephone}
+                      onChange={handleChange}
+                    />
+                  </div>
+                </div>
+
+                <div className="d-flex justify-content-end gap-2 mt-3 pt-3 border-top">
+                  <Link to="/ManageUserAdmin" className="btn btn-secondary px-3">
+                    ยกเลิก
+                  </Link>
+                  <button type="submit" className="btn btn-primary font-weight-bold px-4" disabled={saving}>
+                    {saving ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       </div>

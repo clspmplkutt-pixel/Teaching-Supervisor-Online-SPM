@@ -171,7 +171,9 @@ const Appointment = ({ readOnly = false }) => {
         ]);
 
         const combinedUsers = [...(leadersRes.data || []), ...(specificUsersRes.data || [])];
-        const uniqueUsers = Array.from(new Map(combinedUsers.map((u) => [u.people_id, u])).values());
+        // Exclude the teacher who authored this plan from being appointed as committee
+        const uniqueUsers = Array.from(new Map(combinedUsers.map((u) => [u.people_id, u])).values())
+          .filter((u) => String(u.people_id).trim() !== String(planData.people_id).trim());
 
         // Check if any committee has already scored this plan
         let scoredSet = new Set();
@@ -432,7 +434,9 @@ const Appointment = ({ readOnly = false }) => {
       if (form.plan_approve === '1') {
         updatePayload.plan_approve = form.plan_approve;
         updatePayload.plan_ds_comment = form.plan_ds_comment;
-        updatePayload.plan_status = '2';
+        // Preserve plan_status if teacher already submitted clip or evaluation started (5, 6, 7)
+        const currentStatus = String(plan?.plan_status || '');
+        updatePayload.plan_status = ['5', '6', '7'].includes(currentStatus) ? currentStatus : '2';
         updatePayload.committee1 = form.committee1 || null;
         updatePayload.committee2 = form.committee2 || null;
         updatePayload.committee3 = form.committee3 || null;

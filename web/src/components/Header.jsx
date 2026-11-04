@@ -1,185 +1,367 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
-import useNotifications from '../hooks/useNotifications';
+import { useAuth } from '../contexts/AuthContext';
+import { useNotificationContext } from '../contexts/NotificationContext';
+import { roleLabels } from '../config/roleModules';
+import { useUserProfile } from '../hooks/useUserProfile';
 
-const thai_date_full = (date) => {
-    const d = new Date(date);
-    const months = [
-        "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
-        "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
-    ];
-    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear() + 543}`;
+const formatThaiDate = (date) => {
+  const d = new Date(date);
+  const months = [
+    'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+    'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
+  ];
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear() + 543}`;
 };
 
 const getRoleId = (user) =>
-    user?.level_id || user?.user_metadata?.role || user?.role || 'teacher';
+  user?.level_id || user?.user_metadata?.role || user?.role || 'teacher';
 
 const Header = () => {
-    const { user, logout } = useAuth();
-    const notifCount = useNotifications();
-    const [showDropdown, setShowDropdown] = useState(false);
-    const dropdownRef = useRef(null);
+  const { user, logout } = useAuth();
+  const { profile } = useUserProfile();
+  const notif = useNotificationContext();
 
-    const userName = user?.user_metadata?.name || user?.name || 'Guest';
-    const userRole = user?.user_metadata?.role || user?.role || 'User';
-    const roleId = getRoleId(user);
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const notifRef = useRef(null);
+  const userMenuRef = useRef(null);
 
-    // ครู → ไปหน้าสถานะแผน, ผอ. และกรรมการ → ไปหน้าตรวจแผนการสอน
-    const notifLink = roleId === 'teacher' ? '/statusplan' : '/Plan_Check';
+  const roleId = getRoleId(user);
+  const isAdminAccount = roleId === 'admin' || roleId === 'root';
+  const isEvaluator = Boolean(user?.is_evaluator || user?.user_metadata?.is_evaluator);
 
-    // Click outside to close dropdown
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-                setShowDropdown(false);
-            }
-        };
+  const displayName = profile?.name
+    ? `${profile.name} ${profile.lastname || ''}`.trim()
+    : user?.user_metadata?.name || user?.name || 'ผู้ใช้งาน';
+  const roleLabel = roleLabels[roleId] || roleId;
 
-        if (showDropdown) {
-            document.addEventListener('mousedown', handleClickOutside);
-            document.addEventListener('touchstart', handleClickOutside);
-        }
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-            document.removeEventListener('touchstart', handleClickOutside);
-        };
-    }, [showDropdown]);
+  const notifCount = notif?.totalCount || 0;
 
-    return (
-        <nav className="main-header navbar navbar-expand navbar-white navbar-light">
-            {/* Left navbar links */}
-            <ul className="navbar-nav">
-                <li className="nav-item">
-                    <a className="nav-link" data-widget="pushmenu" href="#" role="button"><i className="fas fa-bars"></i></a>
-                </li>
-                <li className="nav-item d-none d-sm-inline-block">
-                    <Link to="/" className="nav-link text-blue"><i className="fa-solid fa-house"></i> หน้าหลัก</Link>
-                </li>
-                <li className="nav-item d-none d-sm-inline-block">
-                    <a href="https://secondary.obec.go.th" target="_blank" rel="noreferrer" className="nav-link text-cyan">
-                        <i className="fa-solid fa-globe"></i> สพม.พิษณุโลก อุตรดิตถ์
-                    </a>
-                </li>
-            </ul>
+  let notifLink = '/Plan_Check';
+  if (roleId === 'teacher') {
+    notifLink = notif?.committeePendingCount > 0 && notif?.teacherRejectedCount === 0 && notif?.teacherNeedClipCount === 0
+      ? '/Plan_Check'
+      : '/statusplan';
+  } else if (roleId === 'admin' || roleId === 'root') {
+    notifLink = notif?.adminPendingEvaluatorsCount > 0 && notif?.adminPendingUsersCount === 0
+      ? '/approve_evaluator'
+      : '/confirmUser';
+  } else if (roleId === 'admin_school') {
+    notifLink = '/confirmUser';
+  }
 
-            {/* Right navbar links */}
-            <ul className="navbar-nav ml-auto align-items-center">
-                <li className="nav-item">
-                    <span className="nav-link py-1 px-2" style={{ fontSize: '13px' }}>
-                        <span className="d-none d-md-inline text-muted">{thai_date_full(new Date())} | </span>
-                        <span className="text-primary font-weight-bold">
-                            {userName} <span className="text-muted font-weight-normal">({userRole})</span>
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setShowNotifDropdown(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setShowUserDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const toggleSidebar = (e) => {
+    e.preventDefault();
+    if (window.innerWidth < 992) {
+      document.body.classList.toggle('sidebar-open');
+      document.body.classList.remove('sidebar-collapse');
+    } else {
+      document.body.classList.toggle('sidebar-collapse');
+    }
+  };
+
+  return (
+    <nav className="main-header navbar navbar-expand navbar-white navbar-light no-print">
+      {/* Left navbar links */}
+      <ul className="navbar-nav align-items-center">
+        <li className="nav-item">
+          <a
+            className="nav-link"
+            data-widget="pushmenu"
+            href="#toggle-menu"
+            onClick={toggleSidebar}
+            role="button"
+            aria-label="เปิด/ปิดเมนูด้านซ้าย"
+          >
+            <i className="fas fa-bars"></i>
+          </a>
+        </li>
+        <li className="nav-item d-none d-sm-inline-block">
+          <Link to="/" className="nav-link font-weight-bold text-primary">
+            <i className="fa-solid fa-house mr-1"></i> หน้าหลัก
+          </Link>
+        </li>
+        {isEvaluator && roleId === 'teacher' && (
+          <li className="nav-item d-none d-md-inline-block ml-1">
+            <Link
+              to="/Plan_Check"
+              className="btn btn-sm bg-primary-subtle text-primary font-weight-bold px-2 py-1"
+              style={{ borderRadius: '20px', fontSize: '12px' }}
+            >
+              <i className="fa-solid fa-clipboard-user mr-1"></i> โหมดกรรมการนิเทศ
+              {notif?.committeePendingCount > 0 && (
+                <span className="badge badge-danger ml-1">{notif.committeePendingCount}</span>
+              )}
+            </Link>
+          </li>
+        )}
+      </ul>
+
+      {/* Right navbar links */}
+      <ul className="navbar-nav ml-auto align-items-center">
+        <li className="nav-item d-none d-lg-inline-block mr-2">
+          <span className="text-muted small">
+            <i className="fa-regular fa-calendar mr-1"></i>
+            {formatThaiDate(new Date())}
+          </span>
+        </li>
+
+        {/* Notification Bell */}
+        <li className="nav-item dropdown" ref={notifRef}>
+          <button
+            type="button"
+            className="nav-link px-2 btn btn-link position-relative"
+            onClick={() => {
+              setShowNotifDropdown((prev) => !prev);
+              setShowUserDropdown(false);
+            }}
+            title={notifCount > 0 ? `มี ${notifCount} รายการรอดำเนินการ` : 'การแจ้งเตือน'}
+            aria-label="การแจ้งเตือน"
+          >
+            <i
+              className={`fas fa-bell ${notifCount > 0 ? 'text-warning' : 'text-secondary'}`}
+              style={{ fontSize: '17px' }}
+            ></i>
+            {notifCount > 0 && (
+              <span
+                className="badge badge-danger navbar-badge"
+                style={{ fontSize: '10px', top: '3px', right: '2px', borderRadius: '10px' }}
+              >
+                {notifCount > 99 ? '99+' : notifCount}
+              </span>
+            )}
+          </button>
+
+          {showNotifDropdown && (
+            <div
+              className="dropdown-menu dropdown-menu-lg dropdown-menu-right show shadow-lg border-0"
+              style={{
+                minWidth: '310px',
+                borderRadius: '14px',
+                overflow: 'hidden',
+                position: 'absolute',
+                right: 0,
+                top: '100%',
+                zIndex: 1060,
+              }}
+            >
+              <div
+                className="px-3 py-2 text-white d-flex justify-content-between align-items-center"
+                style={{ background: 'linear-gradient(135deg, #4f46e5, #6366f1)' }}
+              >
+                <span className="font-weight-bold small">
+                  <i className="fa-solid fa-bell mr-1"></i> ศูนย์แจ้งเตือนภาระงาน
+                </span>
+                <span className="badge badge-light text-primary font-weight-bold">
+                  {notifCount} รายการ
+                </span>
+              </div>
+
+              <div className="p-3">
+                {notifCount === 0 ? (
+                  <div className="text-center py-3 text-muted">
+                    <i className="fa-solid fa-circle-check fa-2x text-success mb-2"></i>
+                    <p className="mb-0 small font-weight-bold text-dark">ไม่มีรายการค้างดำเนินการ</p>
+                    <small className="text-muted">ทุกภาระงานของท่านเป็นปัจจุบันแล้ว</small>
+                  </div>
+                ) : (
+                  <div className="d-flex flex-column gap-2">
+                    {notif?.teacherRejectedCount > 0 && (
+                      <Link
+                        to="/statusplan?filter=3"
+                        onClick={() => setShowNotifDropdown(false)}
+                        className="p-2 rounded bg-danger-subtle text-decoration-none d-flex justify-content-between align-items-center"
+                      >
+                        <span className="small font-weight-bold text-danger">
+                          <i className="fa-solid fa-rotate-left mr-1"></i> แผนรอแก้ไขตามคำแนะนำ ผอ.
                         </span>
-                    </span>
-                </li>
-
-                {/* 🔔 Notification Bell Dropdown */}
-                <li className="nav-item dropdown" ref={dropdownRef}>
-                    <button
-                        type="button"
-                        className="nav-link px-2 btn btn-link position-relative"
-                        onClick={() => setShowDropdown(!showDropdown)}
-                        title={notifCount > 0 ? `มี ${notifCount} รายการรอดำเนินการ` : 'ศูนย์แจ้งเตือน'}
-                        style={{ border: 'none', background: 'none' }}
-                    >
-                        <i className={`fas fa-bell ${notifCount > 0 ? 'text-warning animate__animated animate__shakeX' : 'text-secondary'}`} style={{ fontSize: '16px' }}></i>
-                        {notifCount > 0 && (
-                            <span
-                                className="badge badge-danger navbar-badge"
-                                style={{ fontSize: '10px', top: '2px', right: '4px' }}
-                            >
-                                {notifCount > 99 ? '99+' : notifCount}
-                            </span>
-                        )}
-                    </button>
-
-                    {/* Dropdown Menu */}
-                    {showDropdown && (
-                        <div
-                            className="dropdown-menu dropdown-menu-lg dropdown-menu-right show shadow-lg border-0"
-                            style={{
-                                minWidth: '300px',
-                                borderRadius: '12px',
-                                overflow: 'hidden',
-                                position: 'absolute',
-                                right: 0,
-                                top: '100%',
-                                zIndex: 1050,
-                            }}
-                        >
-                            <div className="bg-primary px-3 py-2 text-white d-flex justify-content-between align-items-center">
-                                <span className="font-weight-bold" style={{ fontSize: '13px' }}>
-                                    <i className="fa-solid fa-bell mr-1"></i> การแจ้งเตือนงานค้าง
-                                </span>
-                                <span className="badge badge-warning text-dark font-weight-bold" style={{ fontSize: '11px' }}>
-                                    {notifCount} รายการ
-                                </span>
-                            </div>
-
-                            <div className="p-3">
-                                {notifCount === 0 ? (
-                                    <div className="text-center py-3 text-muted">
-                                        <i className="fa-solid fa-circle-check fa-2x text-success mb-2"></i>
-                                        <p className="mb-0 small">ยอดเยี่ยม! ไม่มีงานค้างในระบบ</p>
-                                        <small className="text-muted">ทุกรายการได้รับการดำเนินการเรียบร้อยแล้ว</small>
-                                    </div>
-                                ) : (
-                                    <div>
-                                        <div className="d-flex align-items-start mb-2">
-                                            <div className="mr-2 text-warning mt-1">
-                                                <i className="fa-solid fa-triangle-exclamation"></i>
-                                            </div>
-                                            <div className="flex-fill">
-                                                <div className="font-weight-bold small text-dark">
-                                                    {roleId === 'teacher' && 'มีแผนการสอนที่ต้องดำเนินการ'}
-                                                    {roleId === 'directorschool' && 'มีแผนการสอนรอการตรวจ/อนุมัติ'}
-                                                    {['supervision', 'chairman', 'supervisor'].includes(roleId) && 'มีแผนการสอนรอให้คะแนนประเมิน'}
-                                                    {!['teacher', 'directorschool', 'supervision', 'chairman', 'supervisor'].includes(roleId) && 'มีรายการรอดำเนินการ'}
-                                                </div>
-                                                <div className="text-muted small">
-                                                    พบ {notifCount} รายการที่ต้องการการดำเนินการจากท่าน
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <Link
-                                            to={notifLink}
-                                            onClick={() => setShowDropdown(false)}
-                                            className="btn btn-primary btn-block btn-sm font-weight-bold mt-2 shadow-sm"
-                                            style={{ borderRadius: '8px' }}
-                                        >
-                                            <i className="fa-solid fa-arrow-right-to-bracket mr-1"></i> ไปยังหน้ารายการงานค้าง
-                                        </Link>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="dropdown-divider m-0"></div>
-                            <Link
-                                to={notifLink}
-                                onClick={() => setShowDropdown(false)}
-                                className="dropdown-item dropdown-footer text-center py-2 text-primary small font-weight-bold"
-                            >
-                                ดูงานที่รอดำเนินการทั้งหมด <i className="fa-solid fa-chevron-right ml-1" style={{ fontSize: '10px' }}></i>
-                            </Link>
-                        </div>
+                        <span className="badge badge-danger">{notif.teacherRejectedCount}</span>
+                      </Link>
                     )}
-                </li>
+                    {notif?.teacherNeedClipCount > 0 && (
+                      <Link
+                        to="/statusplan?filter=2"
+                        onClick={() => setShowNotifDropdown(false)}
+                        className="p-2 rounded bg-warning-subtle text-decoration-none d-flex justify-content-between align-items-center"
+                      >
+                        <span className="small font-weight-bold text-warning-emphasis">
+                          <i className="fa-solid fa-video mr-1"></i> แผนอนุมัติแล้ว • รอส่งคลิป
+                        </span>
+                        <span className="badge badge-warning">{notif.teacherNeedClipCount}</span>
+                      </Link>
+                    )}
+                    {notif?.directorPendingCount > 0 && (
+                      <Link
+                        to="/Plan_Check"
+                        onClick={() => setShowNotifDropdown(false)}
+                        className="p-2 rounded bg-warning-subtle text-decoration-none d-flex justify-content-between align-items-center"
+                      >
+                        <span className="small font-weight-bold text-warning-emphasis">
+                          <i className="fa-solid fa-file-signature mr-1"></i> แผนรอ ผอ. ตรวจอนุมัติ
+                        </span>
+                        <span className="badge badge-warning">{notif.directorPendingCount}</span>
+                      </Link>
+                    )}
+                    {notif?.committeePendingCount > 0 && (
+                      <Link
+                        to="/Plan_Check"
+                        onClick={() => setShowNotifDropdown(false)}
+                        className="p-2 rounded bg-primary-subtle text-decoration-none d-flex justify-content-between align-items-center"
+                      >
+                        <span className="small font-weight-bold text-primary">
+                          <i className="fa-solid fa-star-half-stroke mr-1"></i> แผนรอให้คะแนนนิเทศ
+                        </span>
+                        <span className="badge badge-primary">{notif.committeePendingCount}</span>
+                      </Link>
+                    )}
+                    {notif?.adminPendingUsersCount > 0 && (
+                      <Link
+                        to="/confirmUser"
+                        onClick={() => setShowNotifDropdown(false)}
+                        className="p-2 rounded bg-info-subtle text-decoration-none d-flex justify-content-between align-items-center"
+                      >
+                        <span className="small font-weight-bold text-info-emphasis">
+                          <i className="fa-solid fa-user-check mr-1"></i> ผู้สมัครใหม่รออนุมัติสิทธิ์
+                        </span>
+                        <span className="badge badge-info">{notif.adminPendingUsersCount}</span>
+                      </Link>
+                    )}
+                    {notif?.adminPendingEvaluatorsCount > 0 && (
+                      <Link
+                        to="/approve_evaluator"
+                        onClick={() => setShowNotifDropdown(false)}
+                        className="p-2 rounded bg-success-subtle text-decoration-none d-flex justify-content-between align-items-center"
+                      >
+                        <span className="small font-weight-bold text-success-emphasis">
+                          <i className="fa-solid fa-award mr-1"></i> รายชื่อผู้นิเทศรออนุมัติ
+                        </span>
+                        <span className="badge badge-success">{notif.adminPendingEvaluatorsCount}</span>
+                      </Link>
+                    )}
+                  </div>
+                )}
+              </div>
 
-                <li className="nav-item d-none d-sm-inline-block">
-                    <a className="nav-link px-2" data-widget="fullscreen" href="#" role="button" title="เต็มจอ">
-                        <i className="fas fa-expand-arrows-alt"></i>
-                    </a>
-                </li>
-                <li className="nav-item">
-                    <button className="nav-link btn btn-link px-2" onClick={logout} role="button" title="ออกจากระบบ">
-                        <i className="fa-solid fa-arrow-right-from-bracket text-danger"></i>
-                    </button>
-                </li>
-            </ul>
-        </nav>
-    );
+              <div className="dropdown-divider m-0"></div>
+              <Link
+                to={notifLink}
+                onClick={() => setShowNotifDropdown(false)}
+                className="dropdown-item text-center py-2 text-primary small font-weight-bold"
+              >
+                เปิดหน้ารายการหลัก <i className="fa-solid fa-arrow-right ml-1"></i>
+              </Link>
+            </div>
+          )}
+        </li>
+
+        {/* User Profile Dropdown */}
+        <li className="nav-item dropdown ml-1" ref={userMenuRef}>
+          <button
+            type="button"
+            onClick={() => {
+              setShowUserDropdown((prev) => !prev);
+              setShowNotifDropdown(false);
+            }}
+            className="btn btn-light border-0 d-flex align-items-center gap-2 py-1 px-2"
+            style={{ borderRadius: '20px', backgroundColor: '#f1f5f9' }}
+          >
+            <span
+              className="rounded-circle d-inline-flex align-items-center justify-content-center text-white font-weight-bold"
+              style={{
+                width: '28px',
+                height: '28px',
+                fontSize: '12px',
+                background: 'linear-gradient(135deg, #4f46e5, #0ea5e9)',
+              }}
+            >
+              <i className="fa-solid fa-user"></i>
+            </span>
+            <span className="d-none d-sm-inline-block text-left" style={{ lineHeight: 1.15 }}>
+              <span className="d-block font-weight-bold text-dark" style={{ fontSize: '12.5px' }}>
+                {displayName}
+              </span>
+              <span className="d-block text-primary" style={{ fontSize: '10.5px', fontWeight: 600 }}>
+                {roleLabel}
+              </span>
+            </span>
+            <i className="fa-solid fa-chevron-down text-muted d-none d-sm-inline" style={{ fontSize: '10px' }}></i>
+          </button>
+
+          {showUserDropdown && (
+            <div
+              className="dropdown-menu dropdown-menu-right show shadow-lg border-0 p-2"
+              style={{
+                minWidth: '230px',
+                borderRadius: '14px',
+                position: 'absolute',
+                right: 0,
+                top: '100%',
+                zIndex: 1060,
+              }}
+            >
+              <div className="px-3 py-2 border-bottom mb-1">
+                <div className="font-weight-bold text-dark small">{displayName}</div>
+                <span className="badge bg-primary-subtle text-primary mt-1">{roleLabel}</span>
+              </div>
+
+              <Link
+                to={isAdminAccount ? '/profile' : '/editprofile'}
+                onClick={() => setShowUserDropdown(false)}
+                className="dropdown-item rounded py-2 small"
+              >
+                <i className="fa-solid fa-id-card text-primary mr-2"></i> แก้ไขข้อมูลส่วนตัว
+              </Link>
+
+              {!isAdminAccount && roleId !== 'admin_school' && (
+                <Link
+                  to="/editSignature"
+                  onClick={() => setShowUserDropdown(false)}
+                  className="dropdown-item rounded py-2 small"
+                >
+                  <i className="fa-solid fa-signature text-info mr-2"></i> จัดการลายเซ็นดิจิทัล
+                </Link>
+              )}
+
+              <Link
+                to="/chgpasswd"
+                onClick={() => setShowUserDropdown(false)}
+                className="dropdown-item rounded py-2 small"
+              >
+                <i className="fa-solid fa-key text-warning mr-2"></i> เปลี่ยนรหัสผ่าน
+              </Link>
+
+              <div className="dropdown-divider my-1"></div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowUserDropdown(false);
+                  logout();
+                }}
+                className="dropdown-item rounded py-2 small text-danger font-weight-bold"
+              >
+                <i className="fa-solid fa-arrow-right-from-bracket mr-2"></i> ออกจากระบบ
+              </button>
+            </div>
+          )}
+        </li>
+      </ul>
+    </nav>
+  );
 };
 
 export default Header;

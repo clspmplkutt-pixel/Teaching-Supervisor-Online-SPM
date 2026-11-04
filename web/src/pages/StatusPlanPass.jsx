@@ -14,29 +14,33 @@ const StatusPlanPass = () => {
   const [teacherMap, setTeacherMap] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'approved' | 'evaluating' | 'completed' | 'rejected'
+  const [selectedSchool, setSelectedSchool] = useState('');
+  const [selectedYear, setSelectedYear] = useState('');
   const [viewMode, setViewMode] = useState('auto'); // 'auto', 'card', 'table'
+  const [schools, setSchools] = useState([]);
   const [lookups, setLookups] = useState({
     teachSubjectShort: {},
     gradeLevel: {},
     prefix: {},
+    school: {},
   });
 
-  const isDirector = profile?.level === 'directorschool' || profile?.level_id === 'directorschool';
+  const role = profile?.level || profile?.level_id || '';
+  const isDistrictRole = ['supervisor', 'supervision', 'chairman', 'districdirector', 'admin', 'root'].includes(role);
+  const isDirector = role === 'directorschool';
+  const isTeacher = role === 'teacher';
 
   useEffect(() => {
     let mounted = true;
 
     const loadData = async () => {
-      if (!profile?.school) {
-        setLoading(false);
-        return;
-      }
       setLoading(true);
       try {
-        const [subjectRes, gradeRes, prefixRes] = await Promise.all([
+        const [subjectRes, gradeRes, prefixRes, schoolRes] = await Promise.all([
           supabase.from('tbl_system_Teach_Subject').select('teach_subject_id, teach_subject_1, teach_subject'),
           supabase.from('tbl_system_GradeLevel').select('grade_level_id, grade_level_name'),
           supabase.from('tbl_system_prefix').select('prefix_id, prefix'),
+          supabase.from('tbl_school').select('school_id, school_name').order('school_name', { ascending: true }),
         ]);
 
         const teachSubjectShortMap = {};
@@ -50,13 +54,26 @@ const StatusPlanPass = () => {
         const prefixMap = {};
         prefixRes.data?.forEach((p) => { prefixMap[p.prefix_id] = p.prefix; });
 
-        // ดึงแผนที่ผ่านการพิจารณาแล้วทั้งหมด (status 2, 3, 5, 6, 7)
-        const { data: plans } = await supabase
-          .from('tbl_sendplan')
-          .select('*')
-          .eq('school_code', profile.school)
-          .in('plan_status', ['2', '3', '5', '6', '7'])
-          .order('planid', { ascending: false });
+        const schoolMap = {};
+        schoolRes.data?.forEach((s) => { schoolMap[s.school_id] = s.school_name; });
+
+        // Query plans
+        let query = supabase.from('tbl_sendplan').select('*');
+
+        if (isTeacher) {
+          // Teachers see their own passed/active plans, or completed showcase plans
+          query = query.or(`people_id.eq.${profile?.people_id || ''},plan_status.eq.7`);
+        } else if (isDirector && profile?.school) {
+          // School directors see their school's plans
+          query = query.eq('school_code', profile.school).in('plan_status', ['2', '3', '5', '6', '7']);
+        } else {
+          // District admins / supervisors see all passed & completed plans
+          query = query.in('plan_status', ['2', '5', '6', '7']);
+        }
+
+        query = query.order('planid', { ascending: false });
+        const { data: plans, error: planError } = await query;
+        if (planError) throw planError;
 
         // ดึงชื่อครูผู้สอน
         const teacherIds = Array.from(new Set((plans || []).map((p) => p.people_id).filter(Boolean)));
@@ -76,7 +93,9 @@ const StatusPlanPass = () => {
             teachSubjectShort: teachSubjectShortMap,
             gradeLevel: gradeMap,
             prefix: prefixMap,
+            school: schoolMap,
           });
+          setSchools(schoolRes.data || []);
           setTeacherMap(tMap);
           setRows(plans || []);
         }
@@ -90,7 +109,14 @@ const StatusPlanPass = () => {
     if (!profileLoading) loadData();
 
     return () => { mounted = false; };
-  }, [profile, profileLoading]);
+  }, [profile, profileLoading, isTeacher, isDirector]);
+
+  // Extract unique edu_years for filtering
+  const availableYears = useMemo(() => {
+    const set = new Set();
+    rows.forEach((r) => { if (r.edu_year) set.add(String(r.edu_year)); });
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [rows]);
 
   // Counts by category
   const counts = useMemo(() => {
@@ -108,6 +134,16 @@ const StatusPlanPass = () => {
   // Search & Status filter
   const filteredRows = useMemo(() => {
     let result = rows;
+
+    // Filter by school (for district users)
+    if (selectedSchool) {
+      result = result.filter((r) => String(r.school_code) === String(selectedSchool));
+    }
+
+    // Filter by year
+    if (selectedYear) {
+      result = result.filter((r) => String(r.edu_year) === String(selectedYear));
+    }
 
     // Filter by status category
     if (statusFilter === 'approved') {
@@ -129,16 +165,18 @@ const StatusPlanPass = () => {
       const content = (r.subject_content || '').toLowerCase();
       const year = String(r.edu_year || '');
       const teacherName = (teacherMap[r.people_id] || '').toLowerCase();
+      const schoolName = (lookups.school[r.school_code] || '').toLowerCase();
       return (
         subject.includes(term) ||
         code.includes(term) ||
         planName.includes(term) ||
         content.includes(term) ||
         year.includes(term) ||
-        teacherName.includes(term)
+        teacherName.includes(term) ||
+        schoolName.includes(term)
       );
     });
-  }, [rows, statusFilter, searchTerm, teacherMap]);
+  }, [rows, statusFilter, selectedSchool, selectedYear, searchTerm, teacherMap, lookups.school]);
 
   if (loading || profileLoading) {
     return <LoadingSpinner text="กำลังโหลดข้อมูลแผนการสอนที่ผ่านการอนุมัติ..." />;
@@ -147,7 +185,7 @@ const StatusPlanPass = () => {
   const handleShareLineToCommittee = (row) => {
     const directorPrefix = profile?.prefix || '';
     const directorName = `${directorPrefix}${profile?.name || ''} ${profile?.lastname || ''}`.trim();
-    const schoolName = profile?.school_name || '';
+    const schoolName = profile?.school_name || lookups.school[row.school_code] || '';
     const teacherName = teacherMap[row.people_id] || '';
 
     const lineMsg = generateDirectorToCommitteeMessage({
@@ -171,6 +209,7 @@ const StatusPlanPass = () => {
     const teacherName = teacherMap[row.people_id] || 'ไม่ระบุ';
     const isCompleted = String(row.plan_status) === '7';
     const isApprovedWaitClip = String(row.plan_status) === '2';
+    const schoolTitle = lookups.school[row.school_code] || '';
 
     return (
       <div
@@ -190,6 +229,11 @@ const StatusPlanPass = () => {
             <span className="font-weight-bold text-dark" style={{ fontSize: '14px' }}>
               {row.subject_name} ({row.subject_code})
             </span>
+            {schoolTitle && isDistrictRole && (
+              <span className="badge badge-light border text-muted" style={{ fontSize: '11px' }}>
+                <i className="fa-solid fa-school mr-1"></i> {schoolTitle}
+              </span>
+            )}
           </div>
           <div>
             <StatusBadge status={row.plan_status} />
@@ -372,7 +416,7 @@ const StatusPlanPass = () => {
               >
                 ประเมินเสร็จสิ้น <span className="badge badge-light ml-1">{counts.completed}</span>
               </button>
-              {counts.rejected > 0 && (
+              {counts.rejected > 0 && isDirector && (
                 <button
                   type="button"
                   className={`btn btn-sm ${statusFilter === 'rejected' ? 'btn-danger font-weight-bold' : 'btn-outline-danger'}`}
@@ -384,9 +428,9 @@ const StatusPlanPass = () => {
               )}
             </div>
 
-            {/* Search Box */}
+            {/* Filter controls row */}
             <div className="row mb-3">
-              <div className="col-12 col-md-6 col-lg-4">
+              <div className="col-12 col-md-5 col-lg-4 mb-2 mb-md-0">
                 <div className="input-group input-group-sm">
                   <div className="input-group-prepend">
                     <span className="input-group-text bg-white">
@@ -396,7 +440,7 @@ const StatusPlanPass = () => {
                   <input
                     type="text"
                     className="form-control"
-                    placeholder="ค้นหาชื่อครู, วิชา, รหัสวิชา, แผน..."
+                    placeholder="ค้นหาชื่อครู, โรงเรียน, วิชา, แผน..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
@@ -413,6 +457,40 @@ const StatusPlanPass = () => {
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* School Filter for District Roles */}
+              {isDistrictRole && (
+                <div className="col-12 col-md-4 col-lg-3 mb-2 mb-md-0">
+                  <select
+                    className="form-control form-control-sm"
+                    value={selectedSchool}
+                    onChange={(e) => setSelectedSchool(e.target.value)}
+                  >
+                    <option value="">ทุกโรงเรียนในสังกัด</option>
+                    {schools.map((s) => (
+                      <option key={s.school_id} value={s.school_id}>
+                        {s.school_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Year Filter */}
+              <div className="col-12 col-md-3 col-lg-2">
+                <select
+                  className="form-control form-control-sm"
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(e.target.value)}
+                >
+                  <option value="">ทุกปีการศึกษา</option>
+                  {availableYears.map((y) => (
+                    <option key={y} value={y}>
+                      ปีการศึกษา {y}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -433,101 +511,112 @@ const StatusPlanPass = () => {
               <table className="table table-bordered table-hover table-striped" id="data">
                 <thead>
                   <tr className="bg-light">
-                    <th style={{ width: '55px' }} className="text-center">ที่</th>
+                    <th style={{ width: '50px' }} className="text-center">ที่</th>
                     <th>ครูผู้สอน</th>
+                    {isDistrictRole && <th>โรงเรียน</th>}
                     <th>กลุ่มสาระ</th>
                     <th>ระดับชั้น</th>
                     <th>ชื่อวิชา (รหัสวิชา)</th>
                     <th>ชื่อแผนการจัดการเรียนรู้</th>
-                    <th>ปี/ภาคเรียน</th>
+                    <th>ปี/ภาค</th>
                     <th>วันที่ส่ง</th>
-                    <th style={{ width: '70px' }} className="text-center">ไฟล์</th>
+                    <th style={{ width: '60px' }} className="text-center">ไฟล์</th>
                     <th style={{ width: '130px' }} className="text-center">สถานะ</th>
-                    <th style={{ width: '180px' }} className="text-center">การจัดการ</th>
+                    <th style={{ width: '190px' }} className="text-center">การจัดการ</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredRows.length === 0 ? (
                     <tr>
-                      <td colSpan="11" className="py-5">
-                        <EmptyState
-                          message={searchTerm ? 'ไม่พบแผนการสอนที่ตรงกับคำค้นหา' : 'ยังไม่มีแผนการสอนในหมวดหมู่นี้'}
-                          fullPage={false}
-                        />
+                      <td colSpan={isDistrictRole ? 12 : 11} className="text-center py-4 text-muted">
+                        <i className="fa-regular fa-folder-open fa-2x mb-2 d-block text-secondary"></i>
+                        {searchTerm ? 'ไม่พบข้อมูลที่ตรงกับคำค้นหา' : 'ไม่พบแผนการจัดการเรียนรู้ในเงื่อนไขที่เลือก'}
                       </td>
                     </tr>
                   ) : (
-                    filteredRows.map((row) => {
-                      const teacherName = teacherMap[row.people_id] || '-';
+                    filteredRows.map((row, index) => {
+                      const teacherName = teacherMap[row.people_id] || 'ไม่ระบุ';
                       const isCompleted = String(row.plan_status) === '7';
                       const isApprovedWaitClip = String(row.plan_status) === '2';
+                      const schoolTitle = lookups.school[row.school_code] || '';
 
                       return (
                         <tr key={row.planid}>
-                          <td className="text-center font-weight-bold">{row.planid}</td>
+                          <td className="text-center">{index + 1}</td>
+                          <td className="font-weight-bold">{teacherName}</td>
+                          {isDistrictRole && (
+                            <td className="small">{schoolTitle || '-'}</td>
+                          )}
+                          <td className="small">{lookups.teachSubjectShort[row.teach_subject_id] || '-'}</td>
+                          <td className="small">{lookups.gradeLevel[row.grade_level_id] || '-'}</td>
                           <td>
-                            <strong>{teacherName}</strong>
+                            <div className="font-weight-bold" style={{ fontSize: '13px' }}>{row.subject_name}</div>
+                            <div className="text-muted small">({row.subject_code})</div>
                           </td>
-                          <td>{lookups.teachSubjectShort[row.teach_subject_id] || ''}</td>
-                          <td>{lookups.gradeLevel[row.grade_level_id] || ''}</td>
                           <td>
-                            <strong>{row.subject_name}</strong>
-                            <span className="text-muted d-block" style={{ fontSize: '11px' }}>({row.subject_code})</span>
-                          </td>
-                          <td>
-                            <span className="text-primary font-weight-bold">{row.subject_name_plan}</span>
+                            <div className="text-primary font-weight-bold" style={{ fontSize: '13px' }}>
+                              {row.subject_name_plan}
+                            </div>
                             {row.subject_content && (
-                              <span className="text-muted d-block" style={{ fontSize: '11px' }}>หน่วย: {row.subject_content}</span>
+                              <div className="text-muted small">หน่วย: {row.subject_content}</div>
                             )}
                           </td>
-                          <td>{row.edu_year}/{row.edu_term}</td>
-                          <td style={{ fontSize: '12px' }}>{row.plan_senddate}</td>
-                          <td className="text-center align-middle">
-                            {row.plan_file && (
-                              <a href={row.plan_file} target="_blank" rel="noreferrer" title="เปิดไฟล์แผนการสอน">
-                                <i className="fa-regular fa-file-pdf fa-xl text-danger"></i>
+                          <td className="text-center small">{row.edu_year}/{row.edu_term}</td>
+                          <td className="small text-muted">{row.plan_senddate || '-'}</td>
+                          <td className="text-center">
+                            {row.plan_file ? (
+                              <a
+                                href={row.plan_file}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="btn btn-sm btn-outline-danger py-0 px-2"
+                                title="เปิดดูไฟล์แผน (PDF)"
+                              >
+                                <i className="fa-solid fa-file-pdf"></i>
                               </a>
+                            ) : (
+                              <span className="text-muted">—</span>
                             )}
                           </td>
-                          <td className="text-center align-middle">
+                          <td className="text-center">
                             <StatusBadge status={row.plan_status} />
                           </td>
-                          <td className="align-middle">
-                            <div className="d-flex align-items-center justify-content-center flex-wrap" style={{ gap: '4px' }}>
+                          <td className="text-center">
+                            <div className="d-flex justify-content-center flex-wrap gap-1">
                               {isCompleted && (
                                 <Link
                                   to={`/view_scoring?planid=${row.planid}`}
-                                  className="btn btn-success btn-xs font-weight-bold py-1 px-2"
-                                  title="ดูคะแนนและรายงานผลการประเมิน"
+                                  className="btn btn-success btn-sm font-weight-bold"
+                                  title="ดูคะแนนผลการประเมิน ว.PA"
                                 >
-                                  <i className="fa-solid fa-chart-simple mr-1"></i> คะแนน
+                                  <i className="fa-solid fa-chart-simple"></i>
                                 </Link>
-                              )}
-                              {isDirector && isApprovedWaitClip && (
-                                <button
-                                  type="button"
-                                  className="btn btn-outline-success btn-xs font-weight-bold py-1 px-2"
-                                  onClick={() => handleShareLineToCommittee(row)}
-                                  title="ส่งข้อความแจ้งเตือนคณะกรรมการนิเทศผ่าน LINE"
-                                >
-                                  <i className="fa-brands fa-line mr-1"></i> เตือน
-                                </button>
                               )}
                               <Link
                                 to={`/view_appointment?planid=${row.planid}`}
-                                className="btn btn-info btn-xs py-1 px-2"
-                                title="ดูรายละเอียดการแต่งตั้งกรรมการและการนิเทศ"
+                                className="btn btn-info btn-sm"
+                                title="ดูคำสั่งแต่งตั้งและรายชื่อกรรมการ"
                               >
                                 <i className="fa-solid fa-circle-info"></i>
                               </Link>
                               {isDirector && isApprovedWaitClip && (
-                                <Link
-                                  to={`/appointment?planid=${row.planid}&from=statusplan_pass`}
-                                  className="btn btn-warning btn-xs text-dark font-weight-bold py-1 px-2"
-                                  title="แก้ไขหรือเปลี่ยนรายชื่อคณะกรรมการนิเทศ"
-                                >
-                                  <i className="fa-solid fa-user-pen"></i>
-                                </Link>
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline-success btn-sm"
+                                    onClick={() => handleShareLineToCommittee(row)}
+                                    title="ส่งข้อความแจ้งเตือนกรรมการผ่าน LINE"
+                                  >
+                                    <i className="fa-brands fa-line"></i>
+                                  </button>
+                                  <Link
+                                    to={`/appointment?planid=${row.planid}&from=statusplan_pass`}
+                                    className="btn btn-warning btn-sm text-dark font-weight-bold"
+                                    title="แก้ไขกรรมการประเมิน"
+                                  >
+                                    <i className="fa-solid fa-user-pen"></i>
+                                  </Link>
+                                </>
                               )}
                             </div>
                           </td>

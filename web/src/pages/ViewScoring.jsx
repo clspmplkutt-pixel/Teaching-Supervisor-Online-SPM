@@ -1,9 +1,15 @@
 import React, { useEffect, useMemo, useState, lazy, Suspense } from 'react';
-import { useLocation, Link } from 'react-router-dom';
+import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
 import { generateEvaluationResultMessage, showLineShareDialog } from '../utils/lineNotifyHelper';
+import {
+  getYouTubeWatchUrl,
+  getYouTubeEmbedUrl,
+  calculatePlanScoreFromRows,
+  getQualityBadge
+} from '../utils/scoreCalculator';
 
 const CertificateModal = lazy(() => import('../components/CertificateModal'));
 
@@ -52,29 +58,6 @@ const formatThaiDate = (dateStr) => {
   const month = thaiMonths[d.getMonth()];
   const year = d.getFullYear() + 543;
   return `${day} ${month} ${year}`;
-};
-
-const explanScore = (score) => {
-  if (score >= 90) return 'ดีเด่น';
-  if (score >= 80) return 'ดีมาก';
-  if (score >= 70) return 'ดี';
-  if (score >= 60) return 'พอใช้';
-  return 'ต้องปรับปรุง';
-};
-
-const scorePassLabel = (score, pass) => {
-  if (score >= pass) {
-    return (
-      <span className="text-success font-weight-bold">
-        <i className="fa-regular fa-square-check mr-1"></i> ผ่านเกณฑ์ (คะแนนเฉลี่ยร้อยละ {score.toFixed(2)})
-      </span>
-    );
-  }
-  return (
-    <span className="text-danger font-weight-bold">
-      <i className="fa-regular fa-circle-xmark mr-1"></i> ไม่ผ่านเกณฑ์ (คะแนนเฉลี่ยร้อยละ {score.toFixed(2)})
-    </span>
-  );
 };
 
 // แปลง Google Drive URL ให้ embed ได้
@@ -138,16 +121,20 @@ const SignatureImage = ({ src, alt }) => {
 };
 
 const ViewScoring = () => {
+  const navigate = useNavigate();
   const query = useQuery();
   const planid = query.get('planid') || '';
   const [loading, setLoading] = useState(true);
   const [plan, setPlan] = useState(null);
   const [teacher, setTeacher] = useState(null);
+  const [directorProfile, setDirectorProfile] = useState(null);
   const [committeeProfiles, setCommitteeProfiles] = useState([]);
   const [policySide1, setPolicySide1] = useState([]);
   const [policySide2, setPolicySide2] = useState([]);
   const [scores, setScores] = useState([]);
   const [showCert, setShowCert] = useState(false);
+  const [showVideo, setShowVideo] = useState(false);
+
   const [lookups, setLookups] = useState({
     academic: {},
     teachSubject: {},
@@ -195,10 +182,11 @@ const ViewScoring = () => {
           academicRes, teachSubjectRes, gradeRes,
           competencyRes, abilityRes, desirableRes,
           schoolRes, subjectTypeRes, prefixRes, positionRes,
+          directorRes,
         ] = await Promise.all([
           supabase.from('tbl_policy_number').select('*').eq('academic', academicId).eq('side', '1').order('auto_id', { ascending: true }),
           supabase.from('tbl_policy_number').select('*').eq('academic', academicId).eq('side', '2').order('auto_id', { ascending: true }),
-          supabase.from('tbl_sendplan_score').select('planid, policy_id, score_weight, supervision').eq('planid', String(planid)),
+          supabase.from('tbl_sendplan_score').select('planid, policy_id, score_weight, score, supervision').eq('planid', String(planid)),
           supabase.from('tbl_system_Academic_Standing').select('academic_id, academic_standing'),
           supabase.from('tbl_system_Teach_Subject').select('teach_subject_id, teach_subject'),
           supabase.from('tbl_system_GradeLevel').select('grade_level_id, grade_level_name'),
@@ -209,6 +197,8 @@ const ViewScoring = () => {
           supabase.from('tbl_system_SubjectType').select('subjecttype_id, subjecttype_name'),
           supabase.from('tbl_system_prefix').select('prefix_id, prefix'),
           supabase.from('tbl_system_PersonPositionType').select('position_id, position_name'),
+          // Fetch school director
+          planData.school_code ? supabase.from('tbl_Users').select('*').eq('school', planData.school_code).eq('position_id', '10007').maybeSingle() : Promise.resolve({ data: null }),
         ]);
 
         const academicMap = {};
@@ -252,6 +242,7 @@ const ViewScoring = () => {
         if (mounted) {
           setPlan(planData);
           setTeacher(teacherData || null);
+          setDirectorProfile(directorRes.data || null);
           setPolicySide1(policy1Res.data || []);
           setPolicySide2(policy2Res.data || []);
           setScores(scoreRes.data || []);
@@ -302,52 +293,67 @@ const ViewScoring = () => {
     return 65; // เกณฑ์เริ่มต้นสำหรับครูผู้ช่วย/ครู
   }, [teacher]);
 
+  // Standard calculation via scoreCalculator
+  const calcResult = useMemo(() => {
+    return calculatePlanScoreFromRows(scores);
+  }, [scores]);
+
   const scoreMap = useMemo(() => {
     const map = {};
     scores.forEach((s) => {
       const key = `${s.policy_id}_${s.supervision}`;
-      map[key] = s.score_weight || 0;
+      map[key] = s.score_weight ?? s.score ?? 0;
     });
     return map;
   }, [scores]);
 
+  // Average per indicator only considering submitted scores for that cell
+  const getIndicatorAvg = (autoId) => {
+    const vals = [];
+    committeeList.forEach((c) => {
+      const val = scoreMap[`${autoId}_${c}`];
+      if (val !== undefined && val !== null) {
+        vals.push(Number(val));
+      }
+    });
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  };
+
   const policySide1Totals = useMemo(() => {
     let sum = 0;
     policySide1.forEach((p) => {
-      const values = committeeList.map((c) => scoreMap[`${p.auto_id}_${c}`] || 0);
-      const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-      sum += avg;
+      sum += getIndicatorAvg(p.auto_id);
     });
     return sum;
-  }, [policySide1, committeeList, scoreMap]);
+  }, [policySide1, scoreMap, committeeList]);
 
   const policySide2Totals = useMemo(() => {
     let sum = 0;
     policySide2.forEach((p) => {
-      const values = committeeList.map((c) => scoreMap[`${p.auto_id}_${c}`] || 0);
-      const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-      sum += avg;
+      sum += getIndicatorAvg(p.auto_id);
     });
     return sum;
-  }, [policySide2, committeeList, scoreMap]);
+  }, [policySide2, scoreMap, committeeList]);
 
   const overallAverage = useMemo(() => {
+    if (calcResult.totalScore > 0) return calcResult.totalScore;
     if (policySide1Totals > 0 && policySide2Totals > 0) {
       return (policySide1Totals + policySide2Totals) / 2;
     }
     return policySide1Totals || policySide2Totals || 0;
-  }, [policySide1Totals, policySide2Totals]);
+  }, [calcResult.totalScore, policySide1Totals, policySide2Totals]);
+
+  const qualityBadge = useMemo(() => {
+    return getQualityBadge(overallAverage);
+  }, [overallAverage]);
 
   const isPassed = overallAverage >= scorePassThreshold;
 
   const evaluatedCommitteeCount = useMemo(() => {
-    let count = 0;
-    committeeList.forEach((c) => {
-      const hasScore = policySide1.some((p) => scoreMap[`${p.auto_id}_${c}`] !== undefined);
-      if (hasScore) count++;
-    });
-    return count;
-  }, [committeeList, policySide1, scoreMap]);
+    return calcResult.evaluatorCount || committeeList.filter((c) => {
+      return policySide1.some((p) => scoreMap[`${p.auto_id}_${c}`] !== undefined);
+    }).length;
+  }, [calcResult.evaluatorCount, committeeList, policySide1, scoreMap]);
 
   const competencyNames = useMemo(() => {
     const list = (plan?.competency || '').split(',').filter(Boolean);
@@ -388,7 +394,7 @@ const ViewScoring = () => {
       subjectCode: plan.subject_code,
       planName: plan.subject_name_plan,
       totalScore: overallAverage,
-      qualityLabel: explanScore(overallAverage),
+      qualityLabel: qualityBadge.label,
       isPassed,
       planId: plan.planid,
     });
@@ -423,9 +429,34 @@ const ViewScoring = () => {
   const schoolName = lookups.school[plan.school_code] || '';
   const academicName = lookups.academic[teacher?.academic_id] || '-';
   const subjectAreaName = lookups.teachSubject[plan.teach_subject_id] || '-';
+  const embedVideoUrl = plan.plan_clip ? getYouTubeEmbedUrl(plan.plan_clip) : null;
+  const watchVideoUrl = plan.plan_clip ? getYouTubeWatchUrl(plan.plan_clip) : null;
+  const isCompleted = String(plan.plan_status) === '7';
 
   return (
     <div className="view-scoring container-fluid py-3">
+      {/* ─── TOP NAVIGATION & RETURN (NO PRINT) ─── */}
+      <div className="d-flex align-items-center justify-content-between mb-3 no-print">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="btn btn-outline-secondary btn-sm px-3 shadow-sm font-weight-bold"
+          style={{ borderRadius: '20px' }}
+        >
+          <i className="fa-solid fa-arrow-left mr-1"></i> ย้อนกลับ
+        </button>
+
+        <div className="d-flex align-items-center gap-2">
+          <Link
+            to="/statusplan"
+            className="btn btn-light btn-sm border text-muted px-3"
+            style={{ borderRadius: '20px' }}
+          >
+            <i className="fa-solid fa-folder-open mr-1"></i> รายการแผนทั้งหมด
+          </Link>
+        </div>
+      </div>
+
       {/* ─── TOP EXECUTIVE SCORE & ACTION CARD (NO PRINT) ─── */}
       <div className="card no-print border-0 shadow-sm mb-4" style={{ borderRadius: '16px', background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)', color: '#fff' }}>
         <div className="card-body p-4">
@@ -438,9 +469,13 @@ const ViewScoring = () => {
                 <span className="badge badge-light text-dark px-3 py-1" style={{ borderRadius: '20px', fontSize: '13px' }}>
                   รหัสแผน #{plan.planid}
                 </span>
-                {plan.plan_status === '7' && (
+                {isCompleted ? (
                   <span className="badge badge-success px-3 py-1" style={{ borderRadius: '20px', fontSize: '13px' }}>
                     <i className="fa-solid fa-check-double mr-1"></i> ประเมินเสร็จสมบูรณ์
+                  </span>
+                ) : (
+                  <span className="badge badge-info px-3 py-1" style={{ borderRadius: '20px', fontSize: '13px' }}>
+                    <i className="fa-solid fa-hourglass-half mr-1"></i> กำลังอยู่ระหว่างการประเมิน
                   </span>
                 )}
               </div>
@@ -465,7 +500,7 @@ const ViewScoring = () => {
                     {overallAverage.toFixed(2)}
                   </div>
                   <div className="small text-light font-weight-bold mt-1" style={{ fontSize: '12px' }}>
-                    ระดับ: <span className="text-warning">{explanScore(overallAverage)}</span>
+                    ระดับ: <span className="text-warning">{qualityBadge.label}</span>
                   </div>
                 </div>
 
@@ -493,14 +528,26 @@ const ViewScoring = () => {
               <i className="fa-solid fa-print mr-1"></i> พิมพ์รายงานสรุปผล (A4)
             </button>
 
-            <button
-              type="button"
-              className="btn btn-warning font-weight-bold px-3 py-2 shadow-sm text-dark"
-              style={{ borderRadius: '10px' }}
-              onClick={() => setShowCert(true)}
-            >
-              <i className="fa-solid fa-certificate mr-1"></i> ดูเกียรติบัตรออนไลน์ (ว.PA)
-            </button>
+            {isCompleted ? (
+              <button
+                type="button"
+                className="btn btn-warning font-weight-bold px-3 py-2 shadow-sm text-dark"
+                style={{ borderRadius: '10px' }}
+                onClick={() => setShowCert(true)}
+              >
+                <i className="fa-solid fa-certificate mr-1"></i> ดูเกียรติบัตรออนไลน์ (ว.PA)
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-outline-light font-weight-bold px-3 py-2"
+                style={{ borderRadius: '10px', opacity: 0.7 }}
+                disabled
+                title="จะสามารถเปิดดูเกียรติบัตรได้เมื่อคณะกรรมการประเมินเสร็จสมบูรณ์ (สถานะ 7)"
+              >
+                <i className="fa-solid fa-lock mr-1"></i> เกียรติบัตร (รอผลประเมินครบ)
+              </button>
+            )}
 
             <button
               type="button"
@@ -510,6 +557,17 @@ const ViewScoring = () => {
             >
               <i className="fa-brands fa-line mr-1"></i> แชร์ผลคะแนนเข้า LINE
             </button>
+
+            {embedVideoUrl && (
+              <button
+                type="button"
+                className={`btn ${showVideo ? 'btn-info' : 'btn-light'} font-weight-bold px-3 py-2 shadow-sm`}
+                style={{ borderRadius: '10px' }}
+                onClick={() => setShowVideo(!showVideo)}
+              >
+                <i className="fa-brands fa-youtube mr-1 text-danger"></i> {showVideo ? 'ซ่อนคลิปการสอน' : 'เปิดดูคลิปการสอน'}
+              </button>
+            )}
 
             {plan.plan_file && (
               <a
@@ -522,21 +580,64 @@ const ViewScoring = () => {
                 <i className="fa-solid fa-file-pdf mr-1 text-danger"></i> ดูไฟล์แผนการสอน (PDF)
               </a>
             )}
-
-            {plan.plan_clip && (
-              <a
-                href={plan.plan_clip}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn btn-light font-weight-bold px-3 py-2 shadow-sm"
-                style={{ borderRadius: '10px' }}
-              >
-                <i className="fa-brands fa-youtube mr-1 text-danger"></i> ดูคลิปวิดีโอการสอน
-              </a>
-            )}
           </div>
         </div>
       </div>
+
+      {/* ─── COLLAPSIBLE VIDEO PLAYER CARD (NO PRINT) ─── */}
+      {showVideo && embedVideoUrl && (
+        <div className="card shadow-sm border-0 mb-4 no-print" style={{ borderRadius: '12px', overflow: 'hidden' }}>
+          <div className="card-header bg-dark text-white py-3 d-flex justify-content-between align-items-center">
+            <h5 className="font-weight-bold mb-0">
+              <i className="fa-brands fa-youtube text-danger mr-2"></i> วิดีโอคลิปการจัดการเรียนรู้ (YouTube)
+            </h5>
+            <div className="d-flex align-items-center gap-2">
+              {watchVideoUrl && (
+                <a
+                  href={watchVideoUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-sm btn-outline-light"
+                >
+                  <i className="fa-solid fa-arrow-up-right-from-square mr-1"></i> เปิดใน YouTube
+                </a>
+              )}
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary text-light"
+                onClick={() => setShowVideo(false)}
+              >
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+          </div>
+          <div className="card-body p-0 bg-black">
+            <div style={{ position: 'relative', width: '100%', paddingTop: '56.25%' }}>
+              <iframe
+                title="Teaching Video Clip"
+                src={embedVideoUrl}
+                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── TEACHER SELF-REFLECTION AFTER TEACHING (NO PRINT) ─── */}
+      {plan.plan_after_teaching && (
+        <div className="card shadow-sm border-0 mb-4 no-print" style={{ borderRadius: '12px', borderLeft: '5px solid #3b82f6' }}>
+          <div className="card-header bg-white py-3 border-bottom">
+            <h5 className="font-weight-bold mb-0 text-dark">
+              <i className="fa-solid fa-comment-dots text-primary mr-2"></i> บันทึกหลังการจัดกิจกรรมการเรียนรู้ของครูผู้สอน
+            </h5>
+          </div>
+          <div className="card-body p-4" style={{ whiteSpace: 'pre-line', lineHeight: '1.8', fontSize: '14px', color: '#1e293b', background: '#f8fafc' }}>
+            {plan.plan_after_teaching}
+          </div>
+        </div>
+      )}
 
       {/* ─── OFFICIAL PRINT HEADER (Displayed on print & official view) ─── */}
       <div className="text-center mb-3 official-header" style={{ display: 'none' }}>
@@ -629,8 +730,8 @@ const ViewScoring = () => {
               </thead>
               <tbody>
                 {policySide1.map((item) => {
-                  const values = committeeList.map((c) => scoreMap[`${item.auto_id}_${c}`] || 0);
-                  const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+                  const values = committeeList.map((c) => scoreMap[`${item.auto_id}_${c}`]);
+                  const avg = getIndicatorAvg(item.auto_id);
                   return (
                     <tr key={`s1-${item.auto_id}`}>
                       <td className="align-middle px-3" style={{ fontSize: '13px' }}>
@@ -638,7 +739,7 @@ const ViewScoring = () => {
                       </td>
                       {values.map((v, idx) => (
                         <td key={idx} className="text-center align-middle font-weight-bold" style={{ fontSize: '13px' }}>
-                          {Number(v || 0).toFixed(2)}
+                          {v !== undefined && v !== null ? Number(v).toFixed(2) : '—'}
                         </td>
                       ))}
                       <td className="text-center align-middle font-weight-bold text-primary" style={{ fontSize: '13px' }}>
@@ -658,8 +759,12 @@ const ViewScoring = () => {
                 </tr>
                 <tr>
                   <td colSpan={3 + committeeList.length} className="p-3" style={{ background: '#f8fafc', fontSize: '13px' }}>
-                    ได้คะแนนร้อยละ <strong>{policySide1Totals.toFixed(2)}</strong> อยู่ในระดับ <strong>{explanScore(policySide1Totals)}</strong> &nbsp;&nbsp;&nbsp;&nbsp;
-                    ผลการพิจารณา : {scorePassLabel(policySide1Totals, scorePassThreshold)} (ผ่านเกณฑ์ร้อยละ {scorePassThreshold})
+                    ได้คะแนนร้อยละ <strong>{policySide1Totals.toFixed(2)}</strong> อยู่ในระดับ <strong>{getQualityBadge(policySide1Totals).label}</strong> &nbsp;&nbsp;&nbsp;&nbsp;
+                    ผลการพิจารณา : {policySide1Totals >= scorePassThreshold ? (
+                      <span className="text-success font-weight-bold"><i className="fa-regular fa-square-check mr-1"></i> ผ่านเกณฑ์</span>
+                    ) : (
+                      <span className="text-danger font-weight-bold"><i className="fa-regular fa-circle-xmark mr-1"></i> ไม่ผ่านเกณฑ์</span>
+                    )} (เกณฑ์ร้อยละ {scorePassThreshold})
                   </td>
                 </tr>
 
@@ -679,8 +784,8 @@ const ViewScoring = () => {
                   <th>คะแนนเฉลี่ย</th>
                 </tr>
                 {policySide2.map((item) => {
-                  const values = committeeList.map((c) => scoreMap[`${item.auto_id}_${c}`] || 0);
-                  const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+                  const values = committeeList.map((c) => scoreMap[`${item.auto_id}_${c}`]);
+                  const avg = getIndicatorAvg(item.auto_id);
                   return (
                     <tr key={`s2-${item.auto_id}`}>
                       <td className="align-middle px-3" style={{ fontSize: '13px' }}>
@@ -688,7 +793,7 @@ const ViewScoring = () => {
                       </td>
                       {values.map((v, idx) => (
                         <td key={idx} className="text-center align-middle font-weight-bold" style={{ fontSize: '13px' }}>
-                          {Number(v || 0).toFixed(2)}
+                          {v !== undefined && v !== null ? Number(v).toFixed(2) : '—'}
                         </td>
                       ))}
                       <td className="text-center align-middle font-weight-bold text-primary" style={{ fontSize: '13px' }}>
@@ -708,8 +813,12 @@ const ViewScoring = () => {
                 </tr>
                 <tr>
                   <td colSpan={3 + committeeList.length} className="p-3" style={{ background: '#f8fafc', fontSize: '13px' }}>
-                    ได้คะแนนร้อยละ <strong>{policySide2Totals.toFixed(2)}</strong> อยู่ในระดับ <strong>{explanScore(policySide2Totals)}</strong> &nbsp;&nbsp;&nbsp;&nbsp;
-                    ผลการพิจารณา : {scorePassLabel(policySide2Totals, scorePassThreshold)} (ผ่านเกณฑ์ร้อยละ {scorePassThreshold})
+                    ได้คะแนนร้อยละ <strong>{policySide2Totals.toFixed(2)}</strong> อยู่ในระดับ <strong>{getQualityBadge(policySide2Totals).label}</strong> &nbsp;&nbsp;&nbsp;&nbsp;
+                    ผลการพิจารณา : {policySide2Totals >= scorePassThreshold ? (
+                      <span className="text-success font-weight-bold"><i className="fa-regular fa-square-check mr-1"></i> ผ่านเกณฑ์</span>
+                    ) : (
+                      <span className="text-danger font-weight-bold"><i className="fa-regular fa-circle-xmark mr-1"></i> ไม่ผ่านเกณฑ์</span>
+                    )} (เกณฑ์ร้อยละ {scorePassThreshold})
                   </td>
                 </tr>
 
@@ -722,11 +831,19 @@ const ViewScoring = () => {
                         <span className="font-weight-bold text-primary" style={{ fontSize: '16px' }}>{overallAverage.toFixed(2)} คะแนน</span>
                         &nbsp;&nbsp;
                         <strong>ระดับคุณภาพ : </strong>
-                        <span className="badge badge-primary px-2 py-1 font-weight-bold">{explanScore(overallAverage)}</span>
+                        <span className="badge badge-primary px-2 py-1 font-weight-bold">{qualityBadge.label}</span>
                       </div>
                       <div>
                         <strong>ผลการพิจารณาสรุป : </strong>
-                        {scorePassLabel(overallAverage, scorePassThreshold)}
+                        {isPassed ? (
+                          <span className="text-success font-weight-bold">
+                            <i className="fa-regular fa-square-check mr-1"></i> ผ่านเกณฑ์ (คะแนนเฉลี่ยร้อยละ {overallAverage.toFixed(2)})
+                          </span>
+                        ) : (
+                          <span className="text-danger font-weight-bold">
+                            <i className="fa-regular fa-circle-xmark mr-1"></i> ไม่ผ่านเกณฑ์ (คะแนนเฉลี่ยร้อยละ {overallAverage.toFixed(2)})
+                          </span>
+                        )}
                       </div>
                     </div>
                   </td>
@@ -845,6 +962,7 @@ const ViewScoring = () => {
             subjectAreaName={subjectAreaName}
             planScoreMap={{ [String(plan.planid)]: overallAverage }}
             committeeProfiles={committeeProfileMap}
+            directorProfile={directorProfile}
             lookups={lookups}
             profile={teacher}
             onClose={() => setShowCert(false)}

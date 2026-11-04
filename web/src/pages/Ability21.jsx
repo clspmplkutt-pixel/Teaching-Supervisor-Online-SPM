@@ -1,79 +1,36 @@
-import React, { useEffect, useState } from 'react';
-import { supabase } from '../supabaseClient';
+import React from 'react';
+import StatusToggleTable from '../components/StatusToggleTable';
 
-const Ability21 = () => {
-  const [loading, setLoading] = useState(true);
-  const [rows, setRows] = useState([]);
+const COLUMNS = [
+  { key: 'id', label: 'ลำดับ', align: 'center' },
+  { key: 'ability21_id', label: 'รหัสทักษะ', align: 'center' },
+  { key: 'ability21_name_th', label: 'ชื่อทักษะ (ภาษาไทย)' },
+  { key: 'ability21_name_en', label: 'ชื่อทักษะ (ภาษาอังกฤษ)' },
+];
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('tbl_ability21')
-        .select('*')
-        .order('id', { ascending: true });
-      if (error) throw error;
-      setRows(data || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+const ORDER = [
+  { field: 'ability21_status', ascending: false },
+  { field: 'id', ascending: true },
+];
 
-  useEffect(() => {
-    loadData();
-  }, []);
+const FORM_FIELDS = [
+  { key: 'id', label: 'ลำดับ (ID)', type: 'number', required: false, readOnlyOnEdit: true },
+  { key: 'ability21_id', label: 'รหัสทักษะในศตวรรษที่ 21', required: true, readOnlyOnEdit: true },
+  { key: 'ability21_name_th', label: 'ชื่อทักษะ (ภาษาไทย)', required: true },
+  { key: 'ability21_name_en', label: 'ชื่อทักษะ (ภาษาอังกฤษ)', required: false },
+];
 
-  if (loading) {
-    return (
-      <div className="text-center p-4">
-        <div className="spinner-border text-primary" role="status"></div>
-        <p className="mt-2">กำลังโหลดข้อมูล...</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="row">
-      <div className="col-sm-12 col-md-12 col-lg-12 col-xl-12">
-        <div className="card card-success">
-          <div className="card-header">
-            <h3 className="card-title"><i className="fa-solid fa-school-circle-check"></i> ทักษะในศตวรรษที่ 21</h3>
-          </div>
-          <div className="card-body">
-            <div className="table-responsive">
-              <table className="table table-bordered table-hover table-striped">
-                <thead>
-                  <tr>
-                    <th>id</th>
-                    <th>รหัสทักษะ</th>
-                    <th>ชื่อทักษะไทย</th>
-                    <th>ชื่อทักษะอังกฤษ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => (
-                    <tr key={row.id}>
-                      <td className="text-center">{row.id}</td>
-                      <td className="text-center">{row.ability21_id}</td>
-                      <td>{row.ability21_name_th}</td>
-                      <td>{row.ability21_name_en}</td>
-                    </tr>
-                  ))}
-                  {rows.length === 0 && (
-                    <tr>
-                      <td colSpan="4" className="text-center"><h2 className="text-danger">ยังไม่มีข้อมูล</h2></td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+const Ability21 = () => (
+  <StatusToggleTable
+    title="จัดการทักษะในศตวรรษที่ 21"
+    icon="fa-rocket"
+    table="tbl_ability21"
+    idField="id"
+    statusField="ability21_status"
+    columns={COLUMNS}
+    order={ORDER}
+    formFields={FORM_FIELDS}
+  />
+);
 
 export default Ability21;

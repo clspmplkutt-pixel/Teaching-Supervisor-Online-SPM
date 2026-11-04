@@ -1,9 +1,7 @@
 /* =========================================================================
-   TEACHER WORKSPACE v2.0 — Premium SaaS Dashboard (2026 Edition)
+   TEACHER WORKSPACE v3.0 — Premium SaaS Dashboard
    Aesthetic: Compact Bento / Expandable Cards / Glassmorphic Accents
    ========================================================================= */
-
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Prompt:wght@300;400;500;600;700&display=swap');
 
 :root {
   --tw-font-sans: 'Prompt', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -757,6 +755,26 @@
 .step-complete .step-badge-label { color: #047857; }
 .step-active .step-badge-label { color: #4338ca; }
 
+.step-badge-compact.step-rejected {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.step-rejected .step-badge-label {
+  color: #b91c1c;
+}
+
+.step-dot.rejected {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+}
+
+.tw-header-cta {
+  padding: 6px 12px !important;
+  font-size: 0.76rem !important;
+  white-space: nowrap;
+}
+
 /* Expand Button */
 .tw-expand-btn {
   width: 30px;
@@ -871,6 +889,32 @@
 
 .tw-timeline-node.done .tw-node-label { color: #047857; }
 .tw-timeline-node.current .tw-node-label { color: #4338ca; font-weight: 700; }
+
+.tw-timeline-node.rejected .tw-node-circle {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+}
+
+.tw-timeline-node.rejected .tw-node-label {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.tw-rejection-banner {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-left: 4px solid #dc2626;
+  border-radius: var(--tw-radius-sm);
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  color: #991b1b;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
 
 /* Status Description */
 .tw-status-desc {
@@ -1190,28 +1234,30 @@
 }
 
 /* ==========================================
-   10. PRINT STYLES
+   10. PRINT STYLES (Scoped strictly to body.printing-certificate)
    ========================================== */
 @media print {
-  body * { visibility: hidden; }
-  .no-print { display: none !important; }
-  .certificate-modal-overlay {
+  body.printing-certificate * { visibility: hidden; }
+  body.printing-certificate .no-print { display: none !important; }
+  body.printing-certificate .certificate-modal-overlay {
     position: static;
     background: none;
     backdrop-filter: none;
     padding: 0;
   }
-  .certificate-paper, .certificate-paper * {
+  body.printing-certificate .certificate-paper,
+  body.printing-certificate .certificate-paper * {
     visibility: visible;
   }
-  .certificate-paper {
-    position: absolute;
-    left: 0; top: 0;
+  body.printing-certificate .certificate-paper {
+    position: fixed;
+    left: 0;
+    top: 0;
     width: 100%;
     max-width: 100%;
     box-shadow: none;
     border-radius: 0;
-    padding: 20mm;
+    padding: 15mm;
   }
 }
 
@@ -1220,24 +1266,26 @@
    ========================================== */
 .tw-action-btn.edit-clip {
   background: linear-gradient(135deg, #6366f1, #818cf8);
-  color: #fff;
+  color: #ffffff !important;
   border: none;
 }
 
 .tw-action-btn.edit-clip:hover {
   background: linear-gradient(135deg, #4f46e5, #6366f1);
+  color: #ffffff !important;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
 }
 
 .tw-action-btn.delete-clip {
   background: linear-gradient(135deg, #ef4444, #f87171);
-  color: #fff;
+  color: #ffffff !important;
   border: none;
 }
 
 .tw-action-btn.delete-clip:hover {
   background: linear-gradient(135deg, #dc2626, #ef4444);
+  color: #ffffff !important;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
 }
