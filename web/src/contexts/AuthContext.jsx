@@ -166,7 +166,11 @@ export const AuthProvider = ({ children }) => {
                         // Normalise the default password to YYYYMMDD (ค.ศ.) for this account only
                         if (how === 'birthday' && best.birthday) {
                             const newEncrypted = encryptLegacyPassword(String(best.birthday).replace(/-/g, ''));
-                            await supabase.from(table).update({ passwd: newEncrypted }).eq('id', best.id);
+                            let pwQuery = supabase.from(table).update({ passwd: newEncrypted }).eq('id', best.id);
+                            if (table === 'tbl_Users' && best.people_id) {
+                                pwQuery = pwQuery.eq('people_id', best.people_id);
+                            }
+                            await pwQuery;
                         }
                     }
                 }
@@ -250,7 +254,11 @@ export const AuthProvider = ({ children }) => {
 
                 // Update lastlogin timestamp
                 try {
-                    await supabase.from(table).update({ lastlogin: new Date().toISOString() }).eq('id', data.id);
+                    let loginQuery = supabase.from(table).update({ lastlogin: new Date().toISOString() }).eq('id', data.id);
+                    if (table === 'tbl_Users' && data.people_id) {
+                        loginQuery = loginQuery.eq('people_id', data.people_id);
+                    }
+                    await loginQuery;
                 } catch (e) {
                     console.warn('Could not update lastlogin:', e);
                 }

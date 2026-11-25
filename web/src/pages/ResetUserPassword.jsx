@@ -137,10 +137,14 @@ const ResetUserPassword = () => {
 
         try {
             const encrypted = encryptLegacyPassword(newPwd);
-            const { error } = await supabase
+            let resetQuery = supabase
                 .from('tbl_Users')
                 .update({ passwd: encrypted })
                 .eq('id', selected.id);
+            if (selected.people_id) {
+                resetQuery = resetQuery.eq('people_id', selected.people_id);
+            }
+            const { error } = await resetQuery;
 
             if (error) throw error;
 
@@ -183,9 +187,9 @@ const ResetUserPassword = () => {
                             <form onSubmit={handleSearch} className="mb-4">
                                 <div className="row align-items-end">
                                     <div className="col-md-7">
-                                        <label className="font-weight-bold small text-muted">ค้นหาผู้ใช้งาน (ชื่อ, นามสกุล หรือเลขประจำตัวประชาชน):</label>
+                                        <label htmlFor="fld-reset-user-password-1" className="font-weight-bold small text-muted">ค้นหาผู้ใช้งาน (ชื่อ, นามสกุล หรือเลขประจำตัวประชาชน):</label>
                                         <div className="input-group">
-                                            <input
+                                            <input id="fld-reset-user-password-1"
                                                 type="text"
                                                 className="form-control"
                                                 placeholder="เช่น สมชาย หรือ 1659900..."
@@ -297,9 +301,9 @@ const ResetUserPassword = () => {
                                         <form onSubmit={handleReset}>
                                             <div className="row">
                                                 <div className="col-md-6 mb-3">
-                                                    <label className="font-weight-bold small text-muted">รหัสผ่านใหม่:</label>
+                                                    <label htmlFor="fld-reset-user-password-2" className="font-weight-bold small text-muted">รหัสผ่านใหม่:</label>
                                                     <div className="input-group">
-                                                        <input
+                                                        <input id="fld-reset-user-password-2"
                                                             type={showPwd ? 'text' : 'password'}
                                                             className="form-control"
                                                             placeholder="กำหนดรหัสผ่านใหม่"
@@ -321,8 +325,8 @@ const ResetUserPassword = () => {
                                                 </div>
 
                                                 <div className="col-md-6 mb-3">
-                                                    <label className="font-weight-bold small text-muted">ยืนยันรหัสผ่านใหม่อีกครั้ง:</label>
-                                                    <input
+                                                    <label htmlFor="fld-reset-user-password-3" className="font-weight-bold small text-muted">ยืนยันรหัสผ่านใหม่อีกครั้ง:</label>
+                                                    <input id="fld-reset-user-password-3"
                                                         type={showPwd ? 'text' : 'password'}
                                                         className="form-control"
                                                         placeholder="กรอกรหัสผ่านใหม่อีกครั้ง"

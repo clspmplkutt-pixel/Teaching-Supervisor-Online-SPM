@@ -12,7 +12,15 @@ import StatusBadge from '../components/StatusBadge';
 import { uploadToDrive } from '../utils/driveUpload';
 import { showToast } from '../utils/toast';
 import { generateTeacherToDirectorMessage, showLineShareDialog } from '../utils/lineNotifyHelper';
+import {
+  parseLessonPlanPdfWithAi,
+  mergeExtractedIntoForm,
+  matchIndicatorsFromCodes,
+  formatThaiCountdown,
+} from '../utils/lessonPlanAi';
 import './SendPlan.css';
+
+const AI_COOLDOWN_STORAGE_KEY = 'lmss_ai_plan_cooldown_v1';
 
 const MAX_PDF_MB = 25;
 const MAX_PDF_BYTES = MAX_PDF_MB * 1024 * 1024;
@@ -145,6 +153,31 @@ const SendPlan = () => {
   const [draftInfo, setDraftInfo] = useState(null);
   const [isDraftDismissed, setIsDraftDismissed] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState('');
+
+  // AI Lesson Plan PDF Auto-Fill state (Gemini Free Tier)
+  const [aiParsing, setAiParsing] = useState(false);
+  const [aiStatus, setAiStatus] = useState(null);
+  const [aiCooldown, setAiCooldown] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(AI_COOLDOWN_STORAGE_KEY) || 'null');
+      if (saved && saved.until > Date.now()) return saved;
+    } catch {
+      // ignore storage errors
+    }
+    return null;
+  });
+  const [aiCooldownSec, setAiCooldownSec] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(AI_COOLDOWN_STORAGE_KEY) || 'null');
+      if (saved && saved.until > Date.now()) {
+        return Math.max(0, Math.ceil((saved.until - Date.now()) / 1000));
+      }
+    } catch {
+      // ignore
+    }
+    return 0;
+  });
+  const [pendingIndicatorCodes, setPendingIndicatorCodes] = useState([]);
 
   const draftKey = profile?.people_id ? `lmss_sendplan_draft_${profile.people_id}` : null;
   const activeRole = user?.level_id || user?.user_metadata?.role || profile?.level || 'teacher';
@@ -492,6 +525,54 @@ const SendPlan = () => {
     };
   }, [teachSubjectId, gradeLevelId]);
 
+  // Tick AI Free-Tier rate-limit countdown every second
+  useEffect(() => {
+    if (!aiCooldown?.until) {
+      setAiCooldownSec(0);
+      return undefined;
+    }
+    const updateRemaining = () => {
+      const rem = Math.ceil((aiCooldown.until - Date.now()) / 1000);
+      if (rem <= 0) {
+        setAiCooldown(null);
+        setAiCooldownSec(0);
+        try {
+          localStorage.removeItem(AI_COOLDOWN_STORAGE_KEY);
+        } catch {
+          // ignore
+        }
+      } else {
+        setAiCooldownSec(rem);
+      }
+    };
+    updateRemaining();
+    const timer = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(timer);
+  }, [aiCooldown]);
+
+  // Auto-match curriculum indicators after AI sets teach_subject_id & grade_level_id
+  useEffect(() => {
+    if (!pendingIndicatorCodes.length) return;
+    const allRows = [...(indicators.mid || []), ...(indicators.final || [])];
+    if (allRows.length === 0) return;
+
+    const matched = matchIndicatorsFromCodes(pendingIndicatorCodes, allRows);
+    const totalMatched = matched.mid.length + matched.final.length;
+    if (totalMatched > 0) {
+      setForm((prev) => ({
+        ...prev,
+        indicators_mid: matched.mid.length ? matched.mid : prev.indicators_mid,
+        indicators_final: matched.final.length ? matched.final : prev.indicators_final,
+      }));
+      setAiStatus((prev) =>
+        prev && prev.type === 'success'
+          ? { ...prev, matchedIndicatorsCount: totalMatched }
+          : prev
+      );
+    }
+    setPendingIndicatorCodes([]);
+  }, [indicators, pendingIndicatorCodes]);
+
   // SearchableSelect option arrays
   const teachSubjectSelectOptions = useMemo(
     () =>
@@ -594,49 +675,60 @@ const SendPlan = () => {
     }
   };
 
+  // Say what is wrong, then take the user to it: focus the field (or the control
+  // inside a composite field) and mark it invalid until they change it.
+  const rejectField = (message, fieldId) => {
+    showToast(message, 'warning');
+    window.setTimeout(() => {
+      const holder = document.getElementById(fieldId);
+      if (!holder) return;
+      const focusable = 'input:not([type="hidden"]):not([tabindex="-1"]), select, textarea, button, [tabindex="0"]';
+      const target = holder.matches(focusable) ? holder : holder.querySelector(focusable);
+      if (!target) return;
+      target.setAttribute('aria-invalid', 'true');
+      const clear = () => target.removeAttribute('aria-invalid');
+      target.addEventListener('input', clear, { once: true });
+      target.addEventListener('change', clear, { once: true });
+      target.addEventListener('blur', clear, { once: true });
+      target.scrollIntoView({ block: 'center' });
+      target.focus({ preventScroll: true });
+    }, 0);
+    return false;
+  };
+
   const validateStep = (stepNumber) => {
     setValidatedSteps((prev) => ({ ...prev, [stepNumber]: true }));
 
     if (stepNumber === 1) {
       if (!form.teach_subject_id) {
-        showToast('กรุณาเลือกกลุ่มสาระการเรียนรู้', 'warning');
-        return false;
+        return rejectField('กรุณาเลือกกลุ่มสาระการเรียนรู้', 'teach_subject_id');
       }
       if (!form.grade_level_id) {
-        showToast('กรุณาเลือกระดับชั้นที่ทำการสอน', 'warning');
-        return false;
+        return rejectField('กรุณาเลือกระดับชั้นที่ทำการสอน', 'grade_level_id');
       }
       if (!form.subject_code || !form.subject_code.trim()) {
-        showToast('กรุณาระบุรหัสวิชา', 'warning');
-        return false;
+        return rejectField('กรุณาระบุรหัสวิชา', 'subject_code');
       }
       if (!form.subject_name || !form.subject_name.trim()) {
-        showToast('กรุณาระบุชื่อวิชา', 'warning');
-        return false;
+        return rejectField('กรุณาระบุชื่อวิชา', 'subject_name');
       }
       if (!form.subject_content || !form.subject_content.trim()) {
-        showToast('กรุณาระบุหน่วยการเรียนรู้', 'warning');
-        return false;
+        return rejectField('กรุณาระบุหน่วยการเรียนรู้', 'subject_content');
       }
       if (!form.subject_name_plan || !form.subject_name_plan.trim()) {
-        showToast('กรุณาระบุชื่อแผนการสอน', 'warning');
-        return false;
+        return rejectField('กรุณาระบุชื่อแผนการสอน', 'subject_name_plan');
       }
       if (!form.teach_date) {
-        showToast('กรุณาระบุวันที่ทำการสอน', 'warning');
-        return false;
+        return rejectField('กรุณาระบุวันที่ทำการสอน', 'teach_date');
       }
       if (!form.teach_timestart || !form.teach_timeend) {
-        showToast('กรุณาระบุเวลาเริ่มและเวลาเสร็จให้ครบถ้วน', 'warning');
-        return false;
+        return rejectField('กรุณาระบุเวลาเริ่มและเวลาเสร็จให้ครบถ้วน', 'teach_timestart');
       }
       if (!form.teach_minute || parseInt(form.teach_minute, 10) <= 0) {
-        showToast('กรุณาระบุจำนวนนาทีที่ใช้ในการสอน', 'warning');
-        return false;
+        return rejectField('กรุณาระบุจำนวนนาทีที่ใช้ในการสอน', 'teach_minute');
       }
       if (!form.learning_model || !form.learning_model.trim()) {
-        showToast('กรุณาระบุวิธีการสอน / รูปแบบการจัดการเรียนรู้', 'warning');
-        return false;
+        return rejectField('กรุณาระบุวิธีการสอน / รูปแบบการจัดการเรียนรู้', 'learning_model');
       }
     } else if (stepNumber === 3) {
       if (!form.competency || form.competency.length === 0) {
@@ -646,8 +738,7 @@ const SendPlan = () => {
     } else if (stepNumber === 6) {
       if (!file && !existingPlanFile) {
         setFileError('กรุณาเลือกไฟล์แผนการจัดการเรียนรู้ (.pdf) ขนาดไม่เกิน 25 MB');
-        showToast('กรุณาแนบไฟล์แผนการจัดการเรียนรู้ (PDF)', 'warning');
-        return false;
+        return rejectField('กรุณาแนบไฟล์แผนการจัดการเรียนรู้ (PDF)', 'plan_file');
       }
       if (fileError) {
         showToast(fileError, 'warning');
@@ -771,6 +862,118 @@ const SendPlan = () => {
       return;
     }
     setFile(selected);
+  };
+
+  const handleAiExtractPlan = async () => {
+    if (!file) {
+      showToast('กรุณาเลือกไฟล์แผนการจัดการเรียนรู้ (.pdf) ก่อนให้ AI สกัดข้อมูล', 'warning');
+      return;
+    }
+    if (aiCooldownSec > 0) {
+      showToast(`กรุณารออีก ${formatThaiCountdown(aiCooldownSec)} ก่อนลองใหม่อีกครั้ง`, 'info');
+      return;
+    }
+
+    // Ask whether to overwrite or fill empty fields if teacher already typed data
+    const hasExistingData = Boolean(
+      form.subject_code?.trim() ||
+        form.subject_name_plan?.trim() ||
+        form.subject_content?.trim() ||
+        form.learning_activities?.trim() ||
+        form.objectives_knowledge?.trim()
+    );
+
+    let mergeMode = 'overwrite';
+    if (hasExistingData) {
+      const choice = await Swal.fire({
+        title: 'พบข้อมูลที่กรอกไว้ในฟอร์มแล้ว',
+        text: 'ต้องการให้ AI เขียนทับข้อมูลเดิมทั้งหมด หรือเติมเฉพาะช่องที่ยังว่างครับ?',
+        icon: 'question',
+        showCancelButton: true,
+        showDenyButton: true,
+        confirmButtonText: 'เติมเฉพาะช่องที่ว่าง',
+        denyButtonText: 'เขียนทับทั้งหมด',
+        cancelButtonText: 'ยกเลิก',
+        confirmButtonColor: '#4f46e5',
+        denyButtonColor: '#f59e0b',
+      });
+      if (choice.isDismissed) return;
+      mergeMode = choice.isConfirmed ? 'emptyOnly' : 'overwrite';
+    }
+
+    setAiParsing(true);
+    setAiStatus(null);
+    try {
+      const { extracted, model, mode } = await parseLessonPlanPdfWithAi(file, options);
+      const { nextForm, filledLabels, missingLabels } = mergeExtractedIntoForm(form, extracted, mergeMode);
+
+      // If indicators for the target subject+grade are already loaded, match immediately
+      let immediateIndicatorsCount = 0;
+      const sameScope =
+        String(nextForm.teach_subject_id) === String(form.teach_subject_id) &&
+        String(nextForm.grade_level_id) === String(form.grade_level_id);
+      if (extracted.indicator_codes?.length) {
+        if (sameScope && (indicators.mid.length || indicators.final.length)) {
+          const matched = matchIndicatorsFromCodes(extracted.indicator_codes, [
+            ...indicators.mid,
+            ...indicators.final,
+          ]);
+          immediateIndicatorsCount = matched.mid.length + matched.final.length;
+          if (matched.mid.length) nextForm.indicators_mid = matched.mid;
+          if (matched.final.length) nextForm.indicators_final = matched.final;
+          setPendingIndicatorCodes([]);
+        } else {
+          setPendingIndicatorCodes(extracted.indicator_codes);
+        }
+      }
+
+      setForm(nextForm);
+      setCurrentStep(1);
+      setAiStatus({
+        type: 'success',
+        filledLabels,
+        missingLabels,
+        matchedIndicatorsCount: immediateIndicatorsCount,
+        model,
+        mode,
+      });
+      showToast(`AI สกัดข้อมูลลงฟอร์มให้แล้ว ${filledLabels.length} ช่อง กรุณาตรวจสอบก่อนส่ง`, 'success');
+    } catch (err) {
+      console.error('[SendPlan AI]', err);
+      const isMinuteLimit = err.errorType === 'RATE_LIMIT_MINUTE';
+      const isDailyLimit = err.errorType === 'RATE_LIMIT_DAILY';
+
+      if (isMinuteLimit || isDailyLimit) {
+        const until = err.resetAt
+          ? new Date(err.resetAt).getTime()
+          : Date.now() + (err.retryAfterSeconds || 60) * 1000;
+        const cooldownObj = {
+          type: isDailyLimit ? 'daily' : 'minute',
+          until,
+          resetTimeThai: err.resetTimeThai || null,
+          message: err.message,
+        };
+        setAiCooldown(cooldownObj);
+        setAiCooldownSec(Math.max(1, Math.ceil((until - Date.now()) / 1000)));
+        try {
+          localStorage.setItem(AI_COOLDOWN_STORAGE_KEY, JSON.stringify(cooldownObj));
+        } catch {
+          // ignore
+        }
+        setAiStatus({
+          type: isDailyLimit ? 'rate_limit_daily' : 'rate_limit_minute',
+          message: err.message,
+          resetTimeThai: err.resetTimeThai || null,
+        });
+      } else {
+        setAiStatus({
+          type: 'error',
+          message: err.message || 'ไม่สามารถวิเคราะห์ไฟล์ PDF ได้ คุณครูสามารถกรอกข้อมูลด้วยตนเองได้ตามปกติ',
+        });
+      }
+    } finally {
+      setAiParsing(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -1145,7 +1348,7 @@ const SendPlan = () => {
           </div>
 
           {/* Compact Teacher Context Strip */}
-          <div className="card border shadow-none mb-3" style={{ borderRadius: '12px', background: '#f8fafc' }}>
+          <div className="card border shadow-none mb-3 d-none d-md-block" style={{ borderRadius: '12px', background: '#f8fafc' }}>
             <div className="card-body py-2 px-3">
               <div className="row align-items-center small">
                 <div className="col-md-6 col-lg-3 py-1">
@@ -1179,6 +1382,183 @@ const SendPlan = () => {
             {/* ================= STEP 1: ข้อมูลรายวิชา & กำหนดการสอน ================= */}
             {currentStep === 1 && (
               <div className={isStep1Validated ? 'step-validated' : ''}>
+                {/* AI Lesson Plan PDF Auto-Fill Panel (Gemini Free Tier) */}
+                {!isLockedEdit && (
+                  <div className="sendplan-ai-card mb-3">
+                    <div className="sendplan-ai-header">
+                      <div className="d-flex align-items-center" style={{ gap: '10px' }}>
+                        <span className="sendplan-ai-icon">
+                          <i className="fa-solid fa-wand-magic-sparkles"></i>
+                        </span>
+                        <div>
+                          <div className="d-flex align-items-center flex-wrap" style={{ gap: '8px' }}>
+                            <h5 className="mb-0 font-weight-bold text-dark" style={{ fontSize: '0.98rem' }}>
+                              ให้ AI อ่านไฟล์แผนการสอน (PDF) กรอกข้อมูลอัตโนมัติ
+                            </h5>
+                            <span className="badge badge-pill" style={{ background: '#ede9fe', color: '#5b21b6', fontSize: '0.72rem' }}>
+                              Gemini AI (Free)
+                            </span>
+                          </div>
+                          <div className="small text-muted mt-1">
+                            เลือกไฟล์แผน PDF แล้วกดสกัดข้อมูล ระบบจะกรอกฟอร์มให้ครบทุกขั้นตอน (และเก็บไฟล์นี้ไว้ใช้ส่งในขั้นตอนที่ 6 ด้วย) จากนั้นตรวจสอบแก้ไขได้ทันที
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="sendplan-ai-body">
+                      <div className="d-flex flex-wrap align-items-center" style={{ gap: '10px' }}>
+                        <label
+                          htmlFor="ai_plan_pdf_input"
+                          className={`btn btn-sm mb-0 font-weight-bold ${file ? 'btn-outline-success' : 'btn-outline-primary'}`}
+                          style={{ borderRadius: '9px', cursor: aiParsing ? 'not-allowed' : 'pointer' }}
+                        >
+                          <i className={`fa-solid ${file ? 'fa-file-pdf text-danger' : 'fa-folder-open'} mr-1`}></i>
+                          {file ? 'เปลี่ยนไฟล์ PDF' : 'เลือกไฟล์แผน (.PDF)'}
+                          <input
+                            id="ai_plan_pdf_input"
+                            type="file"
+                            accept="application/pdf,.pdf"
+                            onChange={handleFileChange}
+                            disabled={aiParsing}
+                            style={{ display: 'none' }}
+                          />
+                        </label>
+
+                        {file && (
+                          <div className="sendplan-ai-file-pill">
+                            <i className="fa-solid fa-file-pdf text-danger mr-1"></i>
+                            <span className="text-truncate" style={{ maxWidth: '240px' }} title={file.name}>
+                              {file.name}
+                            </span>
+                            <span className="text-muted ml-1">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                            {!aiParsing && (
+                              <button
+                                type="button"
+                                className="btn btn-link btn-sm p-0 ml-2 text-muted"
+                                title="นำไฟล์ออก"
+                                onClick={() => {
+                                  setFile(null);
+                                  setFileError('');
+                                }}
+                              >
+                                <i className="fa-solid fa-xmark"></i>
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary font-weight-bold ml-auto"
+                          style={{
+                            borderRadius: '9px',
+                            background: aiCooldownSec > 0 ? '#94a3b8' : 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+                            border: 'none',
+                            padding: '7px 16px',
+                          }}
+                          disabled={!file || aiParsing || aiCooldownSec > 0}
+                          onClick={handleAiExtractPlan}
+                        >
+                          {aiParsing ? (
+                            <>
+                              <i className="fa-solid fa-spinner fa-spin mr-1"></i> กำลังอ่านแผนการสอน...
+                            </>
+                          ) : aiCooldownSec > 0 ? (
+                            <>
+                              <i className="fa-regular fa-clock mr-1"></i> รอ {formatThaiCountdown(aiCooldownSec)}
+                            </>
+                          ) : (
+                            <>
+                              <i className="fa-solid fa-sparkles mr-1"></i> สกัดข้อมูลลงฟอร์ม
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      {fileError && <span className="sendplan-error-text mt-2">{fileError}</span>}
+
+                      {/* Live Countdown Banner when Free Tier Rate-Limited */}
+                      {aiCooldownSec > 0 && aiCooldown && (
+                        <div className="sendplan-ai-alert sendplan-ai-alert-warning mt-3">
+                          <div className="d-flex align-items-start" style={{ gap: '10px' }}>
+                            <i className="fa-solid fa-hourglass-half text-warning mt-1" style={{ fontSize: '1.05rem' }}></i>
+                            <div className="flex-grow-1">
+                              <div className="font-weight-bold text-dark">
+                                {aiCooldown.type === 'daily'
+                                  ? `โควตาระบบ AI ฟรีวันนี้ครบจำนวนแล้ว${aiCooldown.resetTimeThai ? ` (รีเซ็ตเวลา ${aiCooldown.resetTimeThai})` : ''}`
+                                  : 'ระบบ AI มีผู้ใช้งานพร้อมกันจำนวนมาก กรุณารอสักครู่'}
+                              </div>
+                              <div className="small text-muted mt-1">
+                                สามารถกดใช้งาน AI ได้อีกครั้งใน:{' '}
+                                <strong className="text-dark">{formatThaiCountdown(aiCooldownSec)}</strong>
+                              </div>
+                              <div className="small text-success font-weight-bold mt-1">
+                                <i className="fa-solid fa-circle-check mr-1"></i>
+                                คุณครูสามารถเลื่อนลงมากรอกข้อมูลด้วยตนเองด้านล่างได้ตามปกติทันที (ไฟล์ PDF ที่เลือกไว้จะถูกเก็บไว้ส่งในขั้นตอนที่ 6 ให้ครับ)
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Success Summary Banner */}
+                      {aiStatus?.type === 'success' && (
+                        <div className="sendplan-ai-alert sendplan-ai-alert-success mt-3">
+                          <div className="d-flex justify-content-between align-items-start flex-wrap" style={{ gap: '8px' }}>
+                            <div>
+                              <div className="font-weight-bold text-success">
+                                <i className="fa-solid fa-circle-check mr-1"></i>
+                                สกัดข้อมูลลงฟอร์มให้แล้ว {aiStatus.filledLabels?.length || 0} ช่อง
+                                {aiStatus.matchedIndicatorsCount > 0 && (
+                                  <span className="ml-2 badge badge-success">
+                                    จับคู่ตัวชี้วัด {aiStatus.matchedIndicatorsCount} ข้อ
+                                  </span>
+                                )}
+                              </div>
+                              <div className="small text-muted mt-1">
+                                กรุณาตรวจสอบความถูกต้องตั้งแต่ขั้นตอนที่ 1 ถึง 6 ก่อนกดส่งแผนการสอน (ไฟล์ PDF ถูกแนบไว้สำหรับขั้นตอนที่ 6 เรียบร้อยแล้ว)
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-link btn-sm text-muted p-0"
+                              onClick={() => setAiStatus(null)}
+                            >
+                              <i className="fa-solid fa-xmark"></i>
+                            </button>
+                          </div>
+                          {aiStatus.missingLabels?.length > 0 && (
+                            <div className="small text-muted mt-2 pt-2 border-top">
+                              <strong>ช่องที่ยังไม่พบในแผน (กรุณาตรวจสอบ/กรอกเพิ่ม):</strong>{' '}
+                              {aiStatus.missingLabels.join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Generic Error Banner */}
+                      {aiStatus?.type === 'error' && (
+                        <div className="sendplan-ai-alert sendplan-ai-alert-danger mt-3">
+                          <div className="d-flex justify-content-between align-items-start" style={{ gap: '8px' }}>
+                            <div className="small">
+                              <i className="fa-solid fa-triangle-exclamation text-danger mr-1"></i>
+                              <strong>แจ้งเตือน:</strong> {aiStatus.message}
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-link btn-sm text-muted p-0"
+                              onClick={() => setAiStatus(null)}
+                            >
+                              <i className="fa-solid fa-xmark"></i>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div className="sendplan-section-card">
                   <div className="sendplan-section-header">
                     <h4 className="sendplan-section-title">
@@ -1808,7 +2188,7 @@ const SendPlan = () => {
                           <input
                             type="text"
                             className="form-control"
-                            placeholder="ค้นหารหัสตัวชี้วัด หรือคำสำคัญในตัวชี้วัดระหว่างทาง..."
+                            aria-label="ค้นหารหัสตัวชี้วัด หรือคำสำคัญในตัวชี้วัดระหว่างทาง" placeholder="ค้นหารหัสตัวชี้วัด หรือคำสำคัญในตัวชี้วัดระหว่างทาง..."
                             value={midSearch}
                             onChange={(e) => setMidSearch(e.target.value)}
                           />
@@ -1905,7 +2285,7 @@ const SendPlan = () => {
                           <input
                             type="text"
                             className="form-control"
-                            placeholder="ค้นหารหัสตัวชี้วัด หรือคำสำคัญในตัวชี้วัดปลายทาง..."
+                            aria-label="ค้นหารหัสตัวชี้วัด หรือคำสำคัญในตัวชี้วัดปลายทาง" placeholder="ค้นหารหัสตัวชี้วัด หรือคำสำคัญในตัวชี้วัดปลายทาง..."
                             value={finalSearch}
                             onChange={(e) => setFinalSearch(e.target.value)}
                           />

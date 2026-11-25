@@ -246,6 +246,9 @@ const EditProfile = () => {
       let query = supabase.from('tbl_Users').update(updatePayload);
       if (profile?.id != null) {
         query = query.eq('id', profile.id);
+        if (profile?.people_id) {
+          query = query.eq('people_id', profile.people_id);
+        }
       } else {
         query = query.eq('people_id', profile.people_id);
       }

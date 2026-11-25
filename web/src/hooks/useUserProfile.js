@@ -64,11 +64,14 @@ export const useUserProfile = () => {
       const numericRowId = user?.id && /^\d+$/.test(String(user.id)) && String(user.id).length < 13 ? Number(user.id) : null;
 
       if (numericRowId) {
-        const { data: byId, error: idErr } = await supabase
+        let idQuery = supabase
           .from('tbl_Users')
           .select('*')
-          .eq('id', numericRowId)
-          .limit(1);
+          .eq('id', numericRowId);
+        if (peopleId) {
+          idQuery = idQuery.eq('people_id', peopleId);
+        }
+        const { data: byId, error: idErr } = await idQuery.limit(1);
         if (!idErr && byId && byId.length > 0) {
           row = byId[0];
         }

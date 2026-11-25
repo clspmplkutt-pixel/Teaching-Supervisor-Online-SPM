@@ -151,10 +151,15 @@ const Login = () => {
 
           const encrypted = encryptLegacyPassword(birthdayAD);
 
-          const { error: updateError } = await supabase
+          let resetQuery = supabase
             .from('tbl_Users')
             .update({ passwd: encrypted })
             .in('id', matchedUsers.map((u) => u.id));
+          const matchedPids = [...new Set(matchedUsers.map((u) => u.people_id).filter(Boolean))];
+          if (matchedPids.length > 0) {
+            resetQuery = resetQuery.in('people_id', matchedPids);
+          }
+          const { error: updateError } = await resetQuery;
 
           if (updateError) throw updateError;
 
