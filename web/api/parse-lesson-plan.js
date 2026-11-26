@@ -9,10 +9,10 @@
  *   GEMINI_API_KEY  — API Key from a Google AI Studio Free Tier project (no billing)
  *
  * Optional Environment Variable:
- *   GEMINI_MODELS   — Comma-separated fallback list (default: "gemini-2.5-flash,gemini-2.5-flash-lite")
+ *   GEMINI_MODELS   — Comma-separated fallback list (default: "gemini-3.5-flash-lite,gemini-3.5-flash")
  */
 
-const DEFAULT_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+const DEFAULT_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.5-flash'];
 const MAX_TEXT_CHARS = 45000;
 const MAX_PDF_BASE64_CHARS = 4_600_000; // ~3.4 MB binary
 
